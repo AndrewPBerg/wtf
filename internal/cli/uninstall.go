@@ -34,9 +34,9 @@ func runUninstall(cmd *cobra.Command) error {
 	}
 
 	if !uninstallForce {
-		ok := confirmPrompt(cmd.InOrStdin(), cmd.OutOrStdout(), fmt.Sprintf("Remove %s? [y/N] ", binPath))
+		ok := confirmPrompt(cmd.InOrStdin(), cmd.OutOrStdout(), fmt.Sprintf("Remove %s? [y/N] ", cyan(binPath)))
 		if !ok {
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), yellow("Aborted."))
 			return nil
 		}
 	}
@@ -45,7 +45,7 @@ func runUninstall(cmd *cobra.Command) error {
 		return fmt.Errorf("removing %s: %w", binPath, err)
 	}
 
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed %s\n", binPath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Removed %s\n", greenBold("✔"), cyan(binPath))
 	return nil
 }
 

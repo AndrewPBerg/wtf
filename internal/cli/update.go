@@ -22,13 +22,13 @@ var updateCmd = &cobra.Command{
 const installURL = "https://raw.githubusercontent.com/AndrewPBerg/wtf/main/install.sh"
 
 func runUpdate(cmd *cobra.Command) error {
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Updating wtf...")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Updating wtf...\n", cyan("⟳"))
 
 	out, err := exec.Command("sh", "-c", fmt.Sprintf("curl -fsSL %s | sh", installURL)).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("updating wtf: %w\n%s", err, out)
 	}
 
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Updated successfully.")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Updated successfully.\n", greenBold("✔"))
 	return nil
 }

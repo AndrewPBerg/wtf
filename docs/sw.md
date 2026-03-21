@@ -8,11 +8,14 @@ Switch to a worktree by branch name (fuzzy substring match). Prints the path to 
 wtf sw <query>
 ```
 
-Since a subprocess can't change the parent shell's directory, `wtf sw` prints the path. Use a shell wrapper:
+Since a subprocess can't change the parent shell's directory, `wtf sw` prints the path. Use `wtf setup` for automatic configuration, or see `wtf init --help` for manual setup.
 
 ```bash
-# Add to ~/.bashrc or ~/.zshrc
-wt() { cd "$(command wtf sw "$@")" }
+# Automatic setup (recommended)
+wtf setup
+
+# Or manually add to ~/.bashrc or ~/.zshrc
+eval "$(wtf init)"
 ```
 
 ## Matching Behavior

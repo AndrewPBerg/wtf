@@ -17,15 +17,18 @@ func TestSwCommand(t *testing.T) {
 	_, err := wm.Add(dir, "feature-switch", "main")
 	require.NoError(t, err)
 
-	buf := new(bytes.Buffer)
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
 	cmd := swCmd
-	cmd.SetOut(buf)
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
 
 	err = runSw(cmd, "switch", wm)
 	require.NoError(t, err)
 
-	output := buf.String()
-	assert.Contains(t, output, "feature-switch")
+	assert.Contains(t, stdout.String(), "feature-switch")
+	assert.Contains(t, stderr.String(), "Switched to")
+	assert.Contains(t, stderr.String(), "feature-switch")
 }
 
 func TestSwCommand_NoMatch(t *testing.T) {

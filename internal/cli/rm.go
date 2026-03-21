@@ -33,6 +33,6 @@ func runRm(cmd *cobra.Command, branch string, wm *git.WorktreeManager) error {
 		return err
 	}
 
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed worktree for %s\n", branch)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Removed worktree for %s\n", greenBold("✔"), cyan(branch))
 	return nil
 }

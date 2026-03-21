@@ -34,6 +34,6 @@ func runNew(cmd *cobra.Command, branch string, wm *git.WorktreeManager) error {
 		return err
 	}
 
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Created worktree at %s\n", wtPath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Created worktree at %s\n", greenBold("✔"), cyan(wtPath))
 	return nil
 }

@@ -37,11 +37,14 @@ wtf clean
 `wtf sw` prints the worktree path to stdout (a subprocess can't `cd` your shell). Add this wrapper to your shell profile:
 
 ```bash
-# ~/.bashrc or ~/.zshrc
-wt() { cd "$(command wtf sw "$@")" }
+# Automatic setup (recommended)
+wtf setup
+
+# Or manually add to ~/.bashrc or ~/.zshrc
+eval "$(wtf init)"
 ```
 
-Then use `wt auth` to cd into the matching worktree.
+Then use `sw auth` to cd into the matching worktree.
 
 ## Worktree Path Convention
 

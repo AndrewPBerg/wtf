@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"text/tabwriter"
+	"strings"
 
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
@@ -30,6 +30,14 @@ var lsCmd = &cobra.Command{
 	},
 }
 
+type lsRow struct {
+	branch     string // plain text for width calculation
+	path       string
+	head       string
+	isMain     bool
+	isDetached bool
+}
+
 func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
 	if lsGlobal {
 		return runLsGlobal(cmd, wm)
@@ -51,9 +59,8 @@ func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
 		return enc.Encode(wts)
 	}
 
-	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintf(w, "BRANCH\tPATH\tHEAD\n")
-	for _, wt := range wts {
+	rows := make([]lsRow, len(wts))
+	for i, wt := range wts {
 		branch := wt.Branch
 		if wt.IsMain {
 			branch += " *"
@@ -61,9 +68,95 @@ func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
 		if wt.IsDetached {
 			branch = "(detached)"
 		}
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", branch, wt.Path, shortHead(wt.Head))
+		rows[i] = lsRow{
+			branch:     branch,
+			path:       wt.Path,
+			head:       shortHead(wt.Head),
+			isMain:     wt.IsMain,
+			isDetached: wt.IsDetached,
+		}
 	}
-	return w.Flush()
+
+	printWorktreeTable(cmd, rows, "")
+	return nil
+}
+
+// colWidths holds pre-calculated column widths for consistent alignment.
+type colWidths struct {
+	branch int
+	path   int
+}
+
+// calcWidths returns the column widths needed for a set of rows.
+func calcWidths(rows []lsRow) colWidths {
+	bw, pw := len("BRANCH"), len("PATH")
+	for _, r := range rows {
+		if len(r.branch) > bw {
+			bw = len(r.branch)
+		}
+		if len(r.path) > pw {
+			pw = len(r.path)
+		}
+	}
+	return colWidths{branch: bw, path: pw}
+}
+
+// mergeWidths returns the element-wise max of two colWidths.
+func mergeWidths(a, b colWidths) colWidths {
+	if b.branch > a.branch {
+		a.branch = b.branch
+	}
+	if b.path > a.path {
+		a.path = b.path
+	}
+	return a
+}
+
+// printWorktreeTable renders a colored, aligned worktree table.
+// prefix is prepended to each line (e.g. "  " for indented global output).
+func printWorktreeTable(cmd *cobra.Command, rows []lsRow, prefix string) {
+	printWorktreeTableWithWidths(cmd, rows, prefix, calcWidths(rows))
+}
+
+// printWorktreeTableWithWidths renders with explicit column widths for cross-table alignment.
+func printWorktreeTableWithWidths(cmd *cobra.Command, rows []lsRow, prefix string, w colWidths) {
+	out := cmd.OutOrStdout()
+
+	gap := 2
+	// Header
+	_, _ = fmt.Fprintf(out, "%s%s%s%s\n",
+		prefix,
+		bold(pad("BRANCH", w.branch+gap)),
+		bold(pad("PATH", w.path+gap)),
+		bold("HEAD"),
+	)
+
+	// Data rows
+	for _, r := range rows {
+		var coloredBranch string
+		switch {
+		case r.isMain:
+			coloredBranch = green(pad(r.branch, w.branch+gap))
+		case r.isDetached:
+			coloredBranch = yellow(pad(r.branch, w.branch+gap))
+		default:
+			coloredBranch = cyan(pad(r.branch, w.branch+gap))
+		}
+		_, _ = fmt.Fprintf(out, "%s%s%s%s\n",
+			prefix,
+			coloredBranch,
+			pad(r.path, w.path+gap),
+			dim(r.head),
+		)
+	}
+}
+
+// pad right-pads s with spaces to width w.
+func pad(s string, w int) string {
+	if len(s) >= w {
+		return s
+	}
+	return s + strings.Repeat(" ", w-len(s))
 }
 
 // repoEntry represents a repo and its worktrees for JSON output.
@@ -79,7 +172,7 @@ func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
 	}
 
 	if len(repos) == 0 {
-		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No registered repos. Run a wtf command inside a repo to auto-register it.")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), dim("No registered repos. Run a wtf command inside a repo to auto-register it."))
 		return nil
 	}
 
@@ -88,19 +181,25 @@ func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
 	}
 
 	out := cmd.OutOrStdout()
-	for i, repo := range repos {
+
+	// First pass: collect all rows per repo and compute global column widths.
+	type repoRows struct {
+		name string
+		path string
+		rows []lsRow
+	}
+	var groups []repoRows
+	globalW := colWidths{}
+
+	for _, repo := range repos {
 		wts, err := wm.List(repo)
 		if err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not list %s: %v\n", repo, err)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s Could not list %s: %v\n", yellow("⚠"), cyan(repo), err)
 			continue
 		}
 
-		name := filepath.Base(repo)
-		_, _ = fmt.Fprintf(out, "%s (%s)\n", name, repo)
-
-		w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-		_, _ = fmt.Fprintf(w, "  BRANCH\tPATH\tHEAD\n")
-		for _, wt := range wts {
+		rows := make([]lsRow, len(wts))
+		for j, wt := range wts {
 			branch := wt.Branch
 			if wt.IsMain {
 				branch += " *"
@@ -108,11 +207,24 @@ func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
 			if wt.IsDetached {
 				branch = "(detached)"
 			}
-			_, _ = fmt.Fprintf(w, "  %s\t%s\t%s\n", branch, wt.Path, shortHead(wt.Head))
+			rows[j] = lsRow{
+				branch:     branch,
+				path:       wt.Path,
+				head:       shortHead(wt.Head),
+				isMain:     wt.IsMain,
+				isDetached: wt.IsDetached,
+			}
 		}
-		_ = w.Flush()
+		globalW = mergeWidths(globalW, calcWidths(rows))
+		groups = append(groups, repoRows{name: filepath.Base(repo), path: repo, rows: rows})
+	}
 
-		if i < len(repos)-1 {
+	// Second pass: print with consistent widths.
+	for i, g := range groups {
+		_, _ = fmt.Fprintf(out, "%s %s\n", cyanBold(g.name), dim("("+g.path+")"))
+		printWorktreeTableWithWidths(cmd, g.rows, "  ", globalW)
+
+		if i < len(groups)-1 {
 			_, _ = fmt.Fprintln(out)
 		}
 	}
@@ -124,7 +236,7 @@ func runLsGlobalJSON(cmd *cobra.Command, wm *git.WorktreeManager, repos []string
 	for _, repo := range repos {
 		wts, err := wm.List(repo)
 		if err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not list %s: %v\n", repo, err)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s Could not list %s: %v\n", yellow("⚠"), repo, err)
 			continue
 		}
 		entries = append(entries, repoEntry{Repo: repo, Worktrees: wts})
