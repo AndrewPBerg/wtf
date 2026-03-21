@@ -137,6 +137,79 @@ func TestSetupCommand_NilRCManager(t *testing.T) {
 	assert.Contains(t, buf.String(), "already configured")
 }
 
+func TestSetupCommand_AppendInitError(t *testing.T) {
+	dir := t.TempDir()
+	rcm := &setup.RCFileManager{HomeDir: dir}
+
+	// Create the rc file as read-only so IsInitPresent can read but AppendInit can't write
+	rcPath := filepath.Join(dir, ".bashrc")
+	require.NoError(t, os.WriteFile(rcPath, []byte("# existing content\n"), 0o444))
+	t.Cleanup(func() { _ = os.Chmod(rcPath, 0o644) })
+
+	buf := new(bytes.Buffer)
+	cmd := setupCmd
+	cmd.SetOut(buf)
+	cmd.SetIn(strings.NewReader("y\n"))
+
+	err := runSetup(cmd, newTestDetector("bash"), rcm)
+	assert.Error(t, err)
+}
+
+func TestSetupCommand_IsInitPresentError(t *testing.T) {
+	dir := t.TempDir()
+	rcm := &setup.RCFileManager{HomeDir: dir}
+
+	// Point RCFilePath to a directory that exists but make IsInitPresent fail
+	// by having a non-readable rc file
+	rcPath := filepath.Join(dir, ".bashrc")
+	require.NoError(t, os.WriteFile(rcPath, []byte("some content"), 0o000))
+	t.Cleanup(func() { _ = os.Chmod(rcPath, 0o644) })
+
+	buf := new(bytes.Buffer)
+	cmd := setupCmd
+	cmd.SetOut(buf)
+
+	err := runSetup(cmd, newTestDetector("bash"), rcm)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "checking rc file")
+}
+
+func TestSetupCommand_RCFilePathError(t *testing.T) {
+	// Use an unsupported shell to trigger RCFilePath error
+	dir := t.TempDir()
+	rcm := &setup.RCFileManager{HomeDir: dir}
+
+	detector := &setup.ShellDetector{
+		GetEnv: func(key string) string {
+			if key == "SHELL" {
+				return "/bin/tcsh"
+			}
+			return ""
+		},
+	}
+
+	buf := new(bytes.Buffer)
+	cmd := setupCmd
+	cmd.SetOut(buf)
+
+	err := runSetup(cmd, detector, rcm)
+	assert.Error(t, err)
+}
+
+func TestSetupCommand_EOFOnInput(t *testing.T) {
+	dir := t.TempDir()
+	rcm := &setup.RCFileManager{HomeDir: dir}
+
+	buf := new(bytes.Buffer)
+	cmd := setupCmd
+	cmd.SetOut(buf)
+	cmd.SetIn(strings.NewReader("")) // EOF, no newline
+
+	err := runSetup(cmd, newTestDetector("bash"), rcm)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "reading input")
+}
+
 func TestSetupCommand_EmptyAnswer(t *testing.T) {
 	dir := t.TempDir()
 	rcm := &setup.RCFileManager{HomeDir: dir}

@@ -31,3 +31,33 @@ func TestNewCommand(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, wts, 2)
 }
+
+func TestNewCommand_InvalidBase(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	buf := new(bytes.Buffer)
+	cmd := newCmd
+	cmd.SetOut(buf)
+	newBase = "nonexistent-branch"
+	defer func() { newBase = "main" }()
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	err := runNew(cmd, "new-feature", wm)
+	assert.Error(t, err)
+}
+
+func TestNewCommand_NotARepo(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	buf := new(bytes.Buffer)
+	cmd := newCmd
+	cmd.SetOut(buf)
+	newBase = "main"
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	err := runNew(cmd, "new-feature", wm)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not a git repository")
+}

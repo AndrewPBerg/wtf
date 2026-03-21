@@ -52,7 +52,6 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
   - `yarn.lock` → `yarn install`
   - `uv.lock` → `uv sync`
   - `pyproject.toml` → `uv sync`
-  - `requirements.txt` → `pip install`
 - [ ] Env file handling (symlink | copy | none):
   - `.env`, `.env.local`, `.env.development`, `.env.development.local`
 - [ ] `.wt-forge.toml` support:
@@ -68,12 +67,6 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 ### Commands
 
 - [ ] `wtf setup` — Re-run setup steps on current worktree (`--env`, `--install`)
-
-### Internals
-
-- [ ] `internal/config/` — `.wt-forge.toml` loading and validation
-- [ ] `internal/setup/` — package manager detection, env symlinking, hooks
-
 ---
 
 ## v0.3.0 — Forge Integration (GitHub & GitLab)
@@ -83,15 +76,13 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 **Goals:**
 - Checkout PRs directly as worktrees
 - See open PR status inline in `wtf ls`
-- Fast completions backed by cached PR list
+- Fast completions backed by cached PR list and last checked warning, and worker subthreads to easily fetch non-blocking async
 
 ### Features
 
 - [ ] Forge auto-detection from origin remote URL:
   - `github.com` → GitHub API via `gh` token
   - `gitlab.com` → GitLab API via `glab` token
-  - Self-hosted → configured via `.wt-forge.toml`
-- [ ] `.wt-forge.toml` forge config (`provider: auto | github | gitlab`, `host`)
 - [ ] Auth: reuse existing `gh` / `glab` tokens, no custom credential management
 - [ ] PR list cache (TTL 5m, `.git/wtf/pr-cache.json`, stale-while-revalidate)
 - [ ] `wtf ls --prs` shows PR number, title, author, age, review status
@@ -108,11 +99,6 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 - [ ] `wtf rm <TAB>` → active worktrees
 - [ ] `wtf new <TAB>` → remote branches not yet checked out
 - [ ] `wtf clean <TAB>` → merged/stale worktrees
-
-### Internals
-
-- [ ] `internal/forge/` — GitHub + GitLab API clients
-- [ ] `internal/cache/` — branch list + PR list caching
 
 ---
 

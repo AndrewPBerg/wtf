@@ -33,6 +33,35 @@ func TestRmCommand(t *testing.T) {
 	assert.Len(t, wts, 1)
 }
 
+func TestRmCommand_NonexistentBranch(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+
+	buf := new(bytes.Buffer)
+	cmd := rmCmd
+	cmd.SetOut(buf)
+
+	err := runRm(cmd, "does-not-exist", wm)
+	assert.Error(t, err)
+}
+
+func TestRmCommand_NotARepo(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+
+	buf := new(bytes.Buffer)
+	cmd := rmCmd
+	cmd.SetOut(buf)
+
+	err := runRm(cmd, "some-branch", wm)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not a git repository")
+}
+
 func TestRmCommand_MainWorktree(t *testing.T) {
 	dir := initCLITestRepo(t)
 	t.Chdir(dir)
