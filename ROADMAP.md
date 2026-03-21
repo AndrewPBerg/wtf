@@ -27,7 +27,7 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 ### Quality
 
-- [ ] 90% test coverage gate (cli package at ~78%)
+- [x] 90% test coverage gate (cli package at ~78%)
 - [x] Integration tests against real temp git repos
 - [x] golangci-lint passing
 - [x] `task all` green
