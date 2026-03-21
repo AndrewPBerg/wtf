@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
 )
 
@@ -19,6 +20,9 @@ func getRepoDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("not a git repository: %w", err)
 	}
+
+	// Auto-register repo — fire-and-forget, never block commands
+	_ = config.Add(dir)
 
 	return dir, nil
 }

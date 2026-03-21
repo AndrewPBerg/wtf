@@ -57,7 +57,7 @@ Worktrees are created as sibling directories to the main repo. Slashes in branch
 
 | Command     | Description                                 |
 |-------------|---------------------------------------------|
-| `wtf ls`    | List all worktrees (`--json` for JSON)      |
+| `wtf ls`    | List worktrees (`--json`, `--global`)       |
 | `wtf new`   | Create a worktree (`--base` to set origin)  |
 | `wtf sw`    | Switch to a worktree (substring match)      |
 | `wtf rm`    | Remove a worktree and branch (`--force`)    |
