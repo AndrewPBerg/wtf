@@ -1,0 +1,61 @@
+version: '3'
+
+vars:
+  BINARY: wt
+  BUILD_DIR: bin
+  COVER_PROFILE: coverage.out
+  MIN_COVERAGE: 90
+
+tasks:
+  build:
+    desc: Build the binary
+    cmds:
+      - go build -o {{.BUILD_DIR}}/{{.BINARY}} ./cmd/wt
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test ./...
+
+  test-coverage:
+    desc: Run tests with coverage report, fail below threshold
+    cmds:
+      - go test -coverprofile={{.COVER_PROFILE}} ./...
+      - go tool cover -func={{.COVER_PROFILE}}
+      - go tool cover -html={{.COVER_PROFILE}} -o coverage.html
+      - |
+        COVERAGE=$(go tool cover -func={{.COVER_PROFILE}} | grep total | awk '{print substr($3, 1, length($3)-1)}')
+        echo "Total coverage: ${COVERAGE}%"
+        if [ "$(echo "${COVERAGE} < {{.MIN_COVERAGE}}" | bc)" -eq 1 ]; then
+          echo "FAIL: coverage ${COVERAGE}% is below minimum {{.MIN_COVERAGE}}%"
+          exit 1
+        fi
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  fmt:
+    desc: Format code with gofmt
+    cmds:
+      - gofmt -w .
+
+  tidy:
+    desc: Clean up go.mod and go.sum
+    cmds:
+      - go mod tidy
+
+  all:
+    desc: Format, lint, test, and build
+    cmds:
+      - task: fmt
+      - task: lint
+      - task: test
+      - task: build
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -rf {{.BUILD_DIR}}
+      - rm -f {{.COVER_PROFILE}} coverage.html

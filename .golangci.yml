@@ -1,0 +1,46 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - misspell
+    - unconvert
+    - unparam
+    - gocritic
+    - revive
+    - nolintlint
+  settings:
+    govet:
+      shadow: true
+    revive:
+      rules:
+        - name: exported
+        - name: unused-parameter
+        - name: blank-imports
+        - name: context-as-argument
+        - name: error-return
+        - name: error-strings
+        - name: increment-decrement
+    gocritic:
+      enabled-checks:
+        - dupImport
+        - nestingReduce
+        - unnecessaryBlock
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
