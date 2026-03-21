@@ -39,10 +39,11 @@ jobs:
         run: |
           test -z "$(gofmt -l .)" || (echo "Files need formatting:" && gofmt -l . && exit 1)
 
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+        run: golangci-lint run
 
   test:
     name: Test (Go ${{ matrix.go-version }})
@@ -102,7 +103,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Build binary
-        run: go build -o bin/wt ./cmd/wt
+        run: go build -o bin/wtf ./cmd/wtf
 
       - name: Verify binary runs
-        run: ./bin/wt version
+        run: ./bin/wtf version

@@ -1,4 +1,4 @@
-# WorkTreeForage (W2F)
+# WorkTreeForge (WTF)
 
 Go CLI tool. Module: `github.com/AndrewPBerg/wtf`
 
@@ -7,7 +7,7 @@ Go CLI tool. Module: `github.com/AndrewPBerg/wtf`
 Uses [Task](https://taskfile.dev) (not Make). Install: `brew install go-task` or `go install github.com/go-task/task/v3/cmd/task@latest`
 
 ```bash
-task build          # build the binary to bin/wt
+task build          # build the binary to bin/wtf
 task test           # run all tests
 task test-coverage  # run tests with coverage report (fail below 90%)
 task lint           # run golangci-lint
@@ -61,6 +61,8 @@ Uses [prek](https://github.com/j178/prek) — a fast, Rust-based drop-in replace
 prek install        # install git hooks locally
 prek run --all-files  # run all hooks manually
 ```
+
+**After making code changes, always run `prek run --all-files` before committing** to catch lint errors, formatting issues, and test failures early. If a hook fails and modifies files (e.g., formatting), review the changes and re-run until all hooks pass.
 
 ## CI Requirements
 

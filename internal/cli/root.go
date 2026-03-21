@@ -5,9 +5,10 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "wt",
-	Short: "WorkTreeForage (W2F) — a fast git worktree workflow tool",
-	Long:  "WorkTreeForage (W2F) streamlines git worktree operations, project setup, and forge integrations.",
+	Use:     "wtf",
+	Short:   "WorkTreeForge (WTF) — a fast git worktree workflow tool",
+	Long:    "WorkTreeForge (WTF) streamlines git worktree operations, project setup, and forge integrations.",
+	Version: Version,
 }
 
 // Execute runs the root command.
