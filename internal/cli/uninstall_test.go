@@ -52,6 +52,114 @@ func TestFindBinary_Found(t *testing.T) {
 	assert.Equal(t, bin, path)
 }
 
+func TestRunUninstall_ForceRemovesBinary(t *testing.T) {
+	// Create a fake wtf binary
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "wtf")
+	require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755))
+
+	t.Setenv("PATH", dir)
+
+	uninstallForce = true
+	defer func() { uninstallForce = false }()
+
+	buf := new(bytes.Buffer)
+	cmd := uninstallCmd
+	cmd.SetOut(buf)
+
+	err := runUninstall(cmd)
+	require.NoError(t, err)
+
+	assert.Contains(t, buf.String(), "Removed")
+	_, statErr := os.Stat(bin)
+	assert.True(t, os.IsNotExist(statErr))
+}
+
+func TestRunUninstall_ConfirmAccepted(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "wtf")
+	require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755))
+
+	t.Setenv("PATH", dir)
+
+	uninstallForce = false
+	defer func() { uninstallForce = false }()
+
+	buf := new(bytes.Buffer)
+	cmd := uninstallCmd
+	cmd.SetOut(buf)
+	cmd.SetIn(strings.NewReader("y\n"))
+
+	err := runUninstall(cmd)
+	require.NoError(t, err)
+
+	assert.Contains(t, buf.String(), "Removed")
+	_, statErr := os.Stat(bin)
+	assert.True(t, os.IsNotExist(statErr))
+}
+
+func TestRunUninstall_ConfirmDeclined(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "wtf")
+	require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755))
+
+	t.Setenv("PATH", dir)
+
+	uninstallForce = false
+	defer func() { uninstallForce = false }()
+
+	buf := new(bytes.Buffer)
+	cmd := uninstallCmd
+	cmd.SetOut(buf)
+	cmd.SetIn(strings.NewReader("n\n"))
+
+	err := runUninstall(cmd)
+	require.NoError(t, err)
+
+	assert.Contains(t, buf.String(), "Aborted")
+	// Binary should still exist
+	_, statErr := os.Stat(bin)
+	assert.NoError(t, statErr)
+}
+
+func TestRunUninstall_BinaryNotFound(t *testing.T) {
+	t.Setenv("PATH", "")
+
+	uninstallForce = true
+	defer func() { uninstallForce = false }()
+
+	buf := new(bytes.Buffer)
+	cmd := uninstallCmd
+	cmd.SetOut(buf)
+
+	err := runUninstall(cmd)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestRunUninstall_RemovePermissionError(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "wtf")
+	require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755))
+
+	// Make directory read-only to prevent removal
+	require.NoError(t, os.Chmod(dir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	t.Setenv("PATH", dir)
+
+	uninstallForce = true
+	defer func() { uninstallForce = false }()
+
+	buf := new(bytes.Buffer)
+	cmd := uninstallCmd
+	cmd.SetOut(buf)
+
+	err := runUninstall(cmd)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "removing")
+}
+
 func TestConfirmPrompt(t *testing.T) {
 	tests := []struct {
 		name   string
