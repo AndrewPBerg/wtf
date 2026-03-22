@@ -44,10 +44,9 @@ Several commands provide context-aware tab completions:
 
 | Command     | Completes                                        |
 |-------------|--------------------------------------------------|
-| `wtf pr`    | Open PRs with number, branch, and author (cache-backed) |
 | `wtf sw`    | Active worktrees                                 |
 | `wtf rm`    | Active worktrees                                 |
-| `wtf new`   | Remote branches not yet checked out              |
+| `wtf new`   | Remote branches; `--pr` completes open PRs       |
 | `wtf clean` | Merged/stale worktrees with reason (merged/prunable) |
 
 These work automatically with `eval "$(wtf init)"` — no extra configuration needed.

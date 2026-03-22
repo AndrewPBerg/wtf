@@ -56,6 +56,8 @@ type ghPR struct {
 	Number    int    `json:"number"`
 	Title     string `json:"title"`
 	Draft     bool   `json:"draft"`
+	State     string `json:"state"`
+	MergedAt  string `json:"merged_at"`
 	HTMLURL   string `json:"html_url"`
 	CreatedAt string `json:"created_at"`
 	Head      struct {
@@ -113,7 +115,19 @@ func (g *gitHub) toPR(p ghPR) PR {
 		CreatedAt: created,
 		URL:       p.HTMLURL,
 		IsDraft:   p.Draft,
+		State:     ghState(p),
 	}
+}
+
+// ghState maps GitHub API state + merged_at to PRState.
+func ghState(p ghPR) PRState {
+	if p.MergedAt != "" {
+		return PRMerged
+	}
+	if p.State == "closed" {
+		return PRClosed
+	}
+	return PROpen
 }
 
 func (g *gitHub) doGet(ctx context.Context, url string) ([]byte, error) {

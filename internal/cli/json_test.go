@@ -84,7 +84,8 @@ func TestNewCommand_JSON(t *testing.T) {
 	cmd.SetOut(buf)
 
 	wm := git.NewWorktreeManager(&git.RealExecutor{})
-	err := runNew(cmd, "feat-new-json", wm, nil)
+	newBase = "main"
+	err := runNew(cmd, "feat-new-json", newBase, wm, nil, false)
 	require.NoError(t, err)
 
 	var result map[string]string

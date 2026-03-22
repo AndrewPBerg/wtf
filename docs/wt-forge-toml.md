@@ -85,7 +85,7 @@ Lifecycle hooks — shell commands run at specific events.
 | `on_create` | string[] | Run after `wtf new` creates a worktree |
 | `on_switch` | string[] | Run after `wtf sw` switches to a worktree |
 | `on_remove` | string[] | Run before `wtf rm` removes a worktree |
-| `on_pr_create` | string[] | Run after `wtf pr` checks out a PR worktree (in addition to `on_create`) |
+| `on_pr_create` | string[] | Run after `wtf new --pr` checks out a PR worktree (in addition to `on_create`) |
 | `on_pr_switch` | string[] | Run after `wtf sw` switches to a PR worktree (in addition to `on_switch`) |
 | `on_pr_delete` | string[] | Run before `wtf rm` removes a PR worktree (in addition to `on_remove`) |
 

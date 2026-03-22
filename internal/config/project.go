@@ -18,6 +18,13 @@ type ProjectConfig struct {
 	Env      EnvConfig      `toml:"env"`
 	Setup    []SetupStep    `toml:"setup"`
 	Hooks    HooksConfig    `toml:"hooks"`
+	Watch    WatchConfig    `toml:"watch"`
+}
+
+// WatchConfig configures the watch command behavior.
+type WatchConfig struct {
+	Interval int   `toml:"interval"` // poll interval in seconds; 0 = use default (60)
+	Desktop  *bool `toml:"desktop"`  // nil = auto-detect; false = terminal only
 }
 
 // WorktreeConfig configures worktree behavior.
@@ -120,6 +127,10 @@ func GenerateDefaultConfig(opts DefaultConfigOptions) string {
 	b.WriteString("# on_pr_create = []\n")
 	b.WriteString("# on_pr_switch = []\n")
 	b.WriteString("# on_pr_delete = []\n")
+
+	b.WriteString("\n[watch]\n")
+	b.WriteString("# interval = 60\n")
+	b.WriteString("# desktop = true\n")
 
 	return b.String()
 }

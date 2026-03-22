@@ -54,6 +54,7 @@ func (g *gitLab) FetchRef(number int) string {
 type glMR struct {
 	IID       int    `json:"iid"`
 	Title     string `json:"title"`
+	State     string `json:"state"` // "opened", "closed", "merged"
 	WebURL    string `json:"web_url"`
 	CreatedAt string `json:"created_at"`
 	Draft     bool   `json:"draft"`
@@ -112,6 +113,19 @@ func (g *gitLab) toPR(mr glMR) PR {
 		CreatedAt: created,
 		URL:       mr.WebURL,
 		IsDraft:   mr.Draft,
+		State:     glState(mr),
+	}
+}
+
+// glState maps GitLab MR state to PRState.
+func glState(mr glMR) PRState {
+	switch mr.State {
+	case "merged":
+		return PRMerged
+	case "closed":
+		return PRClosed
+	default:
+		return PROpen
 	}
 }
 

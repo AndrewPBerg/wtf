@@ -78,6 +78,30 @@ func Add(repoPath string) error {
 	return Save(paths)
 }
 
+// Remove unregisters a repo path. Returns true if it was found and removed.
+func Remove(repoPath string) (bool, error) {
+	paths, err := Load()
+	if err != nil {
+		return false, err
+	}
+
+	var filtered []string
+	found := false
+	for _, p := range paths {
+		if p == repoPath {
+			found = true
+			continue
+		}
+		filtered = append(filtered, p)
+	}
+
+	if !found {
+		return false, nil
+	}
+
+	return true, Save(filtered)
+}
+
 // LoadValid returns only the registered paths that still exist and are git repos.
 // Unlike Prune, it does not modify the registry file.
 func LoadValid() ([]string, error) {
@@ -107,6 +131,15 @@ func Prune() ([]string, error) {
 		return nil, err
 	}
 	return valid, nil
+}
+
+// ValidSet returns a set of paths from the given list that exist and are git repos.
+func ValidSet(paths []string) map[string]bool {
+	valid := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		valid[p] = isGitRepo(p)
+	}
+	return valid
 }
 
 // isGitRepo checks if the path exists and contains a .git directory.

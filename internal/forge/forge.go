@@ -18,6 +18,16 @@ const (
 	ReviewPending  ReviewStatus = "pending"
 )
 
+// PRState represents the open/closed/merged state of a PR.
+type PRState string
+
+// PR state values.
+const (
+	PROpen   PRState = "open"
+	PRClosed PRState = "closed"
+	PRMerged PRState = "merged"
+)
+
 // PR represents a pull request or merge request.
 type PR struct {
 	Number       int          `json:"number"`
@@ -28,6 +38,7 @@ type PR struct {
 	ReviewStatus ReviewStatus `json:"review_status"`
 	URL          string       `json:"url"`
 	IsDraft      bool         `json:"is_draft"`
+	State        PRState      `json:"state"`
 }
 
 // Forge abstracts GitHub/GitLab API interactions.
