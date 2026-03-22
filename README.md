@@ -1,4 +1,5 @@
 [![codecov](https://codecov.io/github/AndrewPBerg/wtf/graph/badge.svg?token=DTXJ31R8RX)](https://codecov.io/github/AndrewPBerg/wtf)
+[![CI](https://github.com/AndrewPBerg/wtf/actions/workflows/ci.yml/badge.svg)](https://github.com/AndrewPBerg/wtf/actions/workflows/ci.yml)
 
 # WorkTreeForge (WTF)
 
