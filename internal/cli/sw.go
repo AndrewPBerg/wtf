@@ -6,6 +6,7 @@ import (
 
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/spf13/cobra"
 )
 
@@ -35,7 +36,7 @@ Prints the worktree path to stdout so you can cd to it.
 
 To enable the 'sw' shell function that cds automatically, run:
 
-  wtf setup
+  wtf setup shell
 
 Or add this to your shell profile manually:
 
@@ -62,6 +63,7 @@ func runSw(cmd *cobra.Command, query string, wm *git.WorktreeManager) error {
 	if err == nil {
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), wt.Path)
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Switched to %s\n", wt.Path)
+		runOnSwitchHooks(cmd, dir)
 		return nil
 	}
 
@@ -130,6 +132,7 @@ func runSwGlobal(cmd *cobra.Command, query string, wm *git.WorktreeManager) erro
 	if len(matches) == 1 {
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), matches[0].wt.Path)
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Switched to %s\n", matches[0].wt.Path)
+		runOnSwitchHooks(cmd, matches[0].repo)
 		return nil
 	}
 
@@ -248,4 +251,18 @@ func fuzzyScore(target, query string) int {
 	}
 
 	return matched
+}
+
+// runOnSwitchHooks loads config and runs on_switch hooks if present.
+// Failures are logged as warnings, never fatal.
+func runOnSwitchHooks(cmd *cobra.Command, repoDir string) {
+	cfg, err := config.LoadProjectConfig(repoDir)
+	if err != nil || cfg == nil || len(cfg.Hooks.OnSwitch) == 0 {
+		return
+	}
+
+	runner := setup.NewRunner()
+	if err := runner.RunHooks(cfg.Hooks.OnSwitch, repoDir); err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s on_switch hook failed: %v\n", yellow("⚠"), err)
+	}
 }

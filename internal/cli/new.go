@@ -3,7 +3,9 @@ package cli
 import (
 	"fmt"
 
+	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/spf13/cobra"
 )
 
@@ -19,11 +21,11 @@ var newCmd = &cobra.Command{
 	Short: "Create a new worktree for a branch",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runNew(cmd, args[0], git.NewWorktreeManager(&git.RealExecutor{}))
+		return runNew(cmd, args[0], git.NewWorktreeManager(&git.RealExecutor{}), setup.NewRunner())
 	},
 }
 
-func runNew(cmd *cobra.Command, branch string, wm *git.WorktreeManager) error {
+func runNew(cmd *cobra.Command, branch string, wm *git.WorktreeManager, runner *setup.Runner) error {
 	// Validate branch name before doing any work
 	bm := git.NewBranchManager(&git.RealExecutor{})
 	if err := bm.ValidateBranchName(branch); err != nil {
@@ -41,5 +43,32 @@ func runNew(cmd *cobra.Command, branch string, wm *git.WorktreeManager) error {
 	}
 
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Created worktree at %s\n", greenBold("✔"), cyan(wtPath))
+
+	// Run setup — failures are warnings, not errors
+	if runner != nil {
+		mainWt, mainErr := wm.MainWorktree(dir)
+		if mainErr != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s setup skipped: %v\n", yellow("⚠"), mainErr)
+			return nil
+		}
+
+		cfg, cfgErr := config.LoadProjectConfig(mainWt.Path)
+		if cfgErr != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s setup skipped: %v\n", yellow("⚠"), cfgErr)
+			return nil
+		}
+
+		if cfg != nil {
+			if valErr := config.ValidateProjectConfig(cfg); valErr != nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s setup skipped: %v\n", yellow("⚠"), valErr)
+				return nil
+			}
+		}
+
+		if setupErr := runner.RunSetup(cfg, mainWt.Path, wtPath, branch); setupErr != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s setup failed: %v\n", yellow("⚠"), setupErr)
+		}
+	}
+
 	return nil
 }

@@ -24,7 +24,7 @@ Add this to your shell profile to enable shell integration:
   # fish — add to ~/.config/fish/config.fish
   wtf init fish | source
 
-Or run 'wtf setup' to configure this automatically.`,
+Or run 'wtf setup shell' to configure this automatically.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var override string

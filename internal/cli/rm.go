@@ -7,6 +7,7 @@ import (
 
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/spf13/cobra"
 )
 
@@ -78,12 +79,28 @@ func runRm(cmd *cobra.Command, branch string, wm *git.WorktreeManager) error {
 		return fmt.Errorf("getting working directory: %w", err)
 	}
 
+	runOnRemoveHooks(cmd, dir)
+
 	if err := wm.Remove(dir, branch, cwd, rmForce); err != nil {
 		return err
 	}
 
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Removed worktree for %s\n", greenBold("✔"), cyan(branch))
 	return nil
+}
+
+// runOnRemoveHooks loads config and runs on_remove hooks if present.
+// Failures are logged as warnings, never fatal.
+func runOnRemoveHooks(cmd *cobra.Command, repoDir string) {
+	cfg, err := config.LoadProjectConfig(repoDir)
+	if err != nil || cfg == nil || len(cfg.Hooks.OnRemove) == 0 {
+		return
+	}
+
+	runner := setup.NewRunner()
+	if err := runner.RunHooks(cfg.Hooks.OnRemove, repoDir); err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s on_remove hook failed: %v\n", yellow("⚠"), err)
+	}
 }
 
 func runRmGlobal(cmd *cobra.Command, branches []string, wm *git.WorktreeManager) error {

@@ -36,7 +36,7 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 ## v0.2.0 — Setup Automation
 
-**Status:** planned
+**Status:** complete
 
 **Goals:**
 - Zero-friction worktree setup — no manual `pnpm install` or `.env` copying
@@ -45,31 +45,32 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 ### Features
 
-- [ ] Auto-detect package manager from lockfile:
+- [x] Auto-detect package manager from lockfile:
   - `pnpm-lock.yaml` → `pnpm install`
   - `bun.lockb` → `bun install`
   - `package-lock.json` → `npm install`
   - `yarn.lock` → `yarn install`
   - `uv.lock` → `uv sync`
   - `pyproject.toml` → `uv sync`
-- [ ] Env file handling (symlink | copy | none):
+- [x] Env file handling (symlink | copy | none):
   - `.env`, `.env.local`, `.env.development`, `.env.development.local`
-- [ ] `.wt-forge.toml` support:
+- [x] `.wt-forge.toml` support:
   - `[worktree]` — root path, default base branch
   - `[env]` — strategy and file list
   - `[setup]` — ordered steps with optional if-conditions
   - `[hooks]` — on_create, on_switch, on_remove
-- [ ] Setup conditions (if-DSL):
+- [x] Setup conditions (if-DSL):
   - `branch contains 'feature'`
   - `file exists 'path'`
   - `env VAR is set`
 
 ### Commands
 
-- [ ] `wtf setup` — Re-run setup steps on current worktree (`--env`, `--install`)
+- [x] `wtf setup` — Re-run setup steps on current worktree (`--env`, `--install`)
+- [x] `wtf setup shell` — Shell integration (moved from `wtf setup`)
 ---
 
-## v0.3.0 — Forge Integration (GitHub & GitLab)
+## v0.3.0 — Platform Integration (GitHub & GitLab)
 
 **Status:** planned
 

@@ -40,7 +40,7 @@ func getRepoDir() (string, error) {
 
 // suggestCommands returns command names similar to the given unknown command.
 func suggestCommands(unknown string) []string {
-	known := []string{"sw", "swg", "new", "ls", "rm", "rmg", "init", "setup", "completion"}
+	known := []string{"sw", "swg", "new", "ls", "rm", "rmg", "init", "setup", "config", "completion"}
 	unknown = strings.ToLower(unknown)
 	var suggestions []string
 	for _, cmd := range known {
