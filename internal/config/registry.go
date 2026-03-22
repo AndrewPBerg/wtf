@@ -133,15 +133,6 @@ func Prune() ([]string, error) {
 	return valid, nil
 }
 
-// ValidSet returns a set of paths from the given list that exist and are git repos.
-func ValidSet(paths []string) map[string]bool {
-	valid := make(map[string]bool, len(paths))
-	for _, p := range paths {
-		valid[p] = isGitRepo(p)
-	}
-	return valid
-}
-
 // isGitRepo checks if the path exists and contains a .git directory.
 func isGitRepo(path string) bool {
 	info, err := os.Stat(filepath.Join(path, ".git"))

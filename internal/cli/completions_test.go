@@ -115,3 +115,42 @@ func TestCompleteCleanTargets_NothingToClean(t *testing.T) {
 	assert.Equal(t, cobra.ShellCompDirectiveNoFileComp, directive)
 	assert.Empty(t, completions)
 }
+
+func TestFilterPrefix(t *testing.T) {
+	tests := []struct {
+		name   string
+		items  []string
+		prefix string
+		want   []string
+	}{
+		{"empty prefix returns all", []string{"a", "b", "c"}, "", []string{"a", "b", "c"}},
+		{"matching prefix", []string{"apple", "avocado", "banana"}, "a", []string{"apple", "avocado"}},
+		{"no matches", []string{"apple", "banana"}, "z", nil},
+		{"nil items", nil, "a", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := filterPrefix(tt.items, tt.prefix)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestCompleteRegisteredRepos(t *testing.T) {
+	repo1 := initCLITestRepo(t)
+	repo2 := initCLITestRepo(t)
+	setupGlobalRegistry(t, []string{repo1, repo2})
+
+	completions, directive := completeRegisteredRepos(nil, nil, "")
+	assert.Equal(t, cobra.ShellCompDirectiveNoFileComp, directive)
+	// Should include both name\tpath entries and raw paths
+	assert.GreaterOrEqual(t, len(completions), 4) // 2 name entries + 2 path entries
+}
+
+func TestCompleteRegisteredRepos_NoRepos(t *testing.T) {
+	setupGlobalRegistry(t, []string{})
+
+	completions, directive := completeRegisteredRepos(nil, nil, "")
+	assert.Equal(t, cobra.ShellCompDirectiveNoFileComp, directive)
+	assert.Empty(t, completions)
+}

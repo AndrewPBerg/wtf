@@ -13,7 +13,7 @@ import (
 )
 
 // DefaultInterval is the default polling interval.
-const DefaultInterval = 60 * time.Second
+const DefaultInterval = 20 * time.Second
 
 // repoColors is a palette of distinct colors for differentiating repos in global mode.
 var repoColors = []color.Attribute{
@@ -32,6 +32,7 @@ type Watcher struct {
 	forge     forge.Forge
 	notifier  notify.Notifier
 	stateDir  string
+	remoteURL string
 	interval  time.Duration
 	repoName  string
 	repoColor color.Attribute
@@ -60,6 +61,14 @@ func WithLogger(out io.Writer) Option {
 func WithRepoName(name string) Option {
 	return func(w *Watcher) {
 		w.repoName = name
+	}
+}
+
+// WithRemoteURL sets the remote URL for state validation.
+// If the remote changes between runs, the state is reset to avoid stale data.
+func WithRemoteURL(url string) Option {
+	return func(w *Watcher) {
+		w.remoteURL = url
 	}
 }
 
@@ -102,13 +111,19 @@ func (w *Watcher) Run(ctx context.Context) error {
 		return fmt.Errorf("loading watch state: %w", err)
 	}
 
+	// Reset state if the remote URL changed (prevents stale cross-repo data).
+	if w.remoteURL != "" && state.RemoteURL != "" && state.RemoteURL != w.remoteURL {
+		w.logf("Remote changed (%s → %s), resetting state", state.RemoteURL, w.remoteURL)
+		state = State{}
+	}
+
 	// First poll: populate state silently.
 	if state.IsFirstRun() {
 		prs, err := w.forge.ListPRs(ctx)
 		if err != nil {
 			return fmt.Errorf("initial PR fetch: %w", err)
 		}
-		state = SnapshotPRs(prs)
+		state = w.snapshot(prs)
 		if err := SaveState(w.stateDir, state); err != nil {
 			return fmt.Errorf("saving initial state: %w", err)
 		}
@@ -180,12 +195,19 @@ func (w *Watcher) poll(ctx context.Context, state State) (State, error) {
 	}
 
 	// Update state.
-	newState := SnapshotPRs(prs)
+	newState := w.snapshot(prs)
 	if err := SaveState(w.stateDir, newState); err != nil {
 		return newState, fmt.Errorf("saving state: %w", err)
 	}
 
 	return newState, nil
+}
+
+// snapshot creates a State from PRs, stamping the remote URL for validation.
+func (w *Watcher) snapshot(prs []forge.PR) State {
+	s := SnapshotPRs(prs)
+	s.RemoteURL = w.remoteURL
+	return s
 }
 
 func (w *Watcher) logf(format string, args ...any) {

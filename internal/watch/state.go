@@ -21,7 +21,8 @@ type PRSnapshot struct {
 
 // State holds the last-known PR state for a repository.
 type State struct {
-	PRs map[int]PRSnapshot `json:"prs"`
+	RemoteURL string             `json:"remote_url,omitempty"`
+	PRs       map[int]PRSnapshot `json:"prs"`
 }
 
 // SnapshotPRs converts a list of open PRs into a State.

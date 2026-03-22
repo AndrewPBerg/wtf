@@ -458,3 +458,72 @@ func (m *mockForgeGetPRError) GetPR(_ context.Context, number int) (*forge.PR, e
 func (m *mockForgeGetPRError) PRURL(_ int) string    { return "" }
 func (m *mockForgeGetPRError) FetchRef(_ int) string { return "" }
 func (m *mockForgeGetPRError) Name() string          { return "mock" }
+
+func TestWithRemoteURL(t *testing.T) {
+	dir := t.TempDir()
+	mf := &mockForge{
+		prLists: [][]forge.PR{
+			{{Number: 1, Title: "feat"}},
+		},
+	}
+	mn := &mockNotifier{}
+	var buf bytes.Buffer
+
+	w := New(mf, mn, dir,
+		WithInterval(10*time.Millisecond),
+		WithLogger(&buf),
+		WithRemoteURL("https://github.com/org/repo.git"),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	err := w.Run(ctx)
+	require.NoError(t, err)
+
+	// State should have the remote URL stamped
+	state, err := LoadState(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "https://github.com/org/repo.git", state.RemoteURL)
+}
+
+func TestWatcher_RemoteURLReset(t *testing.T) {
+	dir := t.TempDir()
+	// Save state with a different remote URL
+	err := SaveState(dir, State{
+		RemoteURL: "https://github.com/old/repo.git",
+		PRs:       map[int]PRSnapshot{1: {Title: "old"}},
+	})
+	require.NoError(t, err)
+
+	mf := &mockForge{
+		prLists: [][]forge.PR{
+			{{Number: 2, Title: "new"}},
+		},
+	}
+	mn := &mockNotifier{}
+	var buf bytes.Buffer
+
+	w := New(mf, mn, dir,
+		WithInterval(10*time.Millisecond),
+		WithLogger(&buf),
+		WithRemoteURL("https://github.com/new/repo.git"),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	err = w.Run(ctx)
+	require.NoError(t, err)
+
+	// Should log remote change and reset
+	assert.Contains(t, buf.String(), "Remote changed")
+
+	// State should be fresh with new remote
+	state, err := LoadState(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "https://github.com/new/repo.git", state.RemoteURL)
+	assert.Len(t, state.PRs, 1)
+	_, ok := state.PRs[2]
+	assert.True(t, ok)
+}

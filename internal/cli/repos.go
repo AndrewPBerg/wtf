@@ -19,10 +19,12 @@ var reposCmd = &cobra.Command{
 	Long: `List all repos registered in the wtf registry (~/.wtf/repos.json).
 
 Repos are auto-registered when you run wtf commands inside them.
+Use 'wtf register [path]' to manually register a repo.
 Use 'wtf unregister [path]' to remove a repo from the registry.
 
 Examples:
   wtf repos              # list all registered repos
+  wtf register ../app    # manually register a repo
   wtf unregister .       # unregister current repo
   wtf unregister /path   # unregister by path`,
 	Args: cobra.NoArgs,

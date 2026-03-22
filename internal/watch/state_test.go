@@ -69,6 +69,11 @@ func TestSaveState_CreatesDirectory(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestSaveState_UnwritableDir(t *testing.T) {
+	err := SaveState("/dev/null/impossible", State{PRs: map[int]PRSnapshot{}})
+	assert.Error(t, err)
+}
+
 func TestState_IsFirstRun(t *testing.T) {
 	tests := []struct {
 		name  string

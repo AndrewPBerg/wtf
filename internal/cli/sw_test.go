@@ -306,6 +306,98 @@ func TestSwGlobal_NoRepos(t *testing.T) {
 	assert.Contains(t, err.Error(), "no registered repos")
 }
 
+func TestIsPRBranch(t *testing.T) {
+	tests := []struct {
+		branch string
+		want   bool
+	}{
+		{"pr-1", true},
+		{"pr-42", true},
+		{"mr-1", true},
+		{"mr-100", true},
+		{"pr-0", true},
+		{"mr-0", true},
+		{"pr-", false},
+		{"mr-", false},
+		{"pr-abc", false},
+		{"feature", false},
+		{"pr1", false},
+		{"mr1", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.branch, func(t *testing.T) {
+			assert.Equal(t, tt.want, isPRBranch(tt.branch))
+		})
+	}
+}
+
+func TestIsCurrentWorktree(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "sub")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+
+	tests := []struct {
+		name string
+		cwd  string
+		wt   string
+		want bool
+	}{
+		{"exact match", dir, dir, true},
+		{"subdirectory", sub, dir, true},
+		{"different dir", t.TempDir(), dir, false},
+		{"parent dir", filepath.Dir(dir), dir, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isCurrentWorktree(tt.cwd, tt.wt))
+		})
+	}
+}
+
+func TestRunOnSwitchHooks_NoConfig(t *testing.T) {
+	dir := t.TempDir()
+	cmd := swCmd
+	cmd.SetErr(new(bytes.Buffer))
+
+	// No config file — should return silently
+	runOnSwitchHooks(cmd, dir, "feature")
+}
+
+func TestRunOnSwitchHooks_WithConfig(t *testing.T) {
+	dir := initCLITestRepo(t)
+
+	// Create a config with on_switch hooks that run a no-op
+	cfgContent := `[hooks]
+on_switch = ["true"]
+on_pr_switch = ["true"]
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".wt-forge.toml"), []byte(cfgContent), 0o644))
+
+	stderr := new(bytes.Buffer)
+	cmd := swCmd
+	cmd.SetErr(stderr)
+
+	// Non-PR branch — only on_switch hooks run
+	runOnSwitchHooks(cmd, dir, "feature")
+
+	// PR branch — both on_switch and on_pr_switch hooks run
+	runOnSwitchHooks(cmd, dir, "pr-42")
+}
+
+func TestRunOnSwitchHooks_EmptyHooks(t *testing.T) {
+	dir := initCLITestRepo(t)
+
+	cfgContent := `[hooks]
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".wt-forge.toml"), []byte(cfgContent), 0o644))
+
+	stderr := new(bytes.Buffer)
+	cmd := swCmd
+	cmd.SetErr(stderr)
+	runOnSwitchHooks(cmd, dir, "feature")
+}
+
 func TestSwGlobal_FuzzySuggestions(t *testing.T) {
 	repo := initCLITestRepo(t)
 	setupGlobalRegistry(t, []string{repo})

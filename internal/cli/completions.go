@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -149,13 +150,22 @@ func completeRemoteBranchValues(_ *cobra.Command, _ []string, _ string) ([]strin
 	return completeRemoteBranches(nil, nil, "")
 }
 
-// completeRegisteredRepos provides tab-completion with registered repo paths from the registry.
-func completeRegisteredRepos(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-	paths, err := config.Load()
+// completeRegisteredRepos provides tab-completion with registered repo names and paths from the registry.
+func completeRegisteredRepos(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	paths, err := config.LoadValid()
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	return paths, cobra.ShellCompDirectiveNoFileComp
+
+	var completions []string
+	for _, p := range paths {
+		name := filepath.Base(p)
+		completions = append(completions, fmt.Sprintf("%s\t%s", name, p))
+	}
+	// Also include full paths for users who prefer them.
+	completions = append(completions, paths...)
+
+	return filterPrefix(completions, toComplete), cobra.ShellCompDirectiveNoFileComp
 }
 
 // completePRValues provides tab-completion for --pr flag values.

@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/AndrewPBerg/wtf/internal/config"
@@ -91,4 +93,32 @@ func TestUnregisterCommand_NotARepo(t *testing.T) {
 	err := cmd.RunE(cmd, []string{})
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrNotARepo)
+}
+
+func TestResolveRepoArg_AbsPath(t *testing.T) {
+	result := resolveRepoArg("/home/user/repo")
+	assert.Equal(t, "/home/user/repo", result)
+}
+
+func TestResolveRepoArg_Dot(t *testing.T) {
+	result := resolveRepoArg(".")
+	cwd, _ := os.Getwd()
+	assert.Equal(t, cwd, result)
+}
+
+func TestResolveRepoArg_RegistryMatch(t *testing.T) {
+	repo := initCLITestRepo(t)
+	setupGlobalRegistry(t, []string{repo})
+
+	name := filepath.Base(repo)
+	result := resolveRepoArg(name)
+	assert.Equal(t, repo, result)
+}
+
+func TestResolveRepoArg_NoMatch(t *testing.T) {
+	setupGlobalRegistry(t, []string{})
+
+	// Without match, falls back to abs path
+	result := resolveRepoArg("nonexistent-repo")
+	assert.True(t, filepath.IsAbs(result))
 }

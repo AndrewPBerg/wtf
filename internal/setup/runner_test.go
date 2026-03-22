@@ -47,6 +47,13 @@ func (m *mockCmdExecutor) commandStrings() []string {
 	return cmds
 }
 
+func TestNewRunner(t *testing.T) {
+	r := NewRunner()
+	require.NotNil(t, r)
+	require.NotNil(t, r.CmdExec)
+	require.NotNil(t, r.EnvHandler)
+}
+
 func TestRunSetup_NilConfig_WithPackageManager(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "pnpm-lock.yaml"), []byte(""), 0o644))

@@ -15,20 +15,16 @@ func init() {
 }
 
 var unregisterCmd = &cobra.Command{
-	Use:               "unregister [path]",
+	Use:               "unregister [name|path]",
 	Short:             "Remove a repo from the wtf registry",
-	Long:              `Remove a repo from the wtf registry (~/.wtf/repos.json). If no path is given, unregisters the current repo.`,
+	Long:              `Remove a repo from the wtf registry (~/.wtf/repos.json). Accepts a repo name or path. If no argument is given, unregisters the current repo.`,
 	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: completeRegisteredRepos,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var repoPath string
 
 		if len(args) == 1 {
-			abs, err := filepath.Abs(args[0])
-			if err != nil {
-				return fmt.Errorf("resolving path: %w", err)
-			}
-			repoPath = abs
+			repoPath = resolveRepoArg(args[0])
 		} else {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -60,6 +56,37 @@ var unregisterCmd = &cobra.Command{
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Unregistered %s\n", greenBold("✔"), cyan(repoPath))
 		return nil
 	},
+}
+
+// resolveRepoArg resolves a repo argument that can be a full path, relative path,
+// or just a repo name (basename match against registered repos).
+func resolveRepoArg(arg string) string {
+	// If it looks like a path (contains separator or starts with . or /), resolve as path.
+	if filepath.IsAbs(arg) || arg == "." || arg == ".." ||
+		filepath.Dir(arg) != "." {
+		abs, err := filepath.Abs(arg)
+		if err != nil {
+			return arg
+		}
+		return abs
+	}
+
+	// Try matching by basename against registered repos.
+	paths, err := config.LoadValid()
+	if err == nil {
+		for _, p := range paths {
+			if filepath.Base(p) == arg {
+				return p
+			}
+		}
+	}
+
+	// Fall back to treating as a relative path.
+	abs, err := filepath.Abs(arg)
+	if err != nil {
+		return arg
+	}
+	return abs
 }
 
 // getRepoDirWithoutRegister returns the git root without auto-registering.

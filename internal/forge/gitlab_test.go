@@ -170,6 +170,86 @@ func TestGitLabGetPR_InvalidJSON(t *testing.T) {
 	assert.Contains(t, err.Error(), "parsing MR !10")
 }
 
+func TestGlState(t *testing.T) {
+	tests := []struct {
+		name  string
+		state string
+		want  PRState
+	}{
+		{"merged", "merged", PRMerged},
+		{"closed", "closed", PRClosed},
+		{"opened", "opened", PROpen},
+		{"unknown", "something", PROpen},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, glState(glMR{State: tt.state}))
+		})
+	}
+}
+
+func TestGitLab_doGet_403(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	gl := &gitLab{token: "test", apiURL: srv.URL, client: srv.Client()}
+	_, err := gl.doGet(context.Background(), srv.URL+"/test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "403 Forbidden")
+}
+
+func TestGitLab_doGet_404_NoToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	gl := &gitLab{token: "", apiURL: srv.URL, client: srv.Client()}
+	_, err := gl.doGet(context.Background(), srv.URL+"/test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no token provided")
+}
+
+func TestGitLab_doGet_404_WithToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	gl := &gitLab{token: "test", apiURL: srv.URL, client: srv.Client()}
+	_, err := gl.doGet(context.Background(), srv.URL+"/test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "404 Not Found")
+	assert.Contains(t, err.Error(), "private")
+}
+
+func TestGitLab_doGet_500(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	gl := &gitLab{token: "test", apiURL: srv.URL, client: srv.Client()}
+	_, err := gl.doGet(context.Background(), srv.URL+"/test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestGitLab_doGet_NoToken_NoHeader(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Empty(t, r.Header.Get("PRIVATE-TOKEN"))
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	gl := &gitLab{token: "", apiURL: srv.URL, client: srv.Client()}
+	body, err := gl.doGet(context.Background(), srv.URL+"/test")
+	require.NoError(t, err)
+	assert.Equal(t, []byte(`[]`), body)
+}
+
 func TestNewGitLab_TokenError(t *testing.T) {
 	failToken := func() (string, error) { return "", fmt.Errorf("no token") }
 	_, err := newGitLab("gitlab.com", "org", "project", failToken)

@@ -201,6 +201,86 @@ func TestGitHubEnterpriseAPIURL(t *testing.T) {
 	assert.Equal(t, "https://github.example.com/api/v3", gh.apiURL)
 }
 
+func TestGhState(t *testing.T) {
+	tests := []struct {
+		name string
+		pr   ghPR
+		want PRState
+	}{
+		{"merged", ghPR{MergedAt: "2025-01-01T00:00:00Z", State: "closed"}, PRMerged},
+		{"closed", ghPR{State: "closed"}, PRClosed},
+		{"open", ghPR{State: "open"}, PROpen},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, ghState(tt.pr))
+		})
+	}
+}
+
+func TestGitHub_doGet_401(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	gh := &gitHub{token: "bad", apiURL: srv.URL, client: srv.Client()}
+	_, err := gh.doGet(context.Background(), srv.URL+"/test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "401 Unauthorized")
+}
+
+func TestGitHub_doGet_403(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	gh := &gitHub{token: "test", apiURL: srv.URL, client: srv.Client()}
+	_, err := gh.doGet(context.Background(), srv.URL+"/test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "403 Forbidden")
+}
+
+func TestGitHub_doGet_404_NoToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	gh := &gitHub{token: "", apiURL: srv.URL, client: srv.Client()}
+	_, err := gh.doGet(context.Background(), srv.URL+"/test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no token provided")
+}
+
+func TestGitHub_doGet_500(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	gh := &gitHub{token: "test", apiURL: srv.URL, client: srv.Client()}
+	_, err := gh.doGet(context.Background(), srv.URL+"/test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestGitHub_doGet_NoToken_Header(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// No auth header when no token
+		assert.Empty(t, r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	gh := &gitHub{token: "", apiURL: srv.URL, client: srv.Client()}
+	body, err := gh.doGet(context.Background(), srv.URL+"/test")
+	require.NoError(t, err)
+	assert.Equal(t, []byte(`[]`), body)
+}
+
 func TestNewGitHub_TokenError(t *testing.T) {
 	failToken := func() (string, error) { return "", fmt.Errorf("no token") }
 	_, err := newGitHub("github.com", "user", "repo", failToken)

@@ -87,6 +87,7 @@ func runWatchSingle(cmd *cobra.Command) error {
 	w := watch.New(f, notifier, stateDir,
 		watch.WithInterval(interval),
 		watch.WithRepoName(repoName),
+		watch.WithRemoteURL(remoteURL),
 		watch.WithLogger(cmd.ErrOrStderr()),
 	)
 
@@ -164,6 +165,7 @@ func watchRepo(ctx context.Context, cmd *cobra.Command, dir string, notifier not
 	w := watch.New(f, notifier, stateDir,
 		watch.WithInterval(interval),
 		watch.WithRepoName(repoName),
+		watch.WithRemoteURL(remoteURL),
 		watch.WithRepoColor(watch.ColorForRepo(repoName)),
 		watch.WithLogger(cmd.ErrOrStderr()),
 	)

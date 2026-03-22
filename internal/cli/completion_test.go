@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -112,4 +113,27 @@ func TestCompletionCommand_InvalidShellFlag(t *testing.T) {
 	err := rootCmd.Execute()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported shell")
+}
+
+func TestRunCompletionInstall_Bash(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+
+	stdout := new(bytes.Buffer)
+	cmd := rootCmd
+	cmd.SetOut(stdout)
+
+	err := runCompletionInstall(cmd, "bash")
+	require.NoError(t, err)
+	assert.Contains(t, stdout.String(), "Installed completions")
+}
+
+func TestRunCompletionInstall_UnsupportedShell(t *testing.T) {
+	cmd := rootCmd
+	cmd.SetOut(new(bytes.Buffer))
+
+	err := runCompletionInstall(cmd, "powershell")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--install does not support")
 }

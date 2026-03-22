@@ -221,6 +221,45 @@ func TestSave_EmptySlice(t *testing.T) {
 	assert.Empty(t, paths)
 }
 
+func TestRemove_Existing(t *testing.T) {
+	setupTestHome(t)
+	require.NoError(t, Add("/repo/a"))
+	require.NoError(t, Add("/repo/b"))
+
+	removed, err := Remove("/repo/a")
+	require.NoError(t, err)
+	assert.True(t, removed)
+
+	paths, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/repo/b"}, paths)
+}
+
+func TestRemove_NotFound(t *testing.T) {
+	setupTestHome(t)
+	require.NoError(t, Add("/repo/a"))
+
+	removed, err := Remove("/repo/z")
+	require.NoError(t, err)
+	assert.False(t, removed)
+}
+
+func TestRemove_EmptyRegistry(t *testing.T) {
+	setupTestHome(t)
+
+	removed, err := Remove("/repo/x")
+	require.NoError(t, err)
+	assert.False(t, removed)
+}
+
+func TestRemove_LoadError(t *testing.T) {
+	home := setupTestHome(t)
+	require.NoError(t, os.WriteFile(filepath.Join(home, "repos.json"), []byte("bad"), 0o644))
+
+	_, err := Remove("/repo/a")
+	assert.Error(t, err)
+}
+
 func TestIsGitRepo(t *testing.T) {
 	tests := []struct {
 		name  string

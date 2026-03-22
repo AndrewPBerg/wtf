@@ -43,7 +43,7 @@ wtf news feature/auth
 wtf sw auth
 
 # Switch across all registered repos
-wtf sw -G auth
+wtf sw -g auth
 
 # Remove a worktree and its branch
 wtf rm feature/auth
@@ -134,6 +134,14 @@ Worktrees are created as sibling directories to the main repo. Slashes in branch
 | `wtf config init`  | Generate default `.wt-forge.toml` with auto-detection  |
 | `wtf init`         | Print shell functions + tab completions for eval/source |
 | `wtf completion`   | Generate shell completion script (`--shell`, `--install`) |
+
+### Registry & Monitoring
+
+| Command          | Description                                             |
+|------------------|---------------------------------------------------------|
+| `wtf repos`      | List all registered repos                               |
+| `wtf unregister` | Remove a repo from the registry                         |
+| `wtf watch`      | Watch PRs for changes and send notifications (`-g`, `-i`) |
 
 ### Tooling
 

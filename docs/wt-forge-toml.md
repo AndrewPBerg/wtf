@@ -34,6 +34,10 @@ on_remove = ["echo 'worktree removed'"]
 on_pr_create = ["echo 'PR worktree created'"]
 on_pr_switch = ["echo 'switched to PR worktree'"]
 on_pr_delete = ["echo 'PR worktree removed'"]
+
+[watch]
+interval = 60
+desktop = true
 ```
 
 ## Sections
@@ -90,6 +94,21 @@ Lifecycle hooks — shell commands run at specific events.
 | `on_pr_delete` | string[] | Run before `wtf rm` removes a PR worktree (in addition to `on_remove`) |
 
 PR hooks fire for worktrees with branch names matching `pr-N` (GitHub) or `mr-N` (GitLab). They run **after** the corresponding general hook (`on_switch`/`on_remove`), so both hooks execute when operating on a PR worktree.
+
+### `[watch]`
+
+Configure the `wtf watch` command behavior.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `interval` | int | `60` | Poll interval in seconds (minimum 10) |
+| `desktop` | bool | auto-detect | Set to `false` for terminal-only notifications |
+
+```toml
+[watch]
+interval = 30
+desktop = false
+```
 
 ## Behavior Without Config
 

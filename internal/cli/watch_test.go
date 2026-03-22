@@ -1,12 +1,19 @@
 package cli
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/AndrewPBerg/wtf/internal/notify"
 	"github.com/AndrewPBerg/wtf/internal/watch"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestResolveInterval_Default(t *testing.T) {
@@ -80,6 +87,81 @@ func TestWatchCmd_Registered(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "watch command should be registered")
+}
+
+func TestResolveStateDir(t *testing.T) {
+	dir := initCLITestRepo(t)
+
+	exec := &git.RealExecutor{}
+	stateDir, err := resolveStateDir(exec, dir)
+	require.NoError(t, err)
+	assert.True(t, strings.HasSuffix(stateDir, "/wtf") || strings.HasSuffix(stateDir, string(os.PathSeparator)+"wtf"))
+	assert.Contains(t, stateDir, ".git")
+}
+
+func TestPrintBanner(t *testing.T) {
+	stderr := new(bytes.Buffer)
+	cmd := &cobra.Command{}
+	cmd.SetErr(stderr)
+
+	n := notify.New(notify.WithTerminalOnly(true))
+	printBanner(cmd, "my-repo", 60*time.Second, n)
+
+	output := stderr.String()
+	assert.Contains(t, output, "my-repo")
+	assert.Contains(t, output, "1m0s")
+	assert.Contains(t, output, "Terminal only")
+}
+
+func TestPrintBanner_Desktop(t *testing.T) {
+	stderr := new(bytes.Buffer)
+	cmd := &cobra.Command{}
+	cmd.SetErr(stderr)
+
+	n := notify.New()
+	printBanner(cmd, "test-repo", 30*time.Second, n)
+
+	output := stderr.String()
+	assert.Contains(t, output, "test-repo")
+	assert.Contains(t, output, "30s")
+	// Desktop notifier name contains "desktop"
+	if strings.Contains(n.Name(), "desktop") {
+		assert.Contains(t, output, "Desktop + terminal")
+	}
+}
+
+func TestResolveInterval_FromConfig(t *testing.T) {
+	watchInterval = 0
+	defer func() { watchInterval = 0 }()
+
+	dir := t.TempDir()
+	// Create a .wt-forge.toml with watch interval
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".wt-forge.toml"), []byte("[watch]\ninterval = 120\n"), 0o644))
+
+	d := resolveInterval(dir)
+	assert.Equal(t, 120*time.Second, d)
+}
+
+func TestResolveInterval_ConfigClampedToMin(t *testing.T) {
+	watchInterval = 0
+	defer func() { watchInterval = 0 }()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".wt-forge.toml"), []byte("[watch]\ninterval = 3\n"), 0o644))
+
+	d := resolveInterval(dir)
+	assert.Equal(t, minInterval, d)
+}
+
+func TestResolveNotifier_FromConfig(t *testing.T) {
+	watchNoDesktop = false
+	defer func() { watchNoDesktop = false }()
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".wt-forge.toml"), []byte("[watch]\ndesktop = false\n"), 0o644))
+
+	n := resolveNotifier(dir)
+	assert.Equal(t, "terminal", n.Name())
 }
 
 func TestWatchCmd_Flags(t *testing.T) {
