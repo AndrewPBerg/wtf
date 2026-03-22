@@ -18,9 +18,6 @@ Remove-Item install.ps1
 
 # Go (all platforms)
 go install github.com/AndrewPBerg/wtf/cmd/wtf@latest
-
-# Windows Package Manager (once published)
-winget install AndrewPBerg.wtf
 ```
 
 ## Quickstart

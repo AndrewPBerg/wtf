@@ -84,14 +84,12 @@ jobs:
         run: |
           ASSET="${{ steps.name.outputs.asset }}"
           tar czf "${ASSET}.tar.gz" "${{ steps.name.outputs.binary }}" README.md LICENSE
-          sha256sum "${ASSET}.tar.gz" >> SHA256SUMS
 
       - name: Package (zip for Windows)
         if: matrix.os == 'windows'
         run: |
           ASSET="${{ steps.name.outputs.asset }}"
           zip "${ASSET}.zip" "${{ steps.name.outputs.binary }}" README.md LICENSE
-          sha256sum "${ASSET}.zip" >> SHA256SUMS
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -100,7 +98,6 @@ jobs:
           path: |
             *.tar.gz
             *.zip
-            SHA256SUMS
           retention-days: 1
 
   release:
@@ -117,9 +114,11 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Merge SHA256SUMS
+      - name: Generate SHA256SUMS
         run: |
-          cat dist/SHA256SUMS > SHA256SUMS
+          cd dist
+          sha256sum *.tar.gz *.zip > ../SHA256SUMS
+          cd ..
           echo "--- checksums ---"
           cat SHA256SUMS
 
