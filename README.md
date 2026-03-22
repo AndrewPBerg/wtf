@@ -130,7 +130,7 @@ Worktrees are created as sibling directories to the main repo. Slashes in branch
 | `wtf setup shell`  | Auto-configure shell integration (one-time)            |
 | `wtf config init`  | Generate default `.wt-forge.toml` with auto-detection  |
 | `wtf init`         | Print shell functions for eval/source                  |
-| `wtf completion`   | Generate shell completion script (`--shell`)           |
+| `wtf completion`   | Generate shell completion script (`--shell`) with dynamic completions |
 
 ### Tooling
 

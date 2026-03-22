@@ -97,11 +97,11 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 ### Completions
 
-- [ ] `wtf pr <TAB>` → open PRs with number, branch, author, age
-- [ ] `wtf sw <TAB>` → active worktrees
-- [ ] `wtf rm <TAB>` → active worktrees
-- [ ] `wtf new <TAB>` → remote branches not yet checked out
-- [ ] `wtf clean <TAB>` → merged/stale worktrees
+- [x] `wtf pr <TAB>` → open PRs with number, branch, author, age
+- [x] `wtf sw <TAB>` → active worktrees
+- [x] `wtf rm <TAB>` → active worktrees
+- [x] `wtf new <TAB>` → remote branches not yet checked out
+- [x] `wtf clean <TAB>` → merged/stale worktrees
 
 ---
 
@@ -123,12 +123,12 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 ### Commands
 
-- [ ] `wtf completions <shell>` — Generate shell completion script (bash, zsh, fish)
+- [x] `wtf completion <shell>` — Generate shell completion script (bash, zsh, fish, powershell)
 - [ ] `wtf doctor` — Verify environment health (git, gh/glab, tokens)
 
 ### Internals
 
-- [ ] Completion dynamic hooks for branch and PR names
+- [x] Completion dynamic hooks for branch and PR names
 - [ ] JSON output layer across all commands
 
 ---
