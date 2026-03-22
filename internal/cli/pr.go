@@ -146,6 +146,20 @@ func runPR(cmd *cobra.Command, arg string, wm *git.WorktreeManager, exec git.Exe
 		return fmt.Errorf("creating worktree: %w", err)
 	}
 
+	if jsonOutput {
+		return writeJSON(cmd.OutOrStdout(), map[string]any{
+			"path":   wtPath,
+			"branch": localBranch,
+			"pr": map[string]any{
+				"number": pr.Number,
+				"title":  pr.Title,
+				"author": pr.Author,
+				"url":    prURL,
+				"draft":  pr.IsDraft,
+			},
+		})
+	}
+
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Checked out %s → %s\n",
 		greenBold("✔"), prLink, cyan(wtPath))
 

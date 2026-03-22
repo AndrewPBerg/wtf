@@ -96,6 +96,25 @@ func TestBranchManager_ValidateBranchName(t *testing.T) {
 	}
 }
 
+func TestBranchManager_RemoteBranches(t *testing.T) {
+	dir := initTestRepo(t)
+	exec := &RealExecutor{}
+	bm := NewBranchManager(exec)
+
+	// Create a remote by cloning into a bare repo, then adding it as a remote.
+	bareDir := t.TempDir()
+	_, err := exec.Run(".", "clone", "--bare", dir, bareDir)
+	require.NoError(t, err)
+	_, err = exec.Run(dir, "remote", "add", "origin", bareDir)
+	require.NoError(t, err)
+	_, err = exec.Run(dir, "fetch", "origin")
+	require.NoError(t, err)
+
+	branches, err := bm.RemoteBranches(dir)
+	require.NoError(t, err)
+	assert.Contains(t, branches, "main")
+}
+
 func TestBranchManager_MergedBranches_ExcludesBase(t *testing.T) {
 	dir := initTestRepo(t)
 	bm := NewBranchManager(&RealExecutor{})

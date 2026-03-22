@@ -17,9 +17,10 @@ func init() {
 }
 
 var newCmd = &cobra.Command{
-	Use:   "new <branch>",
-	Short: "Create a new worktree for a branch",
-	Args:  cobra.ExactArgs(1),
+	Use:               "new <branch>",
+	Short:             "Create a new worktree for a branch",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeRemoteBranches,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runNew(cmd, args[0], git.NewWorktreeManager(&git.RealExecutor{}), setup.NewRunner())
 	},
@@ -40,6 +41,13 @@ func runNew(cmd *cobra.Command, branch string, wm *git.WorktreeManager, runner *
 	wtPath, err := wm.Add(dir, branch, newBase)
 	if err != nil {
 		return err
+	}
+
+	if jsonOutput {
+		return writeJSON(cmd.OutOrStdout(), map[string]string{
+			"path":   wtPath,
+			"branch": branch,
+		})
 	}
 
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Created worktree at %s\n", greenBold("✔"), cyan(wtPath))

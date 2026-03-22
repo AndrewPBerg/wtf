@@ -41,6 +41,13 @@ func runNews(cmd *cobra.Command, branch string, wm *git.WorktreeManager, runner 
 		return err
 	}
 
+	if jsonOutput {
+		return writeJSON(cmd.OutOrStdout(), map[string]string{
+			"path":   wtPath,
+			"branch": branch,
+		})
+	}
+
 	// Print path to stdout for the shell function to cd
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), wtPath)
 	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s Created worktree at %s\n", greenBold("✔"), cyan(wtPath))

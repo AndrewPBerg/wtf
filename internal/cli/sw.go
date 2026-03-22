@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/AndrewPBerg/wtf/internal/config"
@@ -21,9 +22,10 @@ func init() {
 }
 
 var swgCmd = &cobra.Command{
-	Use:   "swg <branch>",
-	Short: "Switch to a worktree globally (shortcut for sw -g)",
-	Args:  cobra.ExactArgs(1),
+	Use:               "swg <branch>",
+	Short:             "Switch to a worktree globally (shortcut for sw -g)",
+	Args:              cobra.ExactArgs(1),
+	ValidArgsFunction: completeWorktrees,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		wm := git.NewWorktreeManager(&git.RealExecutor{})
 		return runSwGlobal(cmd, args[0], wm)
@@ -31,8 +33,9 @@ var swgCmd = &cobra.Command{
 }
 
 var swCmd = &cobra.Command{
-	Use:   "sw <branch>",
-	Short: "Switch to a worktree (prints path for cd)",
+	Use:               "sw <branch>",
+	Short:             "Switch to a worktree (prints path for cd)",
+	ValidArgsFunction: completeWorktrees,
 	Long: `Switch to a worktree by branch name (substring match).
 Prints the worktree path to stdout so you can cd to it.
 
@@ -65,13 +68,19 @@ func runSw(cmd *cobra.Command, query string, wm *git.WorktreeManager) error {
 
 	wt, err := wm.Find(dir, query)
 	if err == nil {
+		if jsonOutput {
+			return writeJSON(cmd.OutOrStdout(), map[string]string{
+				"path":   wt.Path,
+				"branch": wt.Branch,
+			})
+		}
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), wt.Path)
 		if cwd != "" && isCurrentWorktree(cwd, wt.Path) {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "wtf? you are already on %s!\n", cyan(wt.Branch))
 			return nil
 		}
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Switched to %s\n", wt.Path)
-		runOnSwitchHooks(cmd, dir)
+		runOnSwitchHooks(cmd, dir, wt.Branch)
 		return nil
 	}
 
@@ -138,6 +147,13 @@ func runSwGlobal(cmd *cobra.Command, query string, wm *git.WorktreeManager) erro
 	}
 
 	if len(matches) == 1 {
+		if jsonOutput {
+			return writeJSON(cmd.OutOrStdout(), map[string]string{
+				"path":   matches[0].wt.Path,
+				"branch": matches[0].wt.Branch,
+				"repo":   matches[0].repo,
+			})
+		}
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), matches[0].wt.Path)
 		cwd, _ := os.Getwd()
 		if cwd != "" && isCurrentWorktree(cwd, matches[0].wt.Path) {
@@ -145,7 +161,7 @@ func runSwGlobal(cmd *cobra.Command, query string, wm *git.WorktreeManager) erro
 			return nil
 		}
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Switched to %s\n", matches[0].wt.Path)
-		runOnSwitchHooks(cmd, matches[0].repo)
+		runOnSwitchHooks(cmd, matches[0].repo, matches[0].wt.Branch)
 		return nil
 	}
 
@@ -286,15 +302,38 @@ func isCurrentWorktree(cwd, wtPath string) bool {
 }
 
 // runOnSwitchHooks loads config and runs on_switch hooks if present.
+// If the target branch is a PR worktree (pr-N or mr-N), on_pr_switch hooks also run.
 // Failures are logged as warnings, never fatal.
-func runOnSwitchHooks(cmd *cobra.Command, repoDir string) {
+func runOnSwitchHooks(cmd *cobra.Command, repoDir string, branch string) {
 	cfg, err := config.LoadProjectConfig(repoDir)
-	if err != nil || cfg == nil || len(cfg.Hooks.OnSwitch) == 0 {
+	if err != nil || cfg == nil {
 		return
 	}
 
 	runner := setup.NewRunner()
-	if err := runner.RunHooks(cfg.Hooks.OnSwitch, repoDir); err != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s on_switch hook failed: %v\n", yellow("⚠"), err)
+
+	if len(cfg.Hooks.OnSwitch) > 0 {
+		if err := runner.RunHooks(cfg.Hooks.OnSwitch, repoDir); err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s on_switch hook failed: %v\n", yellow("⚠"), err)
+		}
 	}
+
+	if isPRBranch(branch) && len(cfg.Hooks.OnPRSwitch) > 0 {
+		if err := runner.RunHooks(cfg.Hooks.OnPRSwitch, repoDir); err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s on_pr_switch hook failed: %v\n", yellow("⚠"), err)
+		}
+	}
+}
+
+// isPRBranch returns true if the branch name matches the PR worktree pattern (pr-N or mr-N).
+func isPRBranch(branch string) bool {
+	if rest, ok := strings.CutPrefix(branch, "pr-"); ok {
+		_, err := strconv.Atoi(rest)
+		return err == nil
+	}
+	if rest, ok := strings.CutPrefix(branch, "mr-"); ok {
+		_, err := strconv.Atoi(rest)
+		return err == nil
+	}
+	return false
 }

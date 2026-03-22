@@ -94,7 +94,7 @@ func GenerateDefaultConfig(opts DefaultConfigOptions) string {
 	var b strings.Builder
 
 	b.WriteString("[worktree]\n")
-	b.WriteString(fmt.Sprintf("default_base = %q\n", opts.DefaultBase))
+	fmt.Fprintf(&b, "default_base = %q\n", opts.DefaultBase)
 
 	b.WriteString("\n[env]\n")
 	b.WriteString("strategy = \"symlink\"\n")
@@ -103,14 +103,14 @@ func GenerateDefaultConfig(opts DefaultConfigOptions) string {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString(fmt.Sprintf("%q", f))
+		fmt.Fprintf(&b, "%q", f)
 	}
 	b.WriteString("]\n")
 
 	if opts.InstallCmd != "" {
 		b.WriteString("\n[[setup]]\n")
 		b.WriteString("name = \"Install dependencies\"\n")
-		b.WriteString(fmt.Sprintf("run = %q\n", opts.InstallCmd))
+		fmt.Fprintf(&b, "run = %q\n", opts.InstallCmd)
 	}
 
 	b.WriteString("\n[hooks]\n")

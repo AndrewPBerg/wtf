@@ -20,6 +20,8 @@ func init() {
 	cobra.AddTemplateFunc("dimText", func(s string) string { return dim(s) })
 	cobra.AddTemplateFunc("bold", func(s string) string { return bold(s) })
 
+	rootCmd.PersistentFlags().BoolVarP(&jsonOutput, "json", "j", false, "Output in machine-readable JSON")
+
 	rootCmd.SetUsageTemplate(usageTemplate)
 	rootCmd.SetHelpTemplate(helpTemplate)
 	rootCmd.SetVersionTemplate(`{{with .Name}}{{bold .}} {{end}}version {{accent .Version}}

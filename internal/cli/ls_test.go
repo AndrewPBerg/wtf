@@ -18,7 +18,7 @@ func TestLsCommand_Table(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := lsCmd
 	cmd.SetOut(buf)
-	lsJSON = false
+	jsonOutput = false
 	lsGlobal = false
 
 	wm := git.NewWorktreeManager(&git.RealExecutor{})
@@ -38,7 +38,7 @@ func TestLsCommand_JSON(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := lsCmd
 	cmd.SetOut(buf)
-	lsJSON = true
+	jsonOutput = true
 	lsGlobal = false
 
 	wm := git.NewWorktreeManager(&git.RealExecutor{})
@@ -63,7 +63,7 @@ func TestLsCommand_Global_Table(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := lsCmd
 	cmd.SetOut(buf)
-	lsJSON = false
+	jsonOutput = false
 	lsGlobal = true
 
 	wm := git.NewWorktreeManager(&git.RealExecutor{})
@@ -87,7 +87,7 @@ func TestLsCommand_Global_JSON(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := lsCmd
 	cmd.SetOut(buf)
-	lsJSON = true
+	jsonOutput = true
 	lsGlobal = true
 
 	wm := git.NewWorktreeManager(&git.RealExecutor{})
@@ -107,7 +107,7 @@ func TestLsCommand_Global_NoRepos(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := lsCmd
 	cmd.SetOut(buf)
-	lsJSON = false
+	jsonOutput = false
 	lsGlobal = true
 
 	wm := git.NewWorktreeManager(&git.RealExecutor{})
@@ -129,7 +129,7 @@ func TestLsCommand_Global_StaleRepo(t *testing.T) {
 	cmd := lsCmd
 	cmd.SetOut(buf)
 	cmd.SetErr(errBuf)
-	lsJSON = false
+	jsonOutput = false
 	lsGlobal = true
 
 	wm := git.NewWorktreeManager(&git.RealExecutor{})
@@ -206,7 +206,7 @@ func TestLsCommand_WithDetachedHead(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := lsCmd
 	cmd.SetOut(buf)
-	lsJSON = false
+	jsonOutput = false
 	lsGlobal = false
 
 	err = runLs(cmd, wm)
@@ -262,7 +262,7 @@ func TestLsCommand_Global_Table_CurrentRepoHighlighted(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := lsCmd
 	cmd.SetOut(buf)
-	lsJSON = false
+	jsonOutput = false
 	lsGlobal = true
 
 	wm := git.NewWorktreeManager(&git.RealExecutor{})
@@ -287,7 +287,7 @@ func TestLsCommand_Global_Table_NonCurrentRepo(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := lsCmd
 	cmd.SetOut(buf)
-	lsJSON = false
+	jsonOutput = false
 	lsGlobal = true
 
 	wm := git.NewWorktreeManager(&git.RealExecutor{})
@@ -312,7 +312,7 @@ func TestLsCommand_WithRemoteURL(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := lsCmd
 	cmd.SetOut(buf)
-	lsJSON = false
+	jsonOutput = false
 	lsGlobal = false
 
 	wm := git.NewWorktreeManager(exec)
@@ -341,7 +341,7 @@ func TestLsCommand_Global_MultipleRepos(t *testing.T) {
 	buf := new(bytes.Buffer)
 	cmd := lsCmd
 	cmd.SetOut(buf)
-	lsJSON = false
+	jsonOutput = false
 	lsGlobal = true
 
 	wm := git.NewWorktreeManager(&git.RealExecutor{})

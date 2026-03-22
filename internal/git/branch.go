@@ -90,3 +90,27 @@ func (bm *BranchManager) MergedBranches(dir, base string) ([]string, error) {
 	}
 	return branches, nil
 }
+
+// RemoteBranches returns remote branch names with the remote prefix stripped.
+// For example, "origin/feature-x" becomes "feature-x".
+// HEAD pointers (e.g., "origin/HEAD -> origin/main") are excluded.
+func (bm *BranchManager) RemoteBranches(dir string) ([]string, error) {
+	out, err := bm.executor.Run(dir, "branch", "-r")
+	if err != nil {
+		return nil, fmt.Errorf("listing remote branches: %w", err)
+	}
+
+	var branches []string
+	for _, line := range strings.Split(out, "\n") {
+		name := strings.TrimSpace(line)
+		if name == "" || strings.Contains(name, "->") {
+			continue
+		}
+		// Strip remote prefix (e.g., "origin/")
+		if idx := strings.Index(name, "/"); idx >= 0 {
+			name = name[idx+1:]
+		}
+		branches = append(branches, name)
+	}
+	return branches, nil
+}

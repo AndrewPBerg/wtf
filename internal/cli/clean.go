@@ -20,8 +20,9 @@ func init() {
 }
 
 var cleanCmd = &cobra.Command{
-	Use:   "clean",
-	Short: "Remove worktrees for merged or prunable branches",
+	Use:               "clean",
+	Short:             "Remove worktrees for merged or prunable branches",
+	ValidArgsFunction: completeCleanTargets,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return runClean(cmd, git.NewWorktreeManager(&git.RealExecutor{}), &git.RealExecutor{})
 	},
@@ -73,9 +74,22 @@ func runClean(cmd *cobra.Command, wm *git.WorktreeManager, exec git.Executor) er
 	}
 
 	if len(toRemove) == 0 {
+		if jsonOutput {
+			return writeJSON(cmd.OutOrStdout(), map[string]any{
+				"dry_run": cleanDryRun,
+				"removed": []any{},
+			})
+		}
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), dim("Nothing to clean"))
 		return nil
 	}
+
+	type cleanResult struct {
+		Branch string `json:"branch"`
+		Reason string `json:"reason"`
+		Error  string `json:"error,omitempty"`
+	}
+	var jsonResults []cleanResult
 
 	for _, wt := range toRemove {
 		reason := "merged"
@@ -84,15 +98,33 @@ func runClean(cmd *cobra.Command, wm *git.WorktreeManager, exec git.Executor) er
 		}
 
 		if cleanDryRun {
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Would remove %s %s\n", yellow("~"), cyan(wt.Branch), dim("("+reason+")"))
+			if jsonOutput {
+				jsonResults = append(jsonResults, cleanResult{Branch: wt.Branch, Reason: reason})
+			} else {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Would remove %s %s\n", yellow("~"), cyan(wt.Branch), dim("("+reason+")"))
+			}
 			continue
 		}
 
 		if err := wm.Remove(dir, wt.Branch, cwd, cleanForce); err != nil {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s Could not remove %s: %v\n", yellow("⚠"), cyan(wt.Branch), err)
+			if jsonOutput {
+				jsonResults = append(jsonResults, cleanResult{Branch: wt.Branch, Reason: reason, Error: err.Error()})
+			}
 			continue
 		}
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Removed %s %s\n", greenBold("✔"), cyan(wt.Branch), dim("("+reason+")"))
+		if jsonOutput {
+			jsonResults = append(jsonResults, cleanResult{Branch: wt.Branch, Reason: reason})
+		} else {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Removed %s %s\n", greenBold("✔"), cyan(wt.Branch), dim("("+reason+")"))
+		}
+	}
+
+	if jsonOutput {
+		return writeJSON(cmd.OutOrStdout(), map[string]any{
+			"dry_run": cleanDryRun,
+			"removed": jsonResults,
+		})
 	}
 
 	return nil

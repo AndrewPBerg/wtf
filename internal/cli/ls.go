@@ -19,17 +19,14 @@ import (
 )
 
 var (
-	lsJSON   bool
 	lsGlobal bool
 	lsPRs    bool
 )
 
 func init() {
-	lsCmd.Flags().BoolVar(&lsJSON, "json", false, "Output in JSON format")
 	lsCmd.Flags().BoolVarP(&lsGlobal, "global", "g", false, "List worktrees across all registered repos")
 	lsCmd.Flags().BoolVarP(&lsPRs, "prs", "p", false, "Show PR status for each worktree")
 	rootCmd.AddCommand(lsCmd)
-	lsgCmd.Flags().BoolVar(&lsJSON, "json", false, "Output in JSON format")
 	lsgCmd.Flags().BoolVarP(&lsPRs, "prs", "p", false, "Show PR status for each worktree")
 	rootCmd.AddCommand(lsgCmd)
 }
@@ -82,7 +79,7 @@ func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
 		return err
 	}
 
-	if lsJSON {
+	if jsonOutput {
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
 		return enc.Encode(wts)
@@ -524,7 +521,7 @@ func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
 		return nil
 	}
 
-	if lsJSON {
+	if jsonOutput {
 		return runLsGlobalJSON(cmd, wm, repos)
 	}
 

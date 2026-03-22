@@ -31,6 +31,9 @@ if = "branch contains 'feature'"
 on_create = ["echo 'worktree created'"]
 on_switch = ["echo 'switched worktree'"]
 on_remove = ["echo 'worktree removed'"]
+on_pr_create = ["echo 'PR worktree created'"]
+on_pr_switch = ["echo 'switched to PR worktree'"]
+on_pr_delete = ["echo 'PR worktree removed'"]
 ```
 
 ## Sections
@@ -82,6 +85,11 @@ Lifecycle hooks — shell commands run at specific events.
 | `on_create` | string[] | Run after `wtf new` creates a worktree |
 | `on_switch` | string[] | Run after `wtf sw` switches to a worktree |
 | `on_remove` | string[] | Run before `wtf rm` removes a worktree |
+| `on_pr_create` | string[] | Run after `wtf pr` checks out a PR worktree (in addition to `on_create`) |
+| `on_pr_switch` | string[] | Run after `wtf sw` switches to a PR worktree (in addition to `on_switch`) |
+| `on_pr_delete` | string[] | Run before `wtf rm` removes a PR worktree (in addition to `on_remove`) |
+
+PR hooks fire for worktrees with branch names matching `pr-N` (GitHub) or `mr-N` (GitLab). They run **after** the corresponding general hook (`on_switch`/`on_remove`), so both hooks execute when operating on a PR worktree.
 
 ## Behavior Without Config
 
