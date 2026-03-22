@@ -27,9 +27,7 @@ Or add this to your shell profile manually:
   eval "$(wtf init)"
 
 See 'wtf init --help' and 'wtf setup --help' for details.`,
-	Args:          cobra.ExactArgs(1),
-	SilenceUsage:  true,
-	SilenceErrors: true,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSw(cmd, args[0], git.NewWorktreeManager(&git.RealExecutor{}))
 	},
@@ -87,7 +85,11 @@ func runSw(cmd *cobra.Command, query string, wm *git.WorktreeManager) error {
 }
 
 // fuzzyFilter returns branches that are similar to the query.
+// Queries shorter than 2 characters are too ambiguous for fuzzy matching.
 func fuzzyFilter(branches []string, query string) []string {
+	if len(query) < 2 {
+		return nil
+	}
 	query = strings.ToLower(query)
 	type scored struct {
 		branch string

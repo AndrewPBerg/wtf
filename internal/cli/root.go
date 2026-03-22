@@ -9,6 +9,8 @@ var rootCmd = &cobra.Command{
 	Short:             "WorkTreeForge — a fast git worktree workflow tool",
 	Long:              cyanBold("WorkTreeForge (WTF)") + " streamlines git worktree operations, project setup, and forge integrations.",
 	Version:           Version,
+	SilenceErrors:     true,
+	SilenceUsage:      true,
 	CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 }
 

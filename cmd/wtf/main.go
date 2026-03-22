@@ -5,13 +5,11 @@ import (
 	"os"
 
 	"github.com/AndrewPBerg/wtf/internal/cli"
-	"github.com/fatih/color"
 )
 
 func main() {
 	if err := cli.Execute(); err != nil {
-		red := color.New(color.FgRed, color.Bold).SprintFunc()
-		fmt.Fprintf(os.Stderr, "%s %v\n", red("Error:"), err)
+		fmt.Fprintln(os.Stderr, cli.FormatError(err))
 		os.Exit(1)
 	}
 }

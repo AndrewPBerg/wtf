@@ -150,6 +150,13 @@ func TestFuzzyScore_SingleChar(t *testing.T) {
 	assert.Greater(t, fuzzyScore("feature", "f"), 0)
 }
 
+func TestFuzzyFilter_SingleCharQueryReturnsNil(t *testing.T) {
+	// Single-char queries are too ambiguous for fuzzy matching
+	branches := []string{"feature-auth", "feat-api", "bugfix-auth"}
+	result := fuzzyFilter(branches, "f")
+	assert.Nil(t, result)
+}
+
 func TestFuzzyScore_FullMatch(t *testing.T) {
 	score := fuzzyScore("abcdef", "abcdef")
 	assert.Equal(t, 6, score)

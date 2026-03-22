@@ -99,8 +99,8 @@ func DefaultFuncs() []ShellFunc {
 	return []ShellFunc{
 		{
 			Name: "wtf",
-			Bash: `wtf() { if [ "$1" = "sw" ]; then shift; local _p; _p="$(command wtf sw "$@")" || return 1; builtin cd "$_p"; else command wtf "$@"; fi; }`,
-			Fish: `function wtf; if test "$argv[1]" = "sw"; set -l _p (command wtf sw $argv[2..]); or return 1; builtin cd "$_p"; else command wtf $argv; end; end`,
+			Bash: `wtf() { if [ "$1" = "sw" ]; then shift; local _p; _p="$(command wtf sw "$@")" || return 1; builtin cd "$_p"; return; else command wtf "$@"; fi; }`,
+			Fish: `function wtf; if test "$argv[1]" = "sw"; set -l _p (command wtf sw $argv[2..]); or return 1; builtin cd "$_p"; return; else command wtf $argv; end; end`,
 		},
 	}
 }

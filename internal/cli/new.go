@@ -24,6 +24,12 @@ var newCmd = &cobra.Command{
 }
 
 func runNew(cmd *cobra.Command, branch string, wm *git.WorktreeManager) error {
+	// Validate branch name before doing any work
+	bm := git.NewBranchManager(&git.RealExecutor{})
+	if err := bm.ValidateBranchName(branch); err != nil {
+		return err
+	}
+
 	dir, err := getRepoDir()
 	if err != nil {
 		return err

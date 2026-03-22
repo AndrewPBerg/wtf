@@ -183,7 +183,7 @@ func TestWorktreeManager_Find_NoMatch(t *testing.T) {
 	wm := NewWorktreeManager(&RealExecutor{})
 
 	_, err := wm.Find(dir, "nonexistent")
-	assert.ErrorContains(t, err, "no worktree found")
+	assert.ErrorIs(t, err, ErrWorktreeNotFound)
 }
 
 func TestWorktreeManager_Find_MultipleMatches(t *testing.T) {
@@ -196,7 +196,7 @@ func TestWorktreeManager_Find_MultipleMatches(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = wm.Find(dir, "feature")
-	assert.ErrorContains(t, err, "multiple worktrees match")
+	assert.ErrorIs(t, err, ErrMultipleMatches)
 }
 
 func TestWorktreeManager_Remove_Integration(t *testing.T) {
@@ -219,7 +219,7 @@ func TestWorktreeManager_Remove_Main(t *testing.T) {
 	wm := NewWorktreeManager(&RealExecutor{})
 
 	err := wm.Remove(dir, "main", false)
-	assert.ErrorContains(t, err, "cannot remove main worktree")
+	assert.ErrorIs(t, err, ErrMainWorktree)
 }
 
 func TestWorktreeManager_MainWorktree(t *testing.T) {

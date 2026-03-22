@@ -47,6 +47,21 @@ func TestNewCommand_InvalidBase(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestNewCommand_InvalidBranchName(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	buf := new(bytes.Buffer)
+	cmd := newCmd
+	cmd.SetOut(buf)
+	newBase = "main"
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	err := runNew(cmd, "bad..name", wm)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, git.ErrInvalidBranchName)
+}
+
 func TestNewCommand_NotARepo(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -59,5 +74,5 @@ func TestNewCommand_NotARepo(t *testing.T) {
 	wm := git.NewWorktreeManager(&git.RealExecutor{})
 	err := runNew(cmd, "new-feature", wm)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "not a git repository")
+	assert.ErrorIs(t, err, ErrNotARepo)
 }

@@ -17,7 +17,15 @@ func init() {
 var rmCmd = &cobra.Command{
 	Use:   "rm <branch>",
 	Short: "Remove a worktree and its branch",
-	Args:  cobra.ExactArgs(1),
+	Args: func(_ *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return fmt.Errorf("please specify a branch name to remove\n\nUsage: wtf rm <branch>")
+		}
+		if len(args) > 1 {
+			return fmt.Errorf("expected 1 branch name, got %d", len(args))
+		}
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runRm(cmd, args[0], git.NewWorktreeManager(&git.RealExecutor{}))
 	},

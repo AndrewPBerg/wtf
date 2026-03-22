@@ -107,6 +107,33 @@ func TestAdd_Duplicate(t *testing.T) {
 	assert.Equal(t, []string{"/repo/a"}, paths)
 }
 
+func TestLoadValid_FiltersStale(t *testing.T) {
+	home := setupTestHome(t)
+
+	repoDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(repoDir, ".git"), 0o755))
+
+	require.NoError(t, Save([]string{repoDir, "/nonexistent/repo"}))
+
+	valid, err := LoadValid()
+	require.NoError(t, err)
+	assert.Equal(t, []string{repoDir}, valid)
+
+	// Verify the registry was NOT modified (still has stale entry)
+	paths, err := Load()
+	require.NoError(t, err)
+	assert.Len(t, paths, 2, "LoadValid should not modify the registry file")
+	_ = home
+}
+
+func TestLoadValid_LoadError(t *testing.T) {
+	home := setupTestHome(t)
+	require.NoError(t, os.WriteFile(filepath.Join(home, "repos.json"), []byte("bad"), 0o644))
+
+	_, err := LoadValid()
+	assert.Error(t, err)
+}
+
 func TestPrune_RemovesStale(t *testing.T) {
 	setupTestHome(t)
 

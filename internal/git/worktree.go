@@ -1,9 +1,17 @@
 package git
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
+)
+
+// Sentinel errors for worktree operations.
+var (
+	ErrWorktreeNotFound = errors.New("no matching worktree found")
+	ErrMultipleMatches  = errors.New("multiple worktrees match query")
+	ErrMainWorktree     = errors.New("cannot remove main worktree")
 )
 
 // Worktree represents a single git worktree entry.
@@ -95,7 +103,7 @@ func (wm *WorktreeManager) Find(dir, query string) (Worktree, error) {
 
 	switch len(matches) {
 	case 0:
-		return Worktree{}, fmt.Errorf("no worktree found matching %q", query)
+		return Worktree{}, fmt.Errorf("%w: %q", ErrWorktreeNotFound, query)
 	case 1:
 		return matches[0], nil
 	default:
@@ -103,7 +111,7 @@ func (wm *WorktreeManager) Find(dir, query string) (Worktree, error) {
 		for _, m := range matches {
 			branches = append(branches, m.Branch)
 		}
-		return Worktree{}, fmt.Errorf("multiple worktrees match %q: %s", query, strings.Join(branches, ", "))
+		return Worktree{}, fmt.Errorf("%w %q: %s", ErrMultipleMatches, query, strings.Join(branches, ", "))
 	}
 }
 
@@ -115,7 +123,7 @@ func (wm *WorktreeManager) Remove(dir, branch string, force bool) error {
 	}
 
 	if wt.IsMain {
-		return fmt.Errorf("cannot remove main worktree")
+		return ErrMainWorktree
 	}
 
 	args := []string{"worktree", "remove", wt.Path}

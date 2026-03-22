@@ -78,9 +78,9 @@ func Add(repoPath string) error {
 	return Save(paths)
 }
 
-// Prune removes stale entries (paths that no longer exist or aren't git repos)
-// and returns the valid paths.
-func Prune() ([]string, error) {
+// LoadValid returns only the registered paths that still exist and are git repos.
+// Unlike Prune, it does not modify the registry file.
+func LoadValid() ([]string, error) {
 	paths, err := Load()
 	if err != nil {
 		return nil, err
@@ -91,6 +91,16 @@ func Prune() ([]string, error) {
 		if isGitRepo(p) {
 			valid = append(valid, p)
 		}
+	}
+	return valid, nil
+}
+
+// Prune removes stale entries (paths that no longer exist or aren't git repos)
+// and returns the valid paths. This writes the cleaned list back to the registry.
+func Prune() ([]string, error) {
+	valid, err := LoadValid()
+	if err != nil {
+		return nil, err
 	}
 
 	if err := Save(valid); err != nil {

@@ -59,7 +59,7 @@ func TestRmCommand_NotARepo(t *testing.T) {
 
 	err := runRm(cmd, "some-branch", wm)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "not a git repository")
+	assert.ErrorIs(t, err, ErrNotARepo)
 }
 
 func TestRmCommand_MainWorktree(t *testing.T) {
@@ -74,5 +74,5 @@ func TestRmCommand_MainWorktree(t *testing.T) {
 
 	err := runRm(cmd, "main", wm)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "cannot remove main worktree")
+	assert.ErrorIs(t, err, git.ErrMainWorktree)
 }

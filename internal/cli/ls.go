@@ -166,7 +166,7 @@ type repoEntry struct {
 }
 
 func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
-	repos, err := config.Prune()
+	repos, err := config.LoadValid()
 	if err != nil {
 		return fmt.Errorf("loading registry: %w", err)
 	}
