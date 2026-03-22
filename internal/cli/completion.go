@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/spf13/cobra"
 )
 
@@ -38,6 +40,11 @@ Example:
 			}
 		}
 
+		install, _ := cmd.Flags().GetBool("install")
+		if install {
+			return runCompletionInstall(cmd, shell)
+		}
+
 		out := cmd.OutOrStdout()
 		switch shell {
 		case "bash":
@@ -56,6 +63,42 @@ Example:
 
 func init() {
 	completionCmd.Flags().String("shell", "", "shell type: bash, zsh, fish, powershell")
+	completionCmd.Flags().Bool("install", false, "install completion file to standard user-local path")
+}
+
+func runCompletionInstall(cmd *cobra.Command, shell string) error {
+	setupShell, err := setup.ParseShellName(shell)
+	if err != nil {
+		return fmt.Errorf("--install does not support %q (supported: bash, zsh, fish)", shell)
+	}
+
+	var buf bytes.Buffer
+	switch shell {
+	case "bash":
+		err = cmd.Root().GenBashCompletionV2(&buf, true)
+	case "zsh":
+		err = cmd.Root().GenZshCompletion(&buf)
+	case "fish":
+		err = cmd.Root().GenFishCompletion(&buf, true)
+	default:
+		return fmt.Errorf("--install does not support %q (supported: bash, zsh, fish)", shell)
+	}
+	if err != nil {
+		return fmt.Errorf("generating completion script: %w", err)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("getting home directory: %w", err)
+	}
+
+	path, err := setup.WriteCompletionFile(setupShell, home, buf.String())
+	if err != nil {
+		return err
+	}
+
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Installed completions to %s\n", greenBold("✔"), cyan(path))
+	return nil
 }
 
 // detectShell reads $SHELL and returns a normalized shell name.

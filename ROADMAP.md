@@ -98,11 +98,13 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 ### Completions
 
-- [ ] `wtf pr <TAB>` → open PRs with number, branch, author, age
-- [ ] `wtf sw <TAB>` → active worktrees
-- [ ] `wtf rm <TAB>` → active worktrees
-- [ ] `wtf new <TAB>` → remote branches not yet checked out
-- [ ] `wtf clean <TAB>` → merged/stale worktrees
+- [x] `wtf pr <TAB>` → open PRs with number, branch, author, age
+- [x] `wtf sw <TAB>` → active worktrees
+- [x] `wtf rm <TAB>` → active worktrees
+- [x] `wtf new <TAB>` → remote branches not yet checked out
+- [x] `wtf clean <TAB>` → merged/stale worktrees
+- [x] `wtf init` embeds completions inline — `eval "$(wtf init)"` handles everything
+- [x] `wtf completion --install` writes to standard user-local path
 
 ---
 

@@ -47,13 +47,13 @@ func TestSetupShellCommand_Fresh(t *testing.T) {
 
 	data, err := os.ReadFile(filepath.Join(dir, ".bashrc"))
 	require.NoError(t, err)
-	assert.Contains(t, string(data), `eval "$(wtf init)"`)
+	assert.Contains(t, string(data), `eval "$(wtf init bash)"`)
 }
 
 func TestSetupShellCommand_AlreadyConfigured(t *testing.T) {
 	dir := t.TempDir()
 	rcPath := filepath.Join(dir, ".zshrc")
-	require.NoError(t, os.WriteFile(rcPath, []byte(`eval "$(wtf init)"`+"\n"), 0o644))
+	require.NoError(t, os.WriteFile(rcPath, []byte(`eval "$(wtf init zsh)"`+"\n"), 0o644))
 
 	rcm := &setup.RCFileManager{HomeDir: dir}
 
@@ -123,7 +123,7 @@ func TestSetupShellCommand_DetectionFailure(t *testing.T) {
 func TestSetupShellCommand_NilRCManager(t *testing.T) {
 	dir := t.TempDir()
 	rcPath := filepath.Join(dir, ".bashrc")
-	require.NoError(t, os.WriteFile(rcPath, []byte(`eval "$(wtf init)"`+"\n"), 0o644))
+	require.NoError(t, os.WriteFile(rcPath, []byte(`eval "$(wtf init bash)"`+"\n"), 0o644))
 
 	rcm := &setup.RCFileManager{HomeDir: dir}
 
