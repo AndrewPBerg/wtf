@@ -1,6 +1,8 @@
 package git
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -199,6 +201,20 @@ func TestWorktreeManager_Find_MultipleMatches(t *testing.T) {
 	assert.ErrorIs(t, err, ErrMultipleMatches)
 }
 
+func TestWorktreeManager_Find_ExactMatchPreferred(t *testing.T) {
+	dir := initTestRepo(t)
+	wm := NewWorktreeManager(&RealExecutor{})
+
+	_, err := wm.Add(dir, "test", "main")
+	require.NoError(t, err)
+	_, err = wm.Add(dir, "testd", "main")
+	require.NoError(t, err)
+
+	wt, err := wm.Find(dir, "test")
+	require.NoError(t, err)
+	assert.Equal(t, "test", wt.Branch)
+}
+
 func TestWorktreeManager_Remove_Integration(t *testing.T) {
 	dir := initTestRepo(t)
 	wm := NewWorktreeManager(&RealExecutor{})
@@ -212,6 +228,25 @@ func TestWorktreeManager_Remove_Integration(t *testing.T) {
 	wts, err := wm.List(dir)
 	require.NoError(t, err)
 	assert.Len(t, wts, 1)
+}
+
+func TestWorktreeManager_Remove_DirtyWorktree(t *testing.T) {
+	dir := initTestRepo(t)
+	wm := NewWorktreeManager(&RealExecutor{})
+
+	wtPath, err := wm.Add(dir, "dirty-branch", "main")
+	require.NoError(t, err)
+
+	// Create an untracked file in the worktree to make it dirty
+	err = os.WriteFile(filepath.Join(wtPath, "untracked.txt"), []byte("dirty"), 0o644)
+	require.NoError(t, err)
+
+	err = wm.Remove(dir, "dirty-branch", "/somewhere-else", false)
+	assert.ErrorIs(t, err, ErrWorktreeHasChanges)
+
+	// Force remove should work
+	err = wm.Remove(dir, "dirty-branch", "/somewhere-else", true)
+	assert.NoError(t, err)
 }
 
 func TestWorktreeManager_Remove_Main(t *testing.T) {

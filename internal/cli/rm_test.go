@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/AndrewPBerg/wtf/internal/git"
@@ -281,4 +282,185 @@ func TestRmGlobal_MainWorktreeProtection(t *testing.T) {
 	err := runRmGlobal(cmd, []string{"main"}, wm)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "main worktree")
+}
+
+// withTTY overrides stdinIsTTY for the duration of the test.
+func withTTY(t *testing.T) {
+	t.Helper()
+	orig := stdinIsTTY
+	stdinIsTTY = func() bool { return true }
+	t.Cleanup(func() { stdinIsTTY = orig })
+}
+
+func TestRmGlobal_MultipleMatches_PromptAll(t *testing.T) {
+	resetRmFlags(t)
+	withTTY(t)
+	repo1 := initCLITestRepo(t)
+	repo2 := initCLITestRepo(t)
+	t.Chdir(repo1)
+	setupGlobalRegistry(t, []string{repo1, repo2})
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	_, err := wm.Add(repo1, "feature-dup-rm", "main")
+	require.NoError(t, err)
+	_, err = wm.Add(repo2, "feature-dup-rm", "main")
+	require.NoError(t, err)
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := rmCmd
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetIn(strings.NewReader("all\n"))
+
+	err = runRmGlobal(cmd, []string{"dup-rm"}, wm)
+	require.NoError(t, err)
+
+	output := stdout.String()
+	assert.Contains(t, output, "Removed worktree for feature-dup-rm")
+
+	// Both repos should have only main left
+	wts1, err := wm.List(repo1)
+	require.NoError(t, err)
+	assert.Len(t, wts1, 1)
+
+	wts2, err := wm.List(repo2)
+	require.NoError(t, err)
+	assert.Len(t, wts2, 1)
+}
+
+func TestRmGlobal_MultipleMatches_PromptSelectOne(t *testing.T) {
+	resetRmFlags(t)
+	withTTY(t)
+	repo1 := initCLITestRepo(t)
+	repo2 := initCLITestRepo(t)
+	t.Chdir(repo1)
+	setupGlobalRegistry(t, []string{repo1, repo2})
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	_, err := wm.Add(repo1, "feature-dup-rm", "main")
+	require.NoError(t, err)
+	_, err = wm.Add(repo2, "feature-dup-rm", "main")
+	require.NoError(t, err)
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := rmCmd
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetIn(strings.NewReader("1\n"))
+
+	err = runRmGlobal(cmd, []string{"dup-rm"}, wm)
+	require.NoError(t, err)
+
+	assert.Contains(t, stdout.String(), "Removed worktree for feature-dup-rm")
+
+	// Only repo1's worktree should be removed
+	wts1, err := wm.List(repo1)
+	require.NoError(t, err)
+	assert.Len(t, wts1, 1) // main only
+
+	wts2, err := wm.List(repo2)
+	require.NoError(t, err)
+	assert.Len(t, wts2, 2) // main + feature-dup-rm still there
+}
+
+func TestRmGlobal_MultipleMatches_PromptNone(t *testing.T) {
+	resetRmFlags(t)
+	withTTY(t)
+	repo1 := initCLITestRepo(t)
+	repo2 := initCLITestRepo(t)
+	t.Chdir(repo1)
+	setupGlobalRegistry(t, []string{repo1, repo2})
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	_, err := wm.Add(repo1, "feature-dup-rm", "main")
+	require.NoError(t, err)
+	_, err = wm.Add(repo2, "feature-dup-rm", "main")
+	require.NoError(t, err)
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := rmCmd
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetIn(strings.NewReader("\n"))
+
+	err = runRmGlobal(cmd, []string{"dup-rm"}, wm)
+	require.NoError(t, err)
+
+	// Nothing removed
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "skipped")
+
+	wts1, err := wm.List(repo1)
+	require.NoError(t, err)
+	assert.Len(t, wts1, 2)
+
+	wts2, err := wm.List(repo2)
+	require.NoError(t, err)
+	assert.Len(t, wts2, 2)
+}
+
+func TestRmGlobal_MultipleMatches_PromptCommaSelect(t *testing.T) {
+	resetRmFlags(t)
+	withTTY(t)
+	repo1 := initCLITestRepo(t)
+	repo2 := initCLITestRepo(t)
+	t.Chdir(repo1)
+	setupGlobalRegistry(t, []string{repo1, repo2})
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	_, err := wm.Add(repo1, "feature-dup-rm", "main")
+	require.NoError(t, err)
+	_, err = wm.Add(repo2, "feature-dup-rm", "main")
+	require.NoError(t, err)
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := rmCmd
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetIn(strings.NewReader("1,2\n"))
+
+	err = runRmGlobal(cmd, []string{"dup-rm"}, wm)
+	require.NoError(t, err)
+
+	// Both should be removed
+	wts1, err := wm.List(repo1)
+	require.NoError(t, err)
+	assert.Len(t, wts1, 1)
+
+	wts2, err := wm.List(repo2)
+	require.NoError(t, err)
+	assert.Len(t, wts2, 1)
+}
+
+func TestRmGlobal_MultipleMatches_InvalidSelection(t *testing.T) {
+	resetRmFlags(t)
+	withTTY(t)
+	repo1 := initCLITestRepo(t)
+	repo2 := initCLITestRepo(t)
+	t.Chdir(repo1)
+	setupGlobalRegistry(t, []string{repo1, repo2})
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	_, err := wm.Add(repo1, "feature-dup-rm", "main")
+	require.NoError(t, err)
+	_, err = wm.Add(repo2, "feature-dup-rm", "main")
+	require.NoError(t, err)
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := rmCmd
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+	cmd.SetIn(strings.NewReader("5\n"))
+
+	err = runRmGlobal(cmd, []string{"dup-rm"}, wm)
+	require.NoError(t, err)
+
+	// Nothing removed on invalid input
+	assert.Empty(t, stdout.String())
+	assert.Contains(t, stderr.String(), "invalid selection")
 }

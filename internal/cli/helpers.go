@@ -40,7 +40,7 @@ func getRepoDir() (string, error) {
 
 // suggestCommands returns command names similar to the given unknown command.
 func suggestCommands(unknown string) []string {
-	known := []string{"sw", "swg", "new", "ls", "rm", "rmg", "init", "setup", "completion"}
+	known := []string{"sw", "swg", "new", "ls", "rm", "rmg", "init", "setup", "config", "completion"}
 	unknown = strings.ToLower(unknown)
 	var suggestions []string
 	for _, cmd := range known {
@@ -119,6 +119,14 @@ func FormatError(err error) string {
 			redBold("wtf?"),
 			err.Error(),
 			dim("hint:"),
+		)
+
+	case errors.Is(err, git.ErrWorktreeHasChanges):
+		return fmt.Sprintf(
+			"%s worktree has uncommitted changes\n  %s run with %s to remove anyway",
+			redBold("wtf?"),
+			dim("hint:"),
+			cyan("--force"),
 		)
 
 	case errors.Is(err, git.ErrMainWorktree):

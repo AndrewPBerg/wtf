@@ -122,7 +122,8 @@ func TestRender_BashZsh(t *testing.T) {
 		t.Run(string(shell), func(t *testing.T) {
 			out := Render(shell, funcs)
 			assert.Contains(t, out, `wtf()`)
-			assert.Contains(t, out, `command wtf sw "$@"`)
+			assert.Contains(t, out, `command wtf "$_c" "$@"`)
+			assert.Contains(t, out, `sw|news`)
 		})
 	}
 }
@@ -130,7 +131,8 @@ func TestRender_BashZsh(t *testing.T) {
 func TestRender_Fish(t *testing.T) {
 	out := Render(Fish, DefaultFuncs())
 	assert.Contains(t, out, "function wtf")
-	assert.Contains(t, out, "command wtf sw $argv[2..]")
+	assert.Contains(t, out, "command wtf $_c $argv[2..]")
+	assert.Contains(t, out, "sw news")
 	assert.Contains(t, out, "end")
 }
 

@@ -116,6 +116,13 @@ func TestFormatError_PathAlreadyExists(t *testing.T) {
 	assert.Contains(t, msg, "/tmp/some-path")
 }
 
+func TestFormatError_WorktreeHasChanges(t *testing.T) {
+	err := fmt.Errorf("%w: use --force to remove anyway", git.ErrWorktreeHasChanges)
+	msg := FormatError(err)
+	assert.Contains(t, msg, "uncommitted changes")
+	assert.Contains(t, msg, "--force")
+}
+
 func TestFormatError_UnknownShorthandFlag(t *testing.T) {
 	err := fmt.Errorf("unknown shorthand flag: 'x'")
 	msg := FormatError(err)

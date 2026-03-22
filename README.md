@@ -3,7 +3,7 @@
 
 # WorkTreeForge (WTF)
 
-A fast git worktree workflow tool. Create, switch, and clean up worktrees with short commands.
+A fast git worktree workflow tool. Create, switch, and clean up worktrees with automated project setup.
 
 ## Install
 
@@ -27,7 +27,7 @@ winget install AndrewPBerg.wtf
 
 ```bash
 # Set up shell integration (one-time)
-wtf setup
+wtf setup shell
 
 # List all worktrees
 wtf ls
@@ -35,6 +35,9 @@ wtf ls
 # Create a worktree for a new branch
 wtf new feature/auth
 # Created worktree at /code/myrepo--feature-auth
+
+# Create a worktree and switch to it in one step
+wtf news feature/auth
 
 # Switch to a worktree (cd's automatically with shell wrapper)
 wtf sw auth
@@ -48,7 +51,34 @@ wtf rm feature/auth
 # Clean up merged/prunable worktrees
 wtf clean --dry-run
 wtf clean
+
+# Generate a .wt-forge.toml with auto-detected defaults
+wtf config init
+
+# Re-run setup in current worktree
+wtf setup
 ```
+
+## Project Setup (`.wt-forge.toml`)
+
+Drop a `.wt-forge.toml` in your repo root to automate worktree setup:
+
+```toml
+[env]
+strategy = "symlink"
+files = [".env", ".env.local"]
+
+[[setup]]
+name = "install"
+run = "pnpm install"
+
+[[setup]]
+name = "migrate"
+run = "pnpm db:migrate"
+if = "file exists 'prisma/schema.prisma'"
+```
+
+Generate one automatically with `wtf config init`. See [docs/wt-forge-toml.md](docs/wt-forge-toml.md) for the full reference.
 
 ## Shell Integration
 
@@ -56,7 +86,7 @@ wtf clean
 
 ```bash
 # Automatic setup (recommended)
-wtf setup
+wtf setup shell
 
 # Or manually add to your profile:
 
@@ -90,14 +120,17 @@ Worktrees are created as sibling directories to the main repo. Slashes in branch
 | `wtf sw`    | Switch to a worktree (`--global` to search all repos)|
 | `wtf rm`    | Remove a worktree and branch (`--force`)             |
 | `wtf clean` | Remove merged/prunable worktrees (`--dry-run`)       |
+| `wtf news`  | Create a worktree and switch to it (`--base`)        |
 
-### Shell & Setup
+### Setup & Configuration
 
-| Command          | Description                                      |
-|------------------|--------------------------------------------------|
-| `wtf init`       | Print shell functions for eval/source            |
-| `wtf setup`      | Auto-configure shell integration                 |
-| `wtf completion` | Generate shell completion script (`--shell`)     |
+| Command            | Description                                            |
+|--------------------|--------------------------------------------------------|
+| `wtf setup`        | Run project setup in current worktree (`--env`, `--install`) |
+| `wtf setup shell`  | Auto-configure shell integration (one-time)            |
+| `wtf config init`  | Generate default `.wt-forge.toml` with auto-detection  |
+| `wtf init`         | Print shell functions for eval/source                  |
+| `wtf completion`   | Generate shell completion script (`--shell`)           |
 
 ### Tooling
 

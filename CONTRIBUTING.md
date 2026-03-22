@@ -85,8 +85,8 @@ cmd/wtf/          # CLI entry point — wiring only, no logic
 internal/
   cli/            # Cobra commands, output formatting
   git/            # Git/worktree operations (Executor interface)
-  config/         # Registry (~/.wtf/repos.json)
-  setup/          # Shell detection, RC file management
+  config/         # Configuration loading, registry (~/.wtf/repos.json), .wt-forge.toml
+  setup/          # Project setup automation, shell detection, env file handling
 docs/             # One markdown file per command
 ```
 

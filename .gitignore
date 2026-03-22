@@ -31,3 +31,6 @@ go.work.sum
 # .idea/
 # .vscode/
 bin/
+
+# wt-forge config (user-specific)
+.wt-forge.toml
