@@ -5,12 +5,13 @@ vars:
   BUILD_DIR: bin
   COVER_PROFILE: coverage.out
   MIN_COVERAGE: 90
+  VERSION: 0.1.0
 
 tasks:
   build:
     desc: Build the binary
     cmds:
-      - go build -o {{.BUILD_DIR}}/{{.BINARY}} ./cmd/wtf
+      - go build -ldflags "-X github.com/AndrewPBerg/wtf/internal/cli.Version={{.VERSION}}" -o {{.BUILD_DIR}}/{{.BINARY}} ./cmd/wtf
 
   test:
     desc: Run all tests
