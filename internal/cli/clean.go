@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/spf13/cobra"
@@ -30,6 +31,11 @@ func runClean(cmd *cobra.Command, wm *git.WorktreeManager, exec git.Executor) er
 	dir, err := getRepoDir()
 	if err != nil {
 		return err
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("getting working directory: %w", err)
 	}
 
 	wts, err := wm.List(dir)
@@ -82,7 +88,7 @@ func runClean(cmd *cobra.Command, wm *git.WorktreeManager, exec git.Executor) er
 			continue
 		}
 
-		if err := wm.Remove(dir, wt.Branch, cleanForce); err != nil {
+		if err := wm.Remove(dir, wt.Branch, cwd, cleanForce); err != nil {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s Could not remove %s: %v\n", yellow("⚠"), cyan(wt.Branch), err)
 			continue
 		}

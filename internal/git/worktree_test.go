@@ -206,7 +206,7 @@ func TestWorktreeManager_Remove_Integration(t *testing.T) {
 	_, err := wm.Add(dir, "to-remove", "main")
 	require.NoError(t, err)
 
-	err = wm.Remove(dir, "to-remove", false)
+	err = wm.Remove(dir, "to-remove", "/somewhere-else", false)
 	require.NoError(t, err)
 
 	wts, err := wm.List(dir)
@@ -218,7 +218,7 @@ func TestWorktreeManager_Remove_Main(t *testing.T) {
 	dir := initTestRepo(t)
 	wm := NewWorktreeManager(&RealExecutor{})
 
-	err := wm.Remove(dir, "main", false)
+	err := wm.Remove(dir, "main", "/somewhere-else", false)
 	assert.ErrorIs(t, err, ErrMainWorktree)
 }
 

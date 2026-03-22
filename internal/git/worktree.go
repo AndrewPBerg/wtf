@@ -9,9 +9,12 @@ import (
 
 // Sentinel errors for worktree operations.
 var (
-	ErrWorktreeNotFound = errors.New("no matching worktree found")
-	ErrMultipleMatches  = errors.New("multiple worktrees match query")
-	ErrMainWorktree     = errors.New("cannot remove main worktree")
+	ErrWorktreeNotFound     = errors.New("no matching worktree found")
+	ErrMultipleMatches      = errors.New("multiple worktrees match query")
+	ErrMainWorktree         = errors.New("cannot remove main worktree")
+	ErrWorktreeIsCurrentDir = errors.New("cannot remove worktree for the currently checked out branch")
+	ErrBranchAlreadyInUse   = errors.New("branch is already checked out")
+	ErrPathAlreadyExists    = errors.New("worktree path already exists")
 )
 
 // Worktree represents a single git worktree entry.
@@ -80,6 +83,20 @@ func (wm *WorktreeManager) Add(dir, branch, base string) (string, error) {
 	}
 
 	if _, err := wm.executor.Run(dir, args...); err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "is already used by worktree") {
+			// Extract the worktree path from git's error message
+			if idx := strings.Index(errMsg, "already used by worktree at '"); idx != -1 {
+				rest := errMsg[idx+len("already used by worktree at '"):]
+				if end := strings.Index(rest, "'"); end != -1 {
+					return "", fmt.Errorf("%w: '%s' is already used by worktree at %s", ErrBranchAlreadyInUse, branch, rest[:end])
+				}
+			}
+			return "", fmt.Errorf("%w: '%s'", ErrBranchAlreadyInUse, branch)
+		}
+		if strings.Contains(errMsg, "already exists") {
+			return "", fmt.Errorf("%w: '%s'", ErrPathAlreadyExists, wtPath)
+		}
 		return "", fmt.Errorf("adding worktree: %w", err)
 	}
 
@@ -116,7 +133,9 @@ func (wm *WorktreeManager) Find(dir, query string) (Worktree, error) {
 }
 
 // Remove removes a worktree and optionally deletes the branch.
-func (wm *WorktreeManager) Remove(dir, branch string, force bool) error {
+// cwd is the caller's current working directory; removal is blocked if
+// cwd falls inside the target worktree.
+func (wm *WorktreeManager) Remove(dir, branch, cwd string, force bool) error {
 	wt, err := wm.Find(dir, branch)
 	if err != nil {
 		return fmt.Errorf("finding worktree: %w", err)
@@ -124,6 +143,10 @@ func (wm *WorktreeManager) Remove(dir, branch string, force bool) error {
 
 	if wt.IsMain {
 		return ErrMainWorktree
+	}
+
+	if isInsideWorktree(cwd, wt.Path) {
+		return ErrWorktreeIsCurrentDir
 	}
 
 	args := []string{"worktree", "remove", wt.Path}
@@ -189,6 +212,18 @@ func parseWorktreeList(output string) ([]Worktree, error) {
 	}
 
 	return worktrees, nil
+}
+
+// isInsideWorktree reports whether cwd is equal to or a subdirectory of wtPath.
+func isInsideWorktree(cwd, wtPath string) bool {
+	// Clean both paths so trailing slashes, ".." etc. are normalised.
+	cwd = filepath.Clean(cwd)
+	wtPath = filepath.Clean(wtPath)
+
+	if cwd == wtPath {
+		return true
+	}
+	return strings.HasPrefix(cwd, wtPath+string(filepath.Separator))
 }
 
 // WorktreePath computes the sibling worktree directory path.

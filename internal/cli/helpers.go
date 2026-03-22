@@ -56,6 +56,15 @@ func FormatError(err error) string {
 	case errors.Is(err, git.ErrBranchAlreadyExists):
 		return fmt.Sprintf("%s %s", redBold("wtf?"), err.Error())
 
+	case errors.Is(err, git.ErrPathAlreadyExists):
+		return fmt.Sprintf(
+			"%s something's already squatting at that path\n  %s %s\n  %s nuke it or pick a different name",
+			redBold("wtf?"),
+			dim("path:"),
+			err.Error(),
+			dim("hint:"),
+		)
+
 	case errors.Is(err, git.ErrInvalidBranchName):
 		return fmt.Sprintf(
 			"%s %s\n  %s branch names must be valid git refs",

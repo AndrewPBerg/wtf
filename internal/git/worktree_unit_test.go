@@ -58,6 +58,41 @@ func TestWorktreeManager_Add_WorktreeAddError(t *testing.T) {
 	assert.ErrorContains(t, err, "adding worktree")
 }
 
+func TestWorktreeManager_Add_BranchAlreadyCheckedOut(t *testing.T) {
+	mock := newMockExecutor()
+	mock.on("worktree list --porcelain", "worktree /repo\nHEAD abc\nbranch refs/heads/main\n", nil)
+	mock.on("branch --list main", "  main", nil)
+	mock.on("worktree add /repo--main main", "", fmt.Errorf("exit status 128: Preparing worktree (checking out 'main')\nfatal: 'main' is already used by worktree at '/repo'"))
+
+	wm := NewWorktreeManager(mock)
+	_, err := wm.Add("/repo", "main", "main")
+	assert.ErrorIs(t, err, ErrBranchAlreadyInUse)
+	assert.ErrorContains(t, err, "already used by worktree at /repo")
+}
+
+func TestWorktreeManager_Add_BranchAlreadyCheckedOutNoPath(t *testing.T) {
+	mock := newMockExecutor()
+	mock.on("worktree list --porcelain", "worktree /repo\nHEAD abc\nbranch refs/heads/main\n", nil)
+	mock.on("branch --list main", "  main", nil)
+	mock.on("worktree add /repo--main main", "", fmt.Errorf("is already used by worktree"))
+
+	wm := NewWorktreeManager(mock)
+	_, err := wm.Add("/repo", "main", "main")
+	assert.ErrorIs(t, err, ErrBranchAlreadyInUse)
+}
+
+func TestWorktreeManager_Add_PathAlreadyExists(t *testing.T) {
+	mock := newMockExecutor()
+	mock.on("worktree list --porcelain", "worktree /repo\nHEAD abc\nbranch refs/heads/main\n", nil)
+	mock.on("branch --list feat", "", nil) // branch doesn't exist
+	mock.on("worktree add -b feat /repo--feat main", "", fmt.Errorf("exit status 128: Preparing worktree (checking out 'feat')\nfatal: '/repo--feat' already exists"))
+
+	wm := NewWorktreeManager(mock)
+	_, err := wm.Add("/repo", "feat", "main")
+	assert.ErrorIs(t, err, ErrPathAlreadyExists)
+	assert.ErrorContains(t, err, "/repo--feat")
+}
+
 func TestWorktreeManager_Remove_ForceFlags(t *testing.T) {
 	dir := initTestRepo(t)
 	wm := NewWorktreeManager(&RealExecutor{})
@@ -65,7 +100,7 @@ func TestWorktreeManager_Remove_ForceFlags(t *testing.T) {
 	_, err := wm.Add(dir, "force-test", "main")
 	assert.NoError(t, err)
 
-	err = wm.Remove(dir, "force-test", true)
+	err = wm.Remove(dir, "force-test", "/somewhere-else", true)
 	assert.NoError(t, err)
 }
 
@@ -74,7 +109,7 @@ func TestWorktreeManager_Remove_FindError(t *testing.T) {
 	mock.on("worktree list --porcelain", "", fmt.Errorf("fail"))
 
 	wm := NewWorktreeManager(mock)
-	err := wm.Remove("/repo", "feat", false)
+	err := wm.Remove("/repo", "feat", "/somewhere-else", false)
 	assert.ErrorContains(t, err, "finding worktree")
 }
 
@@ -84,7 +119,7 @@ func TestWorktreeManager_Remove_RemoveError(t *testing.T) {
 	mock.on("worktree remove /repo--feat", "", fmt.Errorf("dirty"))
 
 	wm := NewWorktreeManager(mock)
-	err := wm.Remove("/repo", "feat", false)
+	err := wm.Remove("/repo", "feat", "/somewhere-else", false)
 	assert.ErrorContains(t, err, "removing worktree")
 }
 
@@ -95,6 +130,24 @@ func TestWorktreeManager_Remove_BranchDeleteError(t *testing.T) {
 	mock.on("branch -d feat", "", fmt.Errorf("not merged"))
 
 	wm := NewWorktreeManager(mock)
-	err := wm.Remove("/repo", "feat", false)
+	err := wm.Remove("/repo", "feat", "/somewhere-else", false)
 	assert.ErrorContains(t, err, "deleting branch")
+}
+
+func TestWorktreeManager_Remove_BlocksCurrentDir(t *testing.T) {
+	mock := newMockExecutor()
+	mock.on("worktree list --porcelain", "worktree /repo\nHEAD abc\nbranch refs/heads/main\n\nworktree /repo--feat\nHEAD def\nbranch refs/heads/feat\n", nil)
+
+	wm := NewWorktreeManager(mock)
+	err := wm.Remove("/repo", "feat", "/repo--feat", false)
+	assert.ErrorIs(t, err, ErrWorktreeIsCurrentDir)
+}
+
+func TestWorktreeManager_Remove_BlocksSubdirOfCurrentDir(t *testing.T) {
+	mock := newMockExecutor()
+	mock.on("worktree list --porcelain", "worktree /repo\nHEAD abc\nbranch refs/heads/main\n\nworktree /repo--feat\nHEAD def\nbranch refs/heads/feat\n", nil)
+
+	wm := NewWorktreeManager(mock)
+	err := wm.Remove("/repo", "feat", "/repo--feat/src/main", false)
+	assert.ErrorIs(t, err, ErrWorktreeIsCurrentDir)
 }
