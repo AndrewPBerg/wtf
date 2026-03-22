@@ -14,5 +14,5 @@ func TestVersionCommand(t *testing.T) {
 
 	err := Execute()
 	assert.NoError(t, err)
-	assert.Contains(t, buf.String(), "wt version")
+	assert.Contains(t, buf.String(), "wtf version")
 }

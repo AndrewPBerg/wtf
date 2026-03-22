@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,6 +15,28 @@ func TestExecute(t *testing.T) {
 }
 
 func TestRootCommandMetadata(t *testing.T) {
-	assert.Equal(t, "wt", rootCmd.Use)
-	assert.Contains(t, rootCmd.Short, "WorkTreeForage")
+	assert.Equal(t, "wtf", rootCmd.Use)
+	assert.Contains(t, rootCmd.Short, "WorkTreeForge")
+}
+
+func TestHelpFlag(t *testing.T) {
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetArgs([]string{"--help"})
+
+	err := Execute()
+	assert.NoError(t, err)
+	output := buf.String()
+	assert.Contains(t, output, "WorkTreeForge")
+	assert.Contains(t, output, "Commands:")
+}
+
+func TestVersionFlag(t *testing.T) {
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetArgs([]string{"--version"})
+
+	err := Execute()
+	assert.NoError(t, err)
+	assert.Contains(t, buf.String(), "version")
 }

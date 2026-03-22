@@ -1,7 +1,7 @@
 version: '3'
 
 vars:
-  BINARY: wt
+  BINARY: wtf
   BUILD_DIR: bin
   COVER_PROFILE: coverage.out
   MIN_COVERAGE: 90
@@ -10,7 +10,7 @@ tasks:
   build:
     desc: Build the binary
     cmds:
-      - go build -o {{.BUILD_DIR}}/{{.BINARY}} ./cmd/wt
+      - go build -o {{.BUILD_DIR}}/{{.BINARY}} ./cmd/wtf
 
   test:
     desc: Run all tests
