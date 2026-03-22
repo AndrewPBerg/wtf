@@ -183,6 +183,34 @@ func TestGenerateDefaultConfig_NoSetupWithoutInstallCmd(t *testing.T) {
 	assert.NotContains(t, out, "[[setup]]")
 }
 
+func TestLoadProjectConfig_PRHooks(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+[hooks]
+on_create = ["echo created"]
+on_pr_create = ["echo pr-created"]
+on_pr_switch = ["echo pr-switched"]
+on_pr_delete = ["echo pr-deleted"]
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ProjectConfigFile), []byte(content), 0o644))
+
+	cfg, err := LoadProjectConfig(dir)
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+
+	assert.Equal(t, []string{"echo created"}, cfg.Hooks.OnCreate)
+	assert.Equal(t, []string{"echo pr-created"}, cfg.Hooks.OnPRCreate)
+	assert.Equal(t, []string{"echo pr-switched"}, cfg.Hooks.OnPRSwitch)
+	assert.Equal(t, []string{"echo pr-deleted"}, cfg.Hooks.OnPRDelete)
+}
+
+func TestGenerateDefaultConfig_ContainsPRHookComments(t *testing.T) {
+	out := GenerateDefaultConfig(DefaultConfigOptions{})
+	assert.Contains(t, out, "# on_pr_create")
+	assert.Contains(t, out, "# on_pr_switch")
+	assert.Contains(t, out, "# on_pr_delete")
+}
+
 func TestGenerateDefaultConfig_IsValidTOML(t *testing.T) {
 	out := GenerateDefaultConfig(DefaultConfigOptions{
 		InstallCmd: "npm install",

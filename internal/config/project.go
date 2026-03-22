@@ -41,9 +41,12 @@ type SetupStep struct {
 
 // HooksConfig configures lifecycle hooks.
 type HooksConfig struct {
-	OnCreate []string `toml:"on_create"`
-	OnSwitch []string `toml:"on_switch"`
-	OnRemove []string `toml:"on_remove"`
+	OnCreate   []string `toml:"on_create"`
+	OnSwitch   []string `toml:"on_switch"`
+	OnRemove   []string `toml:"on_remove"`
+	OnPRCreate []string `toml:"on_pr_create"`
+	OnPRSwitch []string `toml:"on_pr_switch"`
+	OnPRDelete []string `toml:"on_pr_delete"`
 }
 
 // LoadProjectConfig loads the project config from the given directory.
@@ -114,6 +117,9 @@ func GenerateDefaultConfig(opts DefaultConfigOptions) string {
 	b.WriteString("# on_create = []\n")
 	b.WriteString("# on_switch = []\n")
 	b.WriteString("# on_remove = []\n")
+	b.WriteString("# on_pr_create = []\n")
+	b.WriteString("# on_pr_switch = []\n")
+	b.WriteString("# on_pr_delete = []\n")
 
 	return b.String()
 }

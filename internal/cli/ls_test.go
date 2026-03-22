@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/AndrewPBerg/wtf/internal/config"
+	"github.com/AndrewPBerg/wtf/internal/forge"
 	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -362,4 +363,102 @@ func TestShortHead(t *testing.T) {
 	for _, tt := range tests {
 		assert.Equal(t, tt.want, shortHead(tt.input))
 	}
+}
+
+func TestTruncate(t *testing.T) {
+	tests := []struct {
+		input  string
+		maxLen int
+		want   string
+	}{
+		{"short", 10, "short"},
+		{"exactly10!", 10, "exactly10!"},
+		{"this is a very long string", 10, "this is a…"},
+		{"ab", 1, "…"},
+		{"", 5, ""},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, truncate(tt.input, tt.maxLen))
+	}
+}
+
+func TestReviewStatusIcon(t *testing.T) {
+	tests := []struct {
+		status forge.ReviewStatus
+		want   string
+	}{
+		{forge.ReviewApproved, green("✔")},
+		{forge.ReviewChanges, yellow("✖")},
+		{forge.ReviewPending, dim("○")},
+		{forge.ReviewNone, ""},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, reviewStatusIcon(tt.status))
+	}
+}
+
+func TestBuildRows_WithPRMap(t *testing.T) {
+	wts := []git.Worktree{
+		{Path: "/repo/main", Branch: "main", Head: "abc1234567", IsMain: true},
+		{Path: "/repo/feat", Branch: "feat-1", Head: "def5678901"},
+	}
+	prMap := map[string]forge.PR{
+		"feat-1": {
+			Number: 42,
+			Title:  "Add feature",
+			Author: "alice",
+			URL:    "https://github.com/user/repo/pull/42",
+		},
+	}
+
+	rows := buildRows(wts, "https://github.com/user/repo.git", prMap)
+	require.Len(t, rows, 2)
+
+	// main has no PR
+	assert.Equal(t, 0, rows[0].prNumber)
+
+	// feat-1 has PR
+	assert.Equal(t, 42, rows[1].prNumber)
+	assert.Equal(t, "Add feature", rows[1].prTitle)
+	assert.Equal(t, "alice", rows[1].prAuthor)
+}
+
+func TestBuildRows_NilPRMap(t *testing.T) {
+	wts := []git.Worktree{
+		{Path: "/repo/main", Branch: "main", Head: "abc1234567", IsMain: true},
+	}
+
+	rows := buildRows(wts, "", nil)
+	require.Len(t, rows, 1)
+	assert.Equal(t, 0, rows[0].prNumber)
+}
+
+func TestPrintWorktreeTable_WithPRs(t *testing.T) {
+	buf := new(bytes.Buffer)
+	cmd := lsCmd
+	cmd.SetOut(buf)
+
+	// Enable PR display
+	savedPRs := lsPRs
+	lsPRs = true
+	defer func() { lsPRs = savedPRs }()
+
+	rows := []lsRow{
+		{
+			branch:   "feat-1",
+			path:     "/tmp/test",
+			head:     "abc1234",
+			prNumber: 42,
+			prTitle:  "Add feature",
+			prAuthor: "alice",
+			prURL:    "https://github.com/user/repo/pull/42",
+		},
+	}
+	w := calcWidths(rows)
+	printWorktreeTableWithWidths(cmd, rows, "", w)
+
+	output := buf.String()
+	assert.Contains(t, output, "PR")
+	assert.Contains(t, output, "#42")
+	assert.Contains(t, output, "Add feature")
 }

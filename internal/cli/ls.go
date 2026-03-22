@@ -1,12 +1,16 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/AndrewPBerg/wtf/internal/config"
+	"github.com/AndrewPBerg/wtf/internal/forge"
 	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/spf13/cobra"
 )
@@ -14,13 +18,16 @@ import (
 var (
 	lsJSON   bool
 	lsGlobal bool
+	lsPRs    bool
 )
 
 func init() {
 	lsCmd.Flags().BoolVar(&lsJSON, "json", false, "Output in JSON format")
 	lsCmd.Flags().BoolVarP(&lsGlobal, "global", "g", false, "List worktrees across all registered repos")
+	lsCmd.Flags().BoolVar(&lsPRs, "prs", false, "Show PR status for each worktree")
 	rootCmd.AddCommand(lsCmd)
 	lsgCmd.Flags().BoolVar(&lsJSON, "json", false, "Output in JSON format")
+	lsgCmd.Flags().BoolVar(&lsPRs, "prs", false, "Show PR status for each worktree")
 	rootCmd.AddCommand(lsgCmd)
 }
 
@@ -48,6 +55,13 @@ type lsRow struct {
 	commitURL  string // web URL for the commit (empty if unavailable)
 	isMain     bool
 	isDetached bool
+	// PR fields (populated when --prs is used)
+	prNumber int
+	prTitle  string
+	prAuthor string
+	prURL    string
+	prReview forge.ReviewStatus
+	prDraft  bool
 }
 
 func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
@@ -74,6 +88,19 @@ func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
 	// Best-effort remote URL for commit hyperlinks.
 	remoteURL, _ := wm.RemoteURL(dir)
 
+	// Best-effort PR lookup when --prs is set.
+	var prMap map[string]forge.PR
+	if lsPRs {
+		prMap = fetchPRMap(cmd, remoteURL, dir)
+	}
+
+	rows := buildRows(wts, remoteURL, prMap)
+	printWorktreeTable(cmd, rows, "")
+	return nil
+}
+
+// buildRows converts worktrees and optional PR data into display rows.
+func buildRows(wts []git.Worktree, remoteURL string, prMap map[string]forge.PR) []lsRow {
 	rows := make([]lsRow, len(wts))
 	for i, wt := range wts {
 		branch := wt.Branch
@@ -91,10 +118,80 @@ func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
 			isMain:     wt.IsMain,
 			isDetached: wt.IsDetached,
 		}
+		if pr, ok := prMap[wt.Branch]; ok {
+			rows[i].prNumber = pr.Number
+			rows[i].prTitle = pr.Title
+			rows[i].prAuthor = pr.Author
+			rows[i].prURL = pr.URL
+			rows[i].prReview = pr.ReviewStatus
+			rows[i].prDraft = pr.IsDraft
+		}
+	}
+	return rows
+}
+
+// fetchPRMap fetches open PRs and returns a map keyed by branch name.
+func fetchPRMap(cmd *cobra.Command, remoteURL, dir string) map[string]forge.PR {
+	if remoteURL == "" {
+		return nil
 	}
 
-	printWorktreeTable(cmd, rows, "")
-	return nil
+	f, err := forge.Detect(remoteURL, forge.WithTokenFunc(func() (string, error) {
+		// Best-effort — if no token, we just skip PR info
+		return tryToken(remoteURL)
+	}))
+	if err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s PR info unavailable: %v\n", yellow("⚠"), err)
+		return nil
+	}
+
+	// Try to use cache
+	exec := &git.RealExecutor{}
+	gitCommonDir, gcErr := exec.Run(dir, "rev-parse", "--git-common-dir")
+	if gcErr == nil {
+		f = forge.NewCachedForge(f, gitCommonDir)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	prs, err := f.ListPRs(ctx)
+	if err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s PR info unavailable: %v\n", yellow("⚠"), err)
+		return nil
+	}
+
+	m := make(map[string]forge.PR, len(prs))
+	for _, pr := range prs {
+		m[pr.Branch] = pr
+	}
+	return m
+}
+
+// tryToken attempts to get a token for the given remote URL.
+func tryToken(remoteURL string) (string, error) {
+	if strings.Contains(remoteURL, "github") {
+		return ghTokenSafe()
+	}
+	return glabTokenSafe()
+}
+
+// ghTokenSafe is a non-fatal version of gh auth token.
+func ghTokenSafe() (string, error) {
+	out, err := osexec.Command("gh", "auth", "token").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// glabTokenSafe is a non-fatal version of glab auth token.
+func glabTokenSafe() (string, error) {
+	out, err := osexec.Command("glab", "auth", "token").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // colWidths holds pre-calculated column widths for consistent alignment.
@@ -137,15 +234,20 @@ func printWorktreeTable(cmd *cobra.Command, rows []lsRow, prefix string) {
 // printWorktreeTableWithWidths renders with explicit column widths for cross-table alignment.
 func printWorktreeTableWithWidths(cmd *cobra.Command, rows []lsRow, prefix string, w colWidths) {
 	out := cmd.OutOrStdout()
+	hasPRs := lsPRs
 
 	gap := 2
 	// Header
-	_, _ = fmt.Fprintf(out, "%s%s%s%s\n",
+	header := fmt.Sprintf("%s%s%s%s",
 		prefix,
 		bold(pad("BRANCH", w.branch+gap)),
 		bold(pad("PATH", w.path+gap)),
 		bold("HEAD"),
 	)
+	if hasPRs {
+		header += "  " + bold("PR")
+	}
+	_, _ = fmt.Fprintln(out, header)
 
 	// Data rows
 	for _, r := range rows {
@@ -164,12 +266,50 @@ func printWorktreeTableWithWidths(cmd *cobra.Command, rows []lsRow, prefix strin
 			headStr = hyperlink(r.commitURL, dim(r.head))
 		}
 
-		_, _ = fmt.Fprintf(out, "%s%s%s%s\n",
+		line := fmt.Sprintf("%s%s%s%s",
 			prefix,
 			coloredBranch,
 			pad(r.path, w.path+gap),
 			headStr,
 		)
+
+		if hasPRs && r.prNumber > 0 {
+			prLabel := fmt.Sprintf("#%d", r.prNumber)
+			prStr := hyperlink(r.prURL, cyan(prLabel))
+			title := truncate(r.prTitle, 40)
+			reviewIcon := reviewStatusIcon(r.prReview)
+			if r.prDraft {
+				reviewIcon = dim("draft")
+			}
+			line += fmt.Sprintf("  %s %s %s", prStr, dim(title), reviewIcon)
+		}
+
+		_, _ = fmt.Fprintln(out, line)
+	}
+}
+
+// truncate shortens a string to maxLen, adding "…" if truncated.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 1 {
+		return "…"
+	}
+	return s[:maxLen-1] + "…"
+}
+
+// reviewStatusIcon returns a colored icon for the review status.
+func reviewStatusIcon(status forge.ReviewStatus) string {
+	switch status {
+	case forge.ReviewApproved:
+		return green("✔")
+	case forge.ReviewChanges:
+		return yellow("✖")
+	case forge.ReviewPending:
+		return dim("○")
+	default:
+		return ""
 	}
 }
 
@@ -227,24 +367,13 @@ func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
 		// Best-effort remote URL for commit hyperlinks.
 		remoteURL, _ := wm.RemoteURL(repo)
 
-		rows := make([]lsRow, len(wts))
-		for j, wt := range wts {
-			branch := wt.Branch
-			if wt.IsMain {
-				branch += " *"
-			}
-			if wt.IsDetached {
-				branch = "(detached)"
-			}
-			rows[j] = lsRow{
-				branch:     branch,
-				path:       wt.Path,
-				head:       shortHead(wt.Head),
-				commitURL:  git.CommitURL(remoteURL, wt.Head),
-				isMain:     wt.IsMain,
-				isDetached: wt.IsDetached,
-			}
+		// Best-effort PR lookup when --prs is set.
+		var prMap map[string]forge.PR
+		if lsPRs {
+			prMap = fetchPRMap(cmd, remoteURL, repo)
 		}
+
+		rows := buildRows(wts, remoteURL, prMap)
 		globalW = mergeWidths(globalW, calcWidths(rows))
 		groups = append(groups, repoRows{name: filepath.Base(repo), path: repo, rows: rows, isCurrent: repo == currentRepo})
 	}

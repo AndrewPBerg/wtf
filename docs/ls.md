@@ -5,8 +5,8 @@ List all git worktrees for the current repository, or across all registered repo
 ## Usage
 
 ```bash
-wtf ls [--json] [-g|--global]
-wtf lsg [--json]
+wtf ls [--json] [-g|--global] [--prs]
+wtf lsg [--json] [--prs]
 ```
 
 ## Flags
@@ -15,6 +15,7 @@ wtf lsg [--json]
 |-------------------|------------------------------------------------|
 | `--json`          | Output in JSON format                          |
 | `-g`, `--global`  | List worktrees across all registered repos     |
+| `--prs`           | Show PR status for each worktree               |
 
 `lsg` is a shortcut for `ls -g` (same flags minus `--global`).
 
@@ -61,6 +62,26 @@ $ wtf ls -g --json
   }
 ]
 ```
+
+## PR status (`--prs`)
+
+When `--prs` is set, an additional PR column shows the associated pull request for each worktree branch:
+
+```bash
+$ wtf ls --prs
+BRANCH        PATH                          HEAD      PR
+main *        /code/myrepo                  abc1234
+feature/auth  /code/myrepo--feature-auth    def4567   #42 Add authentication ✔
+fix/login     /code/myrepo--fix-login       ghi7890   #43 Fix login bug ○
+```
+
+PR numbers are clickable hyperlinks (like commit hashes). Review status icons:
+- `✔` approved
+- `✖` changes requested
+- `○` review pending
+- `draft` for draft PRs
+
+PR data is cached (5-minute TTL) for fast subsequent lookups. Requires `gh` or `glab` CLI for authentication.
 
 ## Commit hyperlinks
 
