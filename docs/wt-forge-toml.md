@@ -91,9 +91,22 @@ When no `.wt-forge.toml` exists, `wtf new` still auto-detects the package manage
 
 Lockfiles are checked in priority order:
 
-1. `pnpm-lock.yaml` → `pnpm install`
-2. `bun.lockb` → `bun install`
-3. `yarn.lock` → `yarn install`
-4. `package-lock.json` → `npm install`
-5. `uv.lock` → `uv sync`
-6. `pyproject.toml` → `uv sync`
+| Lockfile | Command |
+|---|---|
+| `pnpm-lock.yaml` | `pnpm install` |
+| `bun.lockb` | `bun install` |
+| `yarn.lock` | `yarn install` |
+| `package-lock.json` | `npm install` |
+| `uv.lock` | `uv sync` |
+| `poetry.lock` | `poetry install` |
+| `requirements.txt` | `pip install -r requirements.txt` |
+| `pyproject.toml` | `uv sync` |
+| `go.sum` | `go mod download` |
+| `Cargo.lock` | `cargo build` |
+| `Gemfile.lock` | `bundle install` |
+| `composer.lock` | `composer install` |
+| `pom.xml` | `mvn install` |
+| `build.gradle` / `build.gradle.kts` | `gradle build` |
+| `packages.lock.json` | `dotnet restore` |
+| `mix.lock` | `mix deps.get` |
+| `Package.resolved` | `swift package resolve` |

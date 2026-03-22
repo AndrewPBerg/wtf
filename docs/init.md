@@ -35,7 +35,7 @@ into the matched worktree directory. All other subcommands pass through to the b
 
 ## Automatic Setup
 
-Instead of editing your profile manually, run `wtf setup` to configure this automatically.
+Instead of editing your profile manually, run `wtf setup shell` to configure this automatically.
 
 ## Examples
 

@@ -68,6 +68,7 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 - [x] `wtf setup` — Re-run setup steps on current worktree (`--env`, `--install`)
 - [x] `wtf setup shell` — Shell integration (moved from `wtf setup`)
+- [x] `wtf config init` — Generate default `.wt-forge.toml` with auto-detection
 ---
 
 ## v0.3.0 — Platform Integration (GitHub & GitLab)
