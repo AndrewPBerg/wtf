@@ -36,12 +36,15 @@ func (m *RCFileManager) RCFilePath(shell Shell) (string, error) {
 }
 
 // InitLine returns the eval line for the given shell.
+// Uses explicit shell argument like Starship: eval "$(wtf init bash)"
 func InitLine(shell Shell) string {
 	switch shell {
 	case Fish:
 		return "wtf init fish | source"
+	case Zsh:
+		return `eval "$(wtf init zsh)"`
 	default:
-		return `eval "$(wtf init)"` //nolint:goconst
+		return `eval "$(wtf init bash)"`
 	}
 }
 

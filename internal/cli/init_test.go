@@ -25,8 +25,13 @@ func TestInitCommand_Bash(t *testing.T) {
 
 	err := runInit(cmd, "bash", detector)
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), `wtf()`)
-	assert.Contains(t, buf.String(), `command wtf "$_c" "$@"`)
+	out := buf.String()
+	assert.Contains(t, out, `wtf()`)
+	assert.Contains(t, out, `command wtf "$_c" "$@"`)
+	// Completions should be embedded
+	assert.Contains(t, out, "# wtf completions")
+	assert.Contains(t, out, "__start_wtf")
+	assert.Contains(t, out, "complete -o default -F __start_wtf wtf")
 }
 
 func TestInitCommand_Zsh(t *testing.T) {
@@ -40,7 +45,10 @@ func TestInitCommand_Zsh(t *testing.T) {
 
 	err := runInit(cmd, "zsh", detector)
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), `wtf()`)
+	out := buf.String()
+	assert.Contains(t, out, `wtf()`)
+	assert.Contains(t, out, "# wtf completions")
+	assert.Contains(t, out, "compdef")
 }
 
 func TestInitCommand_Fish(t *testing.T) {
@@ -54,8 +62,11 @@ func TestInitCommand_Fish(t *testing.T) {
 
 	err := runInit(cmd, "fish", detector)
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "function wtf")
-	assert.Contains(t, buf.String(), "end")
+	out := buf.String()
+	assert.Contains(t, out, "function wtf")
+	assert.Contains(t, out, "end")
+	assert.Contains(t, out, "# wtf completions")
+	assert.Contains(t, out, "complete -c wtf")
 }
 
 func TestInitCommand_InvalidShell(t *testing.T) {

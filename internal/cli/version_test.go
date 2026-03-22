@@ -8,11 +8,14 @@ import (
 )
 
 func TestVersionCommand(t *testing.T) {
-	buf := new(bytes.Buffer)
-	rootCmd.SetOut(buf)
-	rootCmd.SetArgs([]string{"version"})
+	saved := jsonOutput
+	defer func() { jsonOutput = saved }()
+	jsonOutput = false
 
-	err := Execute()
+	buf := new(bytes.Buffer)
+	versionCmd.SetOut(buf)
+
+	err := versionCmd.RunE(versionCmd, nil)
 	assert.NoError(t, err)
 	assert.Contains(t, buf.String(), "wtf version")
 }

@@ -144,6 +144,7 @@ func runSetupShell(cmd *cobra.Command, detector *setup.ShellDetector, rcm *setup
 
 	if present {
 		_, _ = fmt.Fprintf(out, "%s Shell integration already configured in %s\n", greenBold("✔"), cyan(rcPath))
+		_, _ = fmt.Fprintf(out, "%s Tab completions included automatically via %s\n", greenBold("✔"), cyan("wtf init"))
 		return nil
 	}
 
@@ -170,6 +171,7 @@ func runSetupShell(cmd *cobra.Command, detector *setup.ShellDetector, rcm *setup
 	}
 
 	_, _ = fmt.Fprintf(out, "%s Added to %s. Restart your shell or run: %s\n", greenBold("✔"), cyan(rcPath), dim("source "+rcPath))
+	_, _ = fmt.Fprintf(out, "%s Tab completions included automatically via %s\n", greenBold("✔"), cyan("wtf init"))
 	return nil
 }
 

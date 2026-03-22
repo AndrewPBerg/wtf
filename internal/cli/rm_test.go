@@ -2,6 +2,9 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -463,4 +466,61 @@ func TestRmGlobal_MultipleMatches_InvalidSelection(t *testing.T) {
 	// Nothing removed on invalid input
 	assert.Empty(t, stdout.String())
 	assert.Contains(t, stderr.String(), "invalid selection")
+}
+
+func TestRunOnRemoveHooks_NoConfig(t *testing.T) {
+	dir := t.TempDir()
+	cmd := rmCmd
+	cmd.SetErr(new(bytes.Buffer))
+
+	// No config file — should return silently
+	runOnRemoveHooks(cmd, dir, "feature")
+}
+
+func TestRunOnRemoveHooks_WithConfig(t *testing.T) {
+	dir := initCLITestRepo(t)
+
+	cfgContent := `[hooks]
+on_remove = ["true"]
+on_pr_delete = ["true"]
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".wt-forge.toml"), []byte(cfgContent), 0o644))
+
+	stderr := new(bytes.Buffer)
+	cmd := rmCmd
+	cmd.SetErr(stderr)
+
+	runOnRemoveHooks(cmd, dir, "feature")
+	runOnRemoveHooks(cmd, dir, "pr-42")
+}
+
+func TestRunOnRemoveHooks_EmptyHooks(t *testing.T) {
+	dir := initCLITestRepo(t)
+
+	cfgContent := `[hooks]
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".wt-forge.toml"), []byte(cfgContent), 0o644))
+
+	stderr := new(bytes.Buffer)
+	cmd := rmCmd
+	cmd.SetErr(stderr)
+	runOnRemoveHooks(cmd, dir, "feature")
+}
+
+func TestFriendlyError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"has changes", git.ErrWorktreeHasChanges, "has uncommitted changes — use --force to remove anyway"},
+		{"main worktree", git.ErrMainWorktree, "cannot remove main worktree"},
+		{"current dir", git.ErrWorktreeIsCurrentDir, "cannot remove worktree you are currently inside"},
+		{"generic error", fmt.Errorf("some error"), "some error"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, friendlyError(tt.err))
+		})
+	}
 }

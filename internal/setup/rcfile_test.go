@@ -48,8 +48,8 @@ func TestInitLine(t *testing.T) {
 		shell Shell
 		want  string
 	}{
-		{Bash, `eval "$(wtf init)"`},
-		{Zsh, `eval "$(wtf init)"`},
+		{Bash, `eval "$(wtf init bash)"`},
+		{Zsh, `eval "$(wtf init zsh)"`},
 		{Fish, "wtf init fish | source"},
 	}
 
@@ -103,7 +103,7 @@ func TestAppendInit(t *testing.T) {
 		data, err := os.ReadFile(path)
 		require.NoError(t, err)
 		assert.Contains(t, string(data), "WorkTreeForge shell integration")
-		assert.Contains(t, string(data), `eval "$(wtf init)"`)
+		assert.Contains(t, string(data), `eval "$(wtf init bash)"`)
 	})
 
 	t.Run("appends to existing file", func(t *testing.T) {
@@ -115,7 +115,7 @@ func TestAppendInit(t *testing.T) {
 		data, err := os.ReadFile(path)
 		require.NoError(t, err)
 		assert.Contains(t, string(data), "# existing content")
-		assert.Contains(t, string(data), `eval "$(wtf init)"`)
+		assert.Contains(t, string(data), `eval "$(wtf init zsh)"`)
 	})
 
 	t.Run("fish shell", func(t *testing.T) {

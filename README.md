@@ -43,7 +43,7 @@ wtf news feature/auth
 wtf sw auth
 
 # Switch across all registered repos
-wtf sw -G auth
+wtf sw -g auth
 
 # Remove a worktree and its branch
 wtf rm feature/auth
@@ -82,7 +82,7 @@ Generate one automatically with `wtf config init`. See [docs/wt-forge-toml.md](d
 
 ## Shell Integration
 
-`wtf sw` prints the worktree path to stdout (a subprocess can't `cd` your shell). The shell wrapper intercepts `wtf sw` to `cd` automatically.
+`wtf sw` prints the worktree path to stdout (a subprocess can't `cd` your shell). The shell wrapper intercepts `wtf sw` to `cd` automatically. Tab completions are also included — one line handles everything.
 
 ```bash
 # Automatic setup (recommended)
@@ -90,14 +90,17 @@ wtf setup shell
 
 # Or manually add to your profile:
 
-# bash/zsh — ~/.bashrc or ~/.zshrc
-eval "$(wtf init)"
+# bash — ~/.bashrc
+eval "$(wtf init bash)"
+
+# zsh — ~/.zshrc
+eval "$(wtf init zsh)"
 
 # fish — ~/.config/fish/config.fish
 wtf init fish | source
 ```
 
-After setup, `wtf sw auth` will `cd` into the matching worktree directly.
+After setup, `wtf sw auth` will `cd` into the matching worktree directly, and `wtf sw <TAB>` will show available worktrees.
 
 ## Worktree Path Convention
 
@@ -129,8 +132,16 @@ Worktrees are created as sibling directories to the main repo. Slashes in branch
 | `wtf setup`        | Run project setup in current worktree (`--env`, `--install`) |
 | `wtf setup shell`  | Auto-configure shell integration (one-time)            |
 | `wtf config init`  | Generate default `.wt-forge.toml` with auto-detection  |
-| `wtf init`         | Print shell functions for eval/source                  |
-| `wtf completion`   | Generate shell completion script (`--shell`)           |
+| `wtf init`         | Print shell functions + tab completions for eval/source |
+| `wtf completion`   | Generate shell completion script (`--shell`, `--install`) |
+
+### Registry & Monitoring
+
+| Command          | Description                                             |
+|------------------|---------------------------------------------------------|
+| `wtf repos`      | List all registered repos                               |
+| `wtf unregister` | Remove a repo from the registry                         |
+| `wtf watch`      | Watch PRs for changes and send notifications (`-g`, `-i`) |
 
 ### Tooling
 

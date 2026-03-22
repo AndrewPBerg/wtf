@@ -120,7 +120,7 @@ func TestRender_BashZsh(t *testing.T) {
 
 	for _, shell := range []Shell{Bash, Zsh} {
 		t.Run(string(shell), func(t *testing.T) {
-			out := Render(shell, funcs)
+			out := Render(shell, funcs, nil)
 			assert.Contains(t, out, `wtf()`)
 			assert.Contains(t, out, `command wtf "$_c" "$@"`)
 			assert.Contains(t, out, `sw|news`)
@@ -129,7 +129,7 @@ func TestRender_BashZsh(t *testing.T) {
 }
 
 func TestRender_Fish(t *testing.T) {
-	out := Render(Fish, DefaultFuncs())
+	out := Render(Fish, DefaultFuncs(), nil)
 	assert.Contains(t, out, "function wtf")
 	assert.Contains(t, out, "command wtf $_c $argv[2..]")
 	assert.Contains(t, out, "sw news")
@@ -141,9 +141,38 @@ func TestRender_MultipleFuncs(t *testing.T) {
 		{Name: "a", Bash: "a() { echo a; }", Fish: "function a; echo a; end"},
 		{Name: "b", Bash: "b() { echo b; }", Fish: "function b; echo b; end"},
 	}
-	out := Render(Bash, funcs)
+	out := Render(Bash, funcs, nil)
 	assert.Contains(t, out, "a() { echo a; }")
 	assert.Contains(t, out, "b() { echo b; }")
+}
+
+func TestRender_WithCompletionRenderer(t *testing.T) {
+	funcs := []ShellFunc{
+		{Name: "a", Bash: "a() { echo a; }", Fish: "function a; echo a; end"},
+	}
+	cr := func(_ Shell) (string, error) {
+		return "# mock completions\n", nil
+	}
+	out := Render(Bash, funcs, cr)
+	assert.Contains(t, out, "a() { echo a; }")
+	assert.Contains(t, out, "# wtf completions")
+	assert.Contains(t, out, "# mock completions")
+}
+
+func TestRender_CompletionRendererError(t *testing.T) {
+	funcs := DefaultFuncs()
+	cr := func(_ Shell) (string, error) {
+		return "", fmt.Errorf("failed")
+	}
+	out := Render(Bash, funcs, cr)
+	assert.Contains(t, out, `wtf()`)
+	assert.NotContains(t, out, "# wtf completions")
+}
+
+func TestRender_NilCompletionRenderer(t *testing.T) {
+	out := Render(Bash, DefaultFuncs(), nil)
+	assert.Contains(t, out, `wtf()`)
+	assert.NotContains(t, out, "# wtf completions")
 }
 
 func TestDefaultFuncs(t *testing.T) {
@@ -188,6 +217,31 @@ func TestDefaultReadParentComm(t *testing.T) {
 		t.Skip("not on Linux or /proc not available")
 	}
 	assert.NotEmpty(t, comm)
+}
+
+func TestParseShellName(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    Shell
+		wantErr bool
+	}{
+		{"bash", "bash", Bash, false},
+		{"zsh", "zsh", Zsh, false},
+		{"fish", "fish", Fish, false},
+		{"unsupported", "ksh", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseShellName(tt.input)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestDefaultReadParentComm_InvalidPID(t *testing.T) {

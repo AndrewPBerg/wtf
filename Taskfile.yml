@@ -21,16 +21,11 @@ tasks:
   test-coverage:
     desc: Run tests with coverage report, fail below threshold
     cmds:
-      - go test -coverprofile={{.COVER_PROFILE}} ./...
+      # Only measure internal/ packages — cmd/wtf is just the main() entry point.
+      - go test -coverprofile={{.COVER_PROFILE}} ./internal/...
       - go tool cover -func={{.COVER_PROFILE}}
       - go tool cover -html={{.COVER_PROFILE}} -o coverage.html
-      - |
-        COVERAGE=$(go tool cover -func={{.COVER_PROFILE}} | grep total | awk '{print substr($3, 1, length($3)-1)}')
-        echo "Total coverage: ${COVERAGE}%"
-        if [ "$(echo "${COVERAGE} < {{.MIN_COVERAGE}}" | bc)" -eq 1 ]; then
-          echo "FAIL: coverage ${COVERAGE}% is below minimum {{.MIN_COVERAGE}}%"
-          exit 1
-        fi
+      - scripts/coverage-check.sh {{.COVER_PROFILE}} {{.MIN_COVERAGE}}
 
   lint:
     desc: Run golangci-lint

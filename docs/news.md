@@ -6,13 +6,19 @@ Create a new worktree and switch to it in one step. Combines `wtf new` and `wtf 
 
 ```bash
 wtf news <branch> [--base <branch>]
+wtf news --branch <name>
+wtf news --pr <number|branch|title>
 ```
 
 ## Flags
 
-| Flag     | Default | Description                        |
-|----------|---------|------------------------------------|
-| `--base` | `main`  | Base branch to create the worktree from |
+| Flag              | Short | Default | Description                                          |
+|-------------------|-------|---------|------------------------------------------------------|
+| `--base`          |       | `main`  | Base branch to create the worktree from (positional mode only) |
+| `--branch`        | `-b`  |         | Fetch and track an existing remote branch            |
+| `--pr`            | `-P`  |         | Checkout a pull request (number, branch, or title)   |
+
+The three modes (positional branch, `--branch`, `--pr`) are mutually exclusive.
 
 ## What It Does
 
@@ -28,12 +34,26 @@ wtf news <branch> [--base <branch>]
 $ wtf news feature/auth
 /code/myrepo--feature-auth
 ✔ Created worktree at /code/myrepo--feature-auth
-✔ Setup complete
 
 # Create from a specific base branch
 $ wtf news hotfix/bug --base release/2.0
 /code/myrepo--hotfix-bug
 ✔ Created worktree at /code/myrepo--hotfix-bug
+
+# Fetch remote branch and switch
+$ wtf news --branch feature-x
+/code/myrepo--feature-x
+✔ Created worktree at /code/myrepo--feature-x
+
+# Checkout PR and switch
+$ wtf news --pr 42
+/code/myrepo--pr-42
+✔ Checked out #42 → /code/myrepo--pr-42
+
+# Checkout PR by title
+$ wtf news -P "fix login bug"
+/code/myrepo--pr-43
+✔ Checked out #43 → /code/myrepo--pr-43
 ```
 
 ## See Also

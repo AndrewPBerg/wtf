@@ -45,14 +45,18 @@ Shell integration has moved to `wtf setup shell`:
 $ wtf setup shell
 Detected shell: zsh
 RC file: /home/user/.zshrc
-Will add: eval "$(wtf init)"
+Will add: eval "$(wtf init zsh)"
 Proceed? [y/N] y
 ✔ Added to /home/user/.zshrc. Restart your shell or run: source /home/user/.zshrc
+✔ Tab completions included automatically via wtf init
 ```
+
+This single line handles both the shell wrapper (for `wtf sw` / `wtf news` to `cd` automatically) and tab completions for all commands.
 
 If already configured:
 
 ```bash
 $ wtf setup shell
 ✔ Shell integration already configured in /home/user/.zshrc
+✔ Tab completions included automatically via wtf init
 ```

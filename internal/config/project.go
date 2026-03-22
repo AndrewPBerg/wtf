@@ -18,6 +18,13 @@ type ProjectConfig struct {
 	Env      EnvConfig      `toml:"env"`
 	Setup    []SetupStep    `toml:"setup"`
 	Hooks    HooksConfig    `toml:"hooks"`
+	Watch    WatchConfig    `toml:"watch"`
+}
+
+// WatchConfig configures the watch command behavior.
+type WatchConfig struct {
+	Interval int   `toml:"interval"` // poll interval in seconds; 0 = use default (60)
+	Desktop  *bool `toml:"desktop"`  // nil = auto-detect; false = terminal only
 }
 
 // WorktreeConfig configures worktree behavior.
@@ -41,9 +48,12 @@ type SetupStep struct {
 
 // HooksConfig configures lifecycle hooks.
 type HooksConfig struct {
-	OnCreate []string `toml:"on_create"`
-	OnSwitch []string `toml:"on_switch"`
-	OnRemove []string `toml:"on_remove"`
+	OnCreate   []string `toml:"on_create"`
+	OnSwitch   []string `toml:"on_switch"`
+	OnRemove   []string `toml:"on_remove"`
+	OnPRCreate []string `toml:"on_pr_create"`
+	OnPRSwitch []string `toml:"on_pr_switch"`
+	OnPRDelete []string `toml:"on_pr_delete"`
 }
 
 // LoadProjectConfig loads the project config from the given directory.
@@ -91,7 +101,7 @@ func GenerateDefaultConfig(opts DefaultConfigOptions) string {
 	var b strings.Builder
 
 	b.WriteString("[worktree]\n")
-	b.WriteString(fmt.Sprintf("default_base = %q\n", opts.DefaultBase))
+	fmt.Fprintf(&b, "default_base = %q\n", opts.DefaultBase)
 
 	b.WriteString("\n[env]\n")
 	b.WriteString("strategy = \"symlink\"\n")
@@ -100,20 +110,27 @@ func GenerateDefaultConfig(opts DefaultConfigOptions) string {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString(fmt.Sprintf("%q", f))
+		fmt.Fprintf(&b, "%q", f)
 	}
 	b.WriteString("]\n")
 
 	if opts.InstallCmd != "" {
 		b.WriteString("\n[[setup]]\n")
 		b.WriteString("name = \"Install dependencies\"\n")
-		b.WriteString(fmt.Sprintf("run = %q\n", opts.InstallCmd))
+		fmt.Fprintf(&b, "run = %q\n", opts.InstallCmd)
 	}
 
 	b.WriteString("\n[hooks]\n")
 	b.WriteString("# on_create = []\n")
 	b.WriteString("# on_switch = []\n")
 	b.WriteString("# on_remove = []\n")
+	b.WriteString("# on_pr_create = []\n")
+	b.WriteString("# on_pr_switch = []\n")
+	b.WriteString("# on_pr_delete = []\n")
+
+	b.WriteString("\n[watch]\n")
+	b.WriteString("# interval = 60\n")
+	b.WriteString("# desktop = true\n")
 
 	return b.String()
 }

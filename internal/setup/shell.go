@@ -66,6 +66,11 @@ func (d *ShellDetector) Detect(override string) (Shell, error) {
 	return "", fmt.Errorf("could not detect shell: set $SHELL or pass shell name as argument")
 }
 
+// ParseShellName parses a shell name string into a Shell type.
+func ParseShellName(name string) (Shell, error) {
+	return parseShell(name)
+}
+
 func parseShell(name string) (Shell, error) {
 	switch strings.TrimPrefix(strings.ToLower(name), "-") {
 	case "bash":
@@ -105,8 +110,13 @@ func DefaultFuncs() []ShellFunc {
 	}
 }
 
+// CompletionRenderer generates a shell completion script for the given shell.
+// Used by Render to optionally append tab-completion support.
+type CompletionRenderer func(shell Shell) (string, error)
+
 // Render emits all shell functions for the given shell.
-func Render(shell Shell, funcs []ShellFunc) string {
+// If cr is non-nil, it also appends shell completion scripts.
+func Render(shell Shell, funcs []ShellFunc, cr CompletionRenderer) string {
 	var b strings.Builder
 	for i, f := range funcs {
 		if i > 0 {
@@ -120,5 +130,14 @@ func Render(shell Shell, funcs []ShellFunc) string {
 		}
 		b.WriteString("\n")
 	}
+
+	if cr != nil {
+		completion, err := cr(shell)
+		if err == nil && completion != "" {
+			b.WriteString("\n# wtf completions\n")
+			b.WriteString(completion)
+		}
+	}
+
 	return b.String()
 }

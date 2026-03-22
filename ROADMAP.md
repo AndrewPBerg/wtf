@@ -82,26 +82,29 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 ### Features
 
-- [ ] Forge auto-detection from origin remote URL:
+- [x] Forge auto-detection from origin remote URL:
   - `github.com` → GitHub API via `gh` token
   - `gitlab.com` → GitLab API via `glab` token
-- [ ] Auth: reuse existing `gh` / `glab` tokens, no custom credential management
-- [ ] PR list cache (TTL 5m, `.git/wtf/pr-cache.json`, stale-while-revalidate)
-- [ ] `wtf ls --prs` shows PR number, title, author, age, review status
+- [x] Auth: reuse existing `gh` / `glab` tokens, no custom credential management
+- [x] Lazy-loading PR cache (`.git/wtf/pr-cache.json`, instant render + background revalidation)
+- [x] `wtf ls --prs` shows PR number, title, author, review status with lazy loading
 
 ### Commands
 
-- [ ] `wtf pr <number|branch>` — Checkout a PR as a worktree
-- [ ] `wtf ls --prs` — List worktrees with PR status inline
-- [ ] add special hook into the .worktree-forge.toml for on-pr-create on-pr-switch on-pr-delete
+- [x] `wtf pr <number|branch>` — Checkout a PR as a worktree
+- [x] `wtf ls --prs` — List worktrees with PR status inline (lazy-loaded)
+- [x] add special hook into the .worktree-forge.toml for on-pr-create on-pr-switch on-pr-delete
+- [x] news isn't working as expected
 
 ### Completions
 
-- [ ] `wtf pr <TAB>` → open PRs with number, branch, author, age
-- [ ] `wtf sw <TAB>` → active worktrees
-- [ ] `wtf rm <TAB>` → active worktrees
-- [ ] `wtf new <TAB>` → remote branches not yet checked out
-- [ ] `wtf clean <TAB>` → merged/stale worktrees
+- [x] `wtf pr <TAB>` → open PRs with number, branch, author, age
+- [x] `wtf sw <TAB>` → active worktrees
+- [x] `wtf rm <TAB>` → active worktrees
+- [x] `wtf new <TAB>` → remote branches not yet checked out
+- [x] `wtf clean <TAB>` → merged/stale worktrees
+- [x] `wtf init` embeds completions inline — `eval "$(wtf init)"` handles everything
+- [x] `wtf completion --install` writes to standard user-local path
 
 ---
 
@@ -116,19 +119,18 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 ### Features
 
-- [ ] `--json` flag on all commands (machine-readable, stable schema)
-- [ ] Background branch/PR cache refresh
+- [ ] `--json` flag on all commands (machine-readable, stable schema), alias `-j`
 - [ ] CONTRIBUTING.md and docs/ complete
-- [ ] GitHub Actions CI with coverage gate and lint
+- [ ] add a pr watch funcationality for repos, could be global too for notifications you are subscribed to w/ native Notifivations from the process
 
 ### Commands
 
-- [ ] `wtf completions <shell>` — Generate shell completion script (bash, zsh, fish)
+- [x] `wtf completion <shell>` — Generate shell completion script (bash, zsh, fish, powershell)
 - [ ] `wtf doctor` — Verify environment health (git, gh/glab, tokens)
 
 ### Internals
 
-- [ ] Completion dynamic hooks for branch and PR names
+- [x] Completion dynamic hooks for branch and PR names
 - [ ] JSON output layer across all commands
 
 ---

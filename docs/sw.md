@@ -17,14 +17,14 @@ wtf swg <query>
 
 `swg` is a shortcut for `sw -g`.
 
-Since a subprocess can't change the parent shell's directory, `wtf sw` prints the path. Use `wtf setup` for automatic configuration, or see `wtf init --help` for manual setup.
+Since a subprocess can't change the parent shell's directory, `wtf sw` prints the path. Use `wtf setup shell` for automatic configuration, or see `wtf init --help` for manual setup.
 
 ```bash
-# Automatic setup (recommended)
-wtf setup
+# Automatic setup (recommended — includes tab completions)
+wtf setup shell
 
 # Or manually add to ~/.bashrc or ~/.zshrc
-eval "$(wtf init)"
+eval "$(wtf init bash)"
 ```
 
 ## Matching Behavior

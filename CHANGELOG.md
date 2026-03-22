@@ -2,6 +2,14 @@
 
 All notable changes to WorkTreeForge (wtf) will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Automatic tab completions via `wtf init`** — `eval "$(wtf init)"` now includes both the shell wrapper and tab completions. No separate completion script needed.
+- **Dynamic completions** for `wtf sw`, `wtf rm`, `wtf new`, and `wtf clean` (active worktrees, remote branches, merged/prunable worktrees, open PRs)
+- **`wtf completion --install`** — Write completion file to standard user-local path as an alternative to inline completions
+
 ## [0.2.0] — 2026-03-21
 
 ### Added
