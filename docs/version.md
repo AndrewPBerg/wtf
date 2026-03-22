@@ -1,0 +1,20 @@
+# wtf version
+
+Print the current version of wtf.
+
+## Usage
+
+```bash
+wtf version
+```
+
+## Examples
+
+```bash
+$ wtf version
+wtf version v0.1.0
+```
+
+## Build-time Version
+
+The version string is set at build time via Go linker flags (`-ldflags`). When installed from source without flags, the version displays as `dev`.

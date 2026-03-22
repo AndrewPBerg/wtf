@@ -13,6 +13,9 @@ go install github.com/AndrewPBerg/wtf/cmd/wtf@latest
 ## Quickstart
 
 ```bash
+# Set up shell integration (one-time)
+wtf setup
+
 # List all worktrees
 wtf ls
 
@@ -20,9 +23,11 @@ wtf ls
 wtf new feature/auth
 # Created worktree at /code/myrepo--feature-auth
 
-# Switch to a worktree (prints path — see shell wrapper below)
+# Switch to a worktree (cd's automatically with shell wrapper)
 wtf sw auth
-# /code/myrepo--feature-auth
+
+# Switch across all registered repos
+wtf sw -G auth
 
 # Remove a worktree and its branch
 wtf rm feature/auth
@@ -32,19 +37,24 @@ wtf clean --dry-run
 wtf clean
 ```
 
-## Shell Wrapper
+## Shell Integration
 
-`wtf sw` prints the worktree path to stdout (a subprocess can't `cd` your shell). Add this wrapper to your shell profile:
+`wtf sw` prints the worktree path to stdout (a subprocess can't `cd` your shell). The shell wrapper intercepts `wtf sw` to `cd` automatically.
 
 ```bash
 # Automatic setup (recommended)
 wtf setup
 
-# Or manually add to ~/.bashrc or ~/.zshrc
+# Or manually add to your profile:
+
+# bash/zsh — ~/.bashrc or ~/.zshrc
 eval "$(wtf init)"
+
+# fish — ~/.config/fish/config.fish
+wtf init fish | source
 ```
 
-Then use `sw auth` to cd into the matching worktree.
+After setup, `wtf sw auth` will `cd` into the matching worktree directly.
 
 ## Worktree Path Convention
 
@@ -58,13 +68,31 @@ Worktrees are created as sibling directories to the main repo. Slashes in branch
 
 ## Commands
 
-| Command     | Description                                 |
-|-------------|---------------------------------------------|
-| `wtf ls`    | List worktrees (`--json`, `--global`)       |
-| `wtf new`   | Create a worktree (`--base` to set origin)  |
-| `wtf sw`    | Switch to a worktree (substring match)      |
-| `wtf rm`    | Remove a worktree and branch (`--force`)    |
-| `wtf clean` | Remove merged/prunable worktrees            |
+### Worktree Operations
+
+| Command     | Description                                          |
+|-------------|------------------------------------------------------|
+| `wtf ls`    | List worktrees (`--json`, `--global`)                |
+| `wtf new`   | Create a worktree (`--base` to set origin branch)    |
+| `wtf sw`    | Switch to a worktree (`--global` to search all repos)|
+| `wtf rm`    | Remove a worktree and branch (`--force`)             |
+| `wtf clean` | Remove merged/prunable worktrees (`--dry-run`)       |
+
+### Shell & Setup
+
+| Command          | Description                                      |
+|------------------|--------------------------------------------------|
+| `wtf init`       | Print shell functions for eval/source            |
+| `wtf setup`      | Auto-configure shell integration                 |
+| `wtf completion` | Generate shell completion script (`--shell`)     |
+
+### Tooling
+
+| Command          | Description                                      |
+|------------------|--------------------------------------------------|
+| `wtf version`    | Print version                                    |
+| `wtf update`     | Update to the latest version                     |
+| `wtf uninstall`  | Remove the wtf binary (`--force` to skip prompt) |
 
 See [docs/](docs/) for detailed command documentation.
 

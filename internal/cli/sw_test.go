@@ -3,9 +3,12 @@ package cli
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -160,4 +163,115 @@ func TestFuzzyFilter_SingleCharQueryReturnsNil(t *testing.T) {
 func TestFuzzyScore_FullMatch(t *testing.T) {
 	score := fuzzyScore("abcdef", "abcdef")
 	assert.Equal(t, 6, score)
+}
+
+// setupGlobalRegistry sets WTF_HOME to a temp dir and registers the given repos.
+func setupGlobalRegistry(t *testing.T, repos []string) {
+	t.Helper()
+	wtfHome := filepath.Join(t.TempDir(), ".wtf")
+	t.Setenv("WTF_HOME", wtfHome)
+	require.NoError(t, os.MkdirAll(wtfHome, 0o755))
+	for _, r := range repos {
+		require.NoError(t, config.Add(r))
+	}
+}
+
+func TestSwGlobal_FindsWorktreeAcrossRepos(t *testing.T) {
+	repo1 := initCLITestRepo(t)
+	repo2 := initCLITestRepo(t)
+	setupGlobalRegistry(t, []string{repo1, repo2})
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	_, err := wm.Add(repo2, "feature-global", "main")
+	require.NoError(t, err)
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := swCmd
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+
+	err = runSwGlobal(cmd, "global", wm)
+	require.NoError(t, err)
+
+	assert.Contains(t, stdout.String(), "feature-global")
+	assert.Contains(t, stderr.String(), "Switched to")
+}
+
+func TestSwGlobal_NoMatch(t *testing.T) {
+	repo := initCLITestRepo(t)
+	setupGlobalRegistry(t, []string{repo})
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := swCmd
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+
+	err := runSwGlobal(cmd, "nonexistent", wm)
+	assert.Error(t, err)
+	assert.Contains(t, stderr.String(), "error:")
+	assert.Contains(t, stderr.String(), "nonexistent")
+}
+
+func TestSwGlobal_MultipleMatches(t *testing.T) {
+	repo1 := initCLITestRepo(t)
+	repo2 := initCLITestRepo(t)
+	setupGlobalRegistry(t, []string{repo1, repo2})
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	// Create worktrees with the same branch name in both repos
+	_, err := wm.Add(repo1, "feature-dup", "main")
+	require.NoError(t, err)
+	_, err = wm.Add(repo2, "feature-dup", "main")
+	require.NoError(t, err)
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := swCmd
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+
+	err = runSwGlobal(cmd, "dup", wm)
+	assert.Error(t, err)
+	assert.Contains(t, stderr.String(), "multiple")
+}
+
+func TestSwGlobal_NoRepos(t *testing.T) {
+	setupGlobalRegistry(t, []string{})
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := swCmd
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+
+	err := runSwGlobal(cmd, "anything", wm)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no registered repos")
+}
+
+func TestSwGlobal_FuzzySuggestions(t *testing.T) {
+	repo := initCLITestRepo(t)
+	setupGlobalRegistry(t, []string{repo})
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	_, err := wm.Add(repo, "feature-auth", "main")
+	require.NoError(t, err)
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := swCmd
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+
+	err = runSwGlobal(cmd, "feath", wm)
+	assert.Error(t, err)
+	stderrStr := stderr.String()
+	assert.Contains(t, stderrStr, "error:")
+	assert.True(t, strings.Contains(stderrStr, "Did you mean?") || strings.Contains(stderrStr, "feature-auth"))
 }

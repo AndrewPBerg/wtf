@@ -20,6 +20,17 @@ func init() {
 	lsCmd.Flags().BoolVar(&lsJSON, "json", false, "Output in JSON format")
 	lsCmd.Flags().BoolVarP(&lsGlobal, "global", "g", false, "List worktrees across all registered repos")
 	rootCmd.AddCommand(lsCmd)
+	lsgCmd.Flags().BoolVar(&lsJSON, "json", false, "Output in JSON format")
+	rootCmd.AddCommand(lsgCmd)
+}
+
+var lsgCmd = &cobra.Command{
+	Use:   "lsg",
+	Short: "List all worktrees globally (shortcut for ls -g)",
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		lsGlobal = true
+		return runLs(cmd, git.NewWorktreeManager(&git.RealExecutor{}))
+	},
 }
 
 var lsCmd = &cobra.Command{

@@ -4,12 +4,27 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/spf13/cobra"
 )
 
+var swGlobal bool
+
 func init() {
+	swCmd.Flags().BoolVarP(&swGlobal, "global", "g", false, "Search across all registered repos")
 	rootCmd.AddCommand(swCmd)
+	rootCmd.AddCommand(swgCmd)
+}
+
+var swgCmd = &cobra.Command{
+	Use:   "swg <branch>",
+	Short: "Switch to a worktree globally (shortcut for sw -g)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		wm := git.NewWorktreeManager(&git.RealExecutor{})
+		return runSwGlobal(cmd, args[0], wm)
+	},
 }
 
 var swCmd = &cobra.Command{
@@ -29,7 +44,11 @@ Or add this to your shell profile manually:
 See 'wtf init --help' and 'wtf setup --help' for details.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runSw(cmd, args[0], git.NewWorktreeManager(&git.RealExecutor{}))
+		wm := git.NewWorktreeManager(&git.RealExecutor{})
+		if swGlobal {
+			return runSwGlobal(cmd, args[0], wm)
+		}
+		return runSw(cmd, args[0], wm)
 	},
 }
 
@@ -82,6 +101,73 @@ func runSw(cmd *cobra.Command, query string, wm *git.WorktreeManager) error {
 
 	// Return the original error for non-zero exit code
 	return err
+}
+
+func runSwGlobal(cmd *cobra.Command, query string, wm *git.WorktreeManager) error {
+	repos, err := config.LoadValid()
+	if err != nil {
+		return fmt.Errorf("loading registry: %w", err)
+	}
+
+	if len(repos) == 0 {
+		return fmt.Errorf("no registered repos — run a wtf command inside a repo to auto-register it")
+	}
+
+	// Search all registered repos for a matching worktree
+	type match struct {
+		wt   git.Worktree
+		repo string
+	}
+	var matches []match
+
+	for _, repo := range repos {
+		wt, findErr := wm.Find(repo, query)
+		if findErr == nil {
+			matches = append(matches, match{wt: wt, repo: repo})
+		}
+	}
+
+	if len(matches) == 1 {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), matches[0].wt.Path)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Switched to %s\n", matches[0].wt.Path)
+		return nil
+	}
+
+	stderr := cmd.ErrOrStderr()
+
+	if len(matches) > 1 {
+		_, _ = fmt.Fprintf(stderr, "%s multiple worktrees match %s across repos:\n", redBold("error:"), cyan(query))
+		for _, m := range matches {
+			_, _ = fmt.Fprintf(stderr, "  %s %s %s\n", yellow("→"), cyan(m.wt.Branch), dim("("+m.repo+")"))
+		}
+		return fmt.Errorf("multiple global matches for %q", query)
+	}
+
+	// No matches — collect all branches across repos for suggestions
+	_, _ = fmt.Fprintf(stderr, "%s no worktree found matching %s across registered repos\n", redBold("error:"), cyan(query))
+
+	var allBranches []string
+	for _, repo := range repos {
+		wts, listErr := wm.List(repo)
+		if listErr != nil {
+			continue
+		}
+		for _, w := range wts {
+			if w.Branch != "" && !w.IsBare {
+				allBranches = append(allBranches, w.Branch)
+			}
+		}
+	}
+
+	similar := fuzzyFilter(allBranches, query)
+	if len(similar) > 0 {
+		_, _ = fmt.Fprintf(stderr, "\n%s\n", dim("Did you mean?"))
+		for _, b := range similar {
+			_, _ = fmt.Fprintf(stderr, "  %s %s\n", yellow("→"), cyan(b))
+		}
+	}
+
+	return fmt.Errorf("no global worktree found matching %q", query)
 }
 
 // fuzzyFilter returns branches that are similar to the query.
