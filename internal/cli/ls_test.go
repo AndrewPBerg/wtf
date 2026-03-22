@@ -538,6 +538,35 @@ func TestRenderWorktreeTable(t *testing.T) {
 	assert.Contains(t, out, "Add feature")
 }
 
+func TestBuildRows_OrphanPRs(t *testing.T) {
+	wts := []git.Worktree{
+		{Path: "/repo/main", Branch: "main", Head: "abc1234567", IsMain: true},
+	}
+	prMap := map[string]forge.PR{
+		"other-branch": {
+			Number: 99,
+			Title:  "Someone else's PR",
+			Author: "bob",
+			URL:    "https://github.com/user/repo/pull/99",
+		},
+	}
+
+	rows := buildRows(wts, "https://github.com/user/repo.git", prMap)
+	require.Len(t, rows, 2)
+
+	// First row is the local worktree
+	assert.Equal(t, "main *", rows[0].branch)
+	assert.Equal(t, 0, rows[0].prNumber)
+
+	// Second row is the orphan PR
+	assert.Equal(t, "other-branch", rows[1].branch)
+	assert.Equal(t, 99, rows[1].prNumber)
+	assert.Equal(t, "Someone else's PR", rows[1].prTitle)
+	assert.Equal(t, "bob", rows[1].prAuthor)
+	assert.Empty(t, rows[1].path)
+	assert.Empty(t, rows[1].head)
+}
+
 func TestBuildRows_NilPRMap(t *testing.T) {
 	wts := []git.Worktree{
 		{Path: "/repo/main", Branch: "main", Head: "abc1234567", IsMain: true},

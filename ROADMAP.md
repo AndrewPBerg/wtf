@@ -97,11 +97,11 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 ### Completions
 
-- [x] `wtf pr <TAB>` → open PRs with number, branch, author, age
-- [x] `wtf sw <TAB>` → active worktrees
-- [x] `wtf rm <TAB>` → active worktrees
-- [x] `wtf new <TAB>` → remote branches not yet checked out
-- [x] `wtf clean <TAB>` → merged/stale worktrees
+- [ ] `wtf pr <TAB>` → open PRs with number, branch, author, age
+- [ ] `wtf sw <TAB>` → active worktrees
+- [ ] `wtf rm <TAB>` → active worktrees
+- [ ] `wtf new <TAB>` → remote branches not yet checked out
+- [ ] `wtf clean <TAB>` → merged/stale worktrees
 
 ---
 
@@ -120,6 +120,7 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 - [ ] Background branch/PR cache refresh
 - [ ] CONTRIBUTING.md and docs/ complete
 - [ ] GitHub Actions CI with coverage gate and lint
+- [ ] add a pr watch funcationality for repos, could be global too for notifications you are subscribed to w/ native Notifivations from the process
 
 ### Commands
 

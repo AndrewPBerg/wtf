@@ -207,8 +207,10 @@ func prMapsEqual(a, b map[string]forge.PR) bool {
 }
 
 // buildRows converts worktrees and optional PR data into display rows.
+// PRs that don't match any local worktree are appended as orphan rows.
 func buildRows(wts []git.Worktree, remoteURL string, prMap map[string]forge.PR) []lsRow {
 	rows := make([]lsRow, len(wts))
+	matched := make(map[string]bool, len(wts))
 	for i, wt := range wts {
 		branch := wt.Branch
 		if wt.IsMain {
@@ -232,8 +234,26 @@ func buildRows(wts []git.Worktree, remoteURL string, prMap map[string]forge.PR) 
 			rows[i].prURL = pr.URL
 			rows[i].prReview = pr.ReviewStatus
 			rows[i].prDraft = pr.IsDraft
+			matched[wt.Branch] = true
 		}
 	}
+
+	// Append orphan PRs — open PRs from other authors/branches with no local worktree.
+	for branch, pr := range prMap {
+		if matched[branch] {
+			continue
+		}
+		rows = append(rows, lsRow{
+			branch:   branch,
+			prNumber: pr.Number,
+			prTitle:  pr.Title,
+			prAuthor: pr.Author,
+			prURL:    pr.URL,
+			prReview: pr.ReviewStatus,
+			prDraft:  pr.IsDraft,
+		})
+	}
+
 	return rows
 }
 
@@ -302,11 +322,13 @@ type colWidths struct {
 	branch int
 	path   int
 	head   int
+	author int
+	pr     int
 }
 
 // calcWidths returns the column widths needed for a set of rows.
 func calcWidths(rows []lsRow) colWidths {
-	bw, pw, hw := len("BRANCH"), len("PATH"), len("HEAD")
+	bw, pw, hw, aw, prw := len("BRANCH"), len("PATH"), len("HEAD"), len("AUTHOR"), len("PR")
 	for _, r := range rows {
 		if len(r.branch) > bw {
 			bw = len(r.branch)
@@ -317,8 +339,18 @@ func calcWidths(rows []lsRow) colWidths {
 		if len(r.head) > hw {
 			hw = len(r.head)
 		}
+		if len(r.prAuthor) > aw {
+			aw = len(r.prAuthor)
+		}
+		if r.prNumber > 0 {
+			// PR cell: "#N title icon" — estimate visible width
+			prText := fmt.Sprintf("#%d %s", r.prNumber, truncate(r.prTitle, 40))
+			if len(prText) > prw {
+				prw = len(prText)
+			}
+		}
 	}
-	return colWidths{branch: bw, path: pw, head: hw}
+	return colWidths{branch: bw, path: pw, head: hw, author: aw, pr: prw}
 }
 
 // mergeWidths returns the element-wise max of two colWidths.
@@ -331,6 +363,12 @@ func mergeWidths(a, b colWidths) colWidths {
 	}
 	if b.head > a.head {
 		a.head = b.head
+	}
+	if b.author > a.author {
+		a.author = b.author
+	}
+	if b.pr > a.pr {
+		a.pr = b.pr
 	}
 	return a
 }
@@ -351,21 +389,27 @@ func renderWorktreeTable(rows []lsRow, prefix string, w colWidths, hasPRs bool) 
 	var sb strings.Builder
 
 	gap := 2
-	// Header
-	headHeader := "HEAD"
+	// Header — when PRs are shown, column order: BRANCH HEAD AUTHOR PR PATH
+	// Without PRs: BRANCH PATH HEAD
 	if hasPRs {
-		headHeader = pad("HEAD", w.head+gap)
+		header := fmt.Sprintf("%s%s%s%s%s%s",
+			prefix,
+			bold(pad("BRANCH", w.branch+gap)),
+			bold(pad("HEAD", w.head+gap)),
+			bold(pad("AUTHOR", w.author+gap)),
+			bold(pad("PR", w.pr+gap)),
+			bold("PATH"),
+		)
+		sb.WriteString(header)
+	} else {
+		header := fmt.Sprintf("%s%s%s%s",
+			prefix,
+			bold(pad("BRANCH", w.branch+gap)),
+			bold(pad("PATH", w.path+gap)),
+			bold("HEAD"),
+		)
+		sb.WriteString(header)
 	}
-	header := fmt.Sprintf("%s%s%s%s",
-		prefix,
-		bold(pad("BRANCH", w.branch+gap)),
-		bold(pad("PATH", w.path+gap)),
-		bold(headHeader),
-	)
-	if hasPRs {
-		header += bold("PR")
-	}
-	sb.WriteString(header)
 	sb.WriteByte('\n')
 
 	// Data rows
@@ -380,34 +424,50 @@ func renderWorktreeTable(rows []lsRow, prefix string, w colWidths, hasPRs bool) 
 			coloredBranch = cyan(pad(r.branch, w.branch+gap))
 		}
 
-		headText := r.head
 		if hasPRs {
-			headText = pad(r.head, w.head+gap)
-		}
-		headStr := dim(headText)
-		if r.commitURL != "" {
-			headStr = hyperlink(r.commitURL, dim(headText))
-		}
-
-		line := fmt.Sprintf("%s%s%s%s",
-			prefix,
-			coloredBranch,
-			pad(r.path, w.path+gap),
-			headStr,
-		)
-
-		if hasPRs && r.prNumber > 0 {
-			prLabel := fmt.Sprintf("#%d", r.prNumber)
-			prStr := hyperlink(r.prURL, cyan(prLabel))
-			title := truncate(r.prTitle, 40)
-			reviewIcon := reviewStatusIcon(r.prReview)
-			if r.prDraft {
-				reviewIcon = dim("draft")
+			headStr := dim(pad(r.head, w.head+gap))
+			if r.commitURL != "" {
+				headStr = hyperlink(r.commitURL, dim(pad(r.head, w.head+gap)))
 			}
-			line += fmt.Sprintf("%s %s %s", prStr, dim(title), reviewIcon)
+
+			authorStr := pad(r.prAuthor, w.author+gap)
+
+			prCell := pad("", w.pr+gap)
+			if r.prNumber > 0 {
+				prLabel := fmt.Sprintf("#%d", r.prNumber)
+				prLink := hyperlink(r.prURL, cyan(prLabel))
+				title := truncate(r.prTitle, 40)
+				reviewIcon := reviewStatusIcon(r.prReview)
+				if r.prDraft {
+					reviewIcon = dim("draft")
+				}
+				prCell = fmt.Sprintf("%s %s %s", prLink, dim(title), reviewIcon)
+			}
+
+			line := fmt.Sprintf("%s%s%s%s%s%s",
+				prefix,
+				coloredBranch,
+				headStr,
+				authorStr,
+				prCell,
+				r.path,
+			)
+			sb.WriteString(line)
+		} else {
+			headStr := dim(r.head)
+			if r.commitURL != "" {
+				headStr = hyperlink(r.commitURL, dim(r.head))
+			}
+
+			line := fmt.Sprintf("%s%s%s%s",
+				prefix,
+				coloredBranch,
+				pad(r.path, w.path+gap),
+				headStr,
+			)
+			sb.WriteString(line)
 		}
 
-		sb.WriteString(line)
 		sb.WriteByte('\n')
 	}
 
