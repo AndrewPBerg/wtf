@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	osexec "os/exec"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/forge"
 	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/ui"
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
 
@@ -24,10 +27,10 @@ var (
 func init() {
 	lsCmd.Flags().BoolVar(&lsJSON, "json", false, "Output in JSON format")
 	lsCmd.Flags().BoolVarP(&lsGlobal, "global", "g", false, "List worktrees across all registered repos")
-	lsCmd.Flags().BoolVar(&lsPRs, "prs", false, "Show PR status for each worktree")
+	lsCmd.Flags().BoolVarP(&lsPRs, "prs", "p", false, "Show PR status for each worktree")
 	rootCmd.AddCommand(lsCmd)
 	lsgCmd.Flags().BoolVar(&lsJSON, "json", false, "Output in JSON format")
-	lsgCmd.Flags().BoolVar(&lsPRs, "prs", false, "Show PR status for each worktree")
+	lsgCmd.Flags().BoolVarP(&lsPRs, "prs", "p", false, "Show PR status for each worktree")
 	rootCmd.AddCommand(lsgCmd)
 }
 
@@ -88,7 +91,13 @@ func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
 	// Best-effort remote URL for commit hyperlinks.
 	remoteURL, _ := wm.RemoteURL(dir)
 
-	// Best-effort PR lookup when --prs is set.
+	// Two-phase async render: show cached PR data instantly, update when fresh arrives.
+	isTTY := isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())
+	if lsPRs && isTTY {
+		return runLsWithAsyncPRs(cmd, wts, remoteURL, dir)
+	}
+
+	// Synchronous path (no --prs, JSON, or piped output).
 	var prMap map[string]forge.PR
 	if lsPRs {
 		prMap = fetchPRMap(cmd, remoteURL, dir)
@@ -97,6 +106,104 @@ func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
 	rows := buildRows(wts, remoteURL, prMap)
 	printWorktreeTable(cmd, rows, "")
 	return nil
+}
+
+// runLsWithAsyncPRs renders the worktree table with lazy-loaded PR data.
+// It immediately displays cached data, then re-renders in-place if the
+// fresh API response differs.
+func runLsWithAsyncPRs(cmd *cobra.Command, wts []git.Worktree, remoteURL, dir string) error {
+	cf := createCachedForge(cmd, remoteURL, dir)
+	if cf == nil {
+		// No forge available — render without PRs.
+		rows := buildRows(wts, remoteURL, nil)
+		printWorktreeTable(cmd, rows, "")
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	ch := cf.ListPRsAsync(ctx)
+	rr := ui.NewRerenderer(cmd.OutOrStdout())
+
+	var lastMap map[string]forge.PR
+	for result := range ch {
+		if result.Err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s PR info unavailable: %v\n", yellow("⚠"), result.Err)
+			continue
+		}
+
+		prMap := prsToBranchMap(result.PRs)
+
+		// Skip re-render if data hasn't changed.
+		if lastMap != nil && prMapsEqual(lastMap, prMap) {
+			continue
+		}
+		lastMap = prMap
+
+		rows := buildRows(wts, remoteURL, prMap)
+		w := calcWidths(rows)
+		content := renderWorktreeTable(rows, "", w, true)
+		rr.Render(content)
+	}
+
+	// If we never rendered (e.g. all results were errors), render without PRs.
+	if lastMap == nil {
+		rows := buildRows(wts, remoteURL, nil)
+		printWorktreeTable(cmd, rows, "")
+	}
+	return nil
+}
+
+// createCachedForge creates a CachedForge for the given remote URL and directory.
+// Returns nil if forge detection fails.
+func createCachedForge(cmd *cobra.Command, remoteURL, dir string) *forge.CachedForge {
+	if remoteURL == "" {
+		return nil
+	}
+
+	f, err := forge.Detect(remoteURL, forge.WithTokenFunc(func() (string, error) {
+		return tryToken(remoteURL)
+	}))
+	if err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s PR info unavailable: %v\n", yellow("⚠"), err)
+		return nil
+	}
+
+	exec := &git.RealExecutor{}
+	gitCommonDir, gcErr := exec.Run(dir, "rev-parse", "--git-common-dir")
+	if gcErr != nil {
+		return nil
+	}
+
+	return forge.NewCachedForge(f, gitCommonDir)
+}
+
+// prsToBranchMap converts a slice of PRs into a map keyed by branch name.
+func prsToBranchMap(prs []forge.PR) map[string]forge.PR {
+	m := make(map[string]forge.PR, len(prs))
+	for _, pr := range prs {
+		m[pr.Branch] = pr
+	}
+	return m
+}
+
+// prMapsEqual returns true if two PR maps have the same display-relevant data.
+func prMapsEqual(a, b map[string]forge.PR) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, pa := range a {
+		pb, ok := b[k]
+		if !ok {
+			return false
+		}
+		if pa.Number != pb.Number || pa.Title != pb.Title ||
+			pa.ReviewStatus != pb.ReviewStatus || pa.IsDraft != pb.IsDraft {
+			return false
+		}
+	}
+	return true
 }
 
 // buildRows converts worktrees and optional PR data into display rows.
@@ -131,13 +238,13 @@ func buildRows(wts []git.Worktree, remoteURL string, prMap map[string]forge.PR) 
 }
 
 // fetchPRMap fetches open PRs and returns a map keyed by branch name.
+// Used by the synchronous path (piped output, global mode).
 func fetchPRMap(cmd *cobra.Command, remoteURL, dir string) map[string]forge.PR {
 	if remoteURL == "" {
 		return nil
 	}
 
 	f, err := forge.Detect(remoteURL, forge.WithTokenFunc(func() (string, error) {
-		// Best-effort — if no token, we just skip PR info
 		return tryToken(remoteURL)
 	}))
 	if err != nil {
@@ -161,11 +268,7 @@ func fetchPRMap(cmd *cobra.Command, remoteURL, dir string) map[string]forge.PR {
 		return nil
 	}
 
-	m := make(map[string]forge.PR, len(prs))
-	for _, pr := range prs {
-		m[pr.Branch] = pr
-	}
-	return m
+	return prsToBranchMap(prs)
 }
 
 // tryToken attempts to get a token for the given remote URL.
@@ -198,11 +301,12 @@ func glabTokenSafe() (string, error) {
 type colWidths struct {
 	branch int
 	path   int
+	head   int
 }
 
 // calcWidths returns the column widths needed for a set of rows.
 func calcWidths(rows []lsRow) colWidths {
-	bw, pw := len("BRANCH"), len("PATH")
+	bw, pw, hw := len("BRANCH"), len("PATH"), len("HEAD")
 	for _, r := range rows {
 		if len(r.branch) > bw {
 			bw = len(r.branch)
@@ -210,8 +314,11 @@ func calcWidths(rows []lsRow) colWidths {
 		if len(r.path) > pw {
 			pw = len(r.path)
 		}
+		if len(r.head) > hw {
+			hw = len(r.head)
+		}
 	}
-	return colWidths{branch: bw, path: pw}
+	return colWidths{branch: bw, path: pw, head: hw}
 }
 
 // mergeWidths returns the element-wise max of two colWidths.
@@ -221,6 +328,9 @@ func mergeWidths(a, b colWidths) colWidths {
 	}
 	if b.path > a.path {
 		a.path = b.path
+	}
+	if b.head > a.head {
+		a.head = b.head
 	}
 	return a
 }
@@ -233,21 +343,30 @@ func printWorktreeTable(cmd *cobra.Command, rows []lsRow, prefix string) {
 
 // printWorktreeTableWithWidths renders with explicit column widths for cross-table alignment.
 func printWorktreeTableWithWidths(cmd *cobra.Command, rows []lsRow, prefix string, w colWidths) {
-	out := cmd.OutOrStdout()
-	hasPRs := lsPRs
+	_, _ = fmt.Fprint(cmd.OutOrStdout(), renderWorktreeTable(rows, prefix, w, lsPRs))
+}
+
+// renderWorktreeTable builds the formatted worktree table as a string.
+func renderWorktreeTable(rows []lsRow, prefix string, w colWidths, hasPRs bool) string {
+	var sb strings.Builder
 
 	gap := 2
 	// Header
+	headHeader := "HEAD"
+	if hasPRs {
+		headHeader = pad("HEAD", w.head+gap)
+	}
 	header := fmt.Sprintf("%s%s%s%s",
 		prefix,
 		bold(pad("BRANCH", w.branch+gap)),
 		bold(pad("PATH", w.path+gap)),
-		bold("HEAD"),
+		bold(headHeader),
 	)
 	if hasPRs {
-		header += "  " + bold("PR")
+		header += bold("PR")
 	}
-	_, _ = fmt.Fprintln(out, header)
+	sb.WriteString(header)
+	sb.WriteByte('\n')
 
 	// Data rows
 	for _, r := range rows {
@@ -261,9 +380,13 @@ func printWorktreeTableWithWidths(cmd *cobra.Command, rows []lsRow, prefix strin
 			coloredBranch = cyan(pad(r.branch, w.branch+gap))
 		}
 
-		headStr := dim(r.head)
+		headText := r.head
+		if hasPRs {
+			headText = pad(r.head, w.head+gap)
+		}
+		headStr := dim(headText)
 		if r.commitURL != "" {
-			headStr = hyperlink(r.commitURL, dim(r.head))
+			headStr = hyperlink(r.commitURL, dim(headText))
 		}
 
 		line := fmt.Sprintf("%s%s%s%s",
@@ -281,11 +404,14 @@ func printWorktreeTableWithWidths(cmd *cobra.Command, rows []lsRow, prefix strin
 			if r.prDraft {
 				reviewIcon = dim("draft")
 			}
-			line += fmt.Sprintf("  %s %s %s", prStr, dim(title), reviewIcon)
+			line += fmt.Sprintf("%s %s %s", prStr, dim(title), reviewIcon)
 		}
 
-		_, _ = fmt.Fprintln(out, line)
+		sb.WriteString(line)
+		sb.WriteByte('\n')
 	}
+
+	return sb.String()
 }
 
 // truncate shortens a string to maxLen, adding "…" if truncated.

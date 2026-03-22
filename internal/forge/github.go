@@ -134,7 +134,19 @@ func (g *gitHub) doGet(ctx context.Context, url string) ([]byte, error) {
 	defer resp.Body.Close() //nolint:errcheck // best-effort close
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API returned %s", resp.Status)
+		switch resp.StatusCode {
+		case http.StatusUnauthorized:
+			return nil, fmt.Errorf("API returned 401 Unauthorized — check your token or run 'gh auth login' to re-authenticate")
+		case http.StatusForbidden:
+			return nil, fmt.Errorf("API returned 403 Forbidden — your token may lack repo scope, or try 'gh auth login' to switch accounts")
+		case http.StatusNotFound:
+			if g.token == "" {
+				return nil, fmt.Errorf("API returned 404 Not Found — no token provided, run 'gh auth login'")
+			}
+			return nil, fmt.Errorf("API returned 404 Not Found — repo may be private, check you're authenticated as the right user with 'gh auth status'")
+		default:
+			return nil, fmt.Errorf("API returned %s", resp.Status)
+		}
 	}
 
 	var buf []byte

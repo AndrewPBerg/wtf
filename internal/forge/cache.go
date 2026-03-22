@@ -42,6 +42,13 @@ func NewCachedForge(inner Forge, gitCommonDir string) *CachedForge {
 	}
 }
 
+// PRResult holds PR data from either cache or a fresh API fetch.
+type PRResult struct {
+	PRs       []PR
+	FromCache bool
+	Err       error
+}
+
 // Name returns the name of the underlying forge.
 func (c *CachedForge) Name() string { return c.inner.Name() }
 
@@ -84,6 +91,35 @@ func (c *CachedForge) ListPRs(ctx context.Context) ([]PR, error) {
 
 	_ = c.save(&cacheData{FetchedAt: time.Now(), PRs: prs})
 	return prs, nil
+}
+
+// ListPRsAsync returns cached data immediately (if available) and always
+// fetches fresh data in the background. The returned channel receives up to
+// two results:
+//  1. Cached data (FromCache=true) — sent immediately if a cache file exists
+//  2. Fresh data (FromCache=false) — sent when the API call completes
+//
+// The channel is closed after all results are sent.
+func (c *CachedForge) ListPRsAsync(ctx context.Context) <-chan PRResult {
+	ch := make(chan PRResult, 2)
+
+	cached, _ := c.load()
+	if cached != nil {
+		ch <- PRResult{PRs: cached.PRs, FromCache: true}
+	}
+
+	go func() {
+		defer close(ch)
+		prs, err := c.inner.ListPRs(ctx)
+		if err != nil {
+			ch <- PRResult{Err: err}
+			return
+		}
+		_ = c.save(&cacheData{FetchedAt: time.Now(), PRs: prs})
+		ch <- PRResult{PRs: prs, FromCache: false}
+	}()
+
+	return ch
 }
 
 func (c *CachedForge) cachePath() string {

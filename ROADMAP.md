@@ -82,17 +82,17 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 ### Features
 
-- [ ] Forge auto-detection from origin remote URL:
+- [x] Forge auto-detection from origin remote URL:
   - `github.com` → GitHub API via `gh` token
   - `gitlab.com` → GitLab API via `glab` token
-- [ ] Auth: reuse existing `gh` / `glab` tokens, no custom credential management
-- [ ] PR list cache (TTL 5m, `.git/wtf/pr-cache.json`, stale-while-revalidate)
-- [ ] `wtf ls --prs` shows PR number, title, author, age, review status
+- [x] Auth: reuse existing `gh` / `glab` tokens, no custom credential management
+- [x] Lazy-loading PR cache (`.git/wtf/pr-cache.json`, instant render + background revalidation)
+- [x] `wtf ls --prs` shows PR number, title, author, review status with lazy loading
 
 ### Commands
 
-- [ ] `wtf pr <number|branch>` — Checkout a PR as a worktree
-- [ ] `wtf ls --prs` — List worktrees with PR status inline
+- [x] `wtf pr <number|branch>` — Checkout a PR as a worktree
+- [x] `wtf ls --prs` — List worktrees with PR status inline (lazy-loaded)
 - [ ] add special hook into the .worktree-forge.toml for on-pr-create on-pr-switch on-pr-delete
 
 ### Completions

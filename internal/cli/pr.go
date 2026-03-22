@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -45,38 +44,20 @@ func completePR(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCo
 	exec := &git.RealExecutor{}
 	wm := git.NewWorktreeManager(exec)
 
-	dbg, _ := os.OpenFile("/tmp/wtf-comp.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-	defer func() {
-		if dbg != nil {
-			_ = dbg.Close()
-		}
-	}()
-	logf := func(format string, a ...any) {
-		if dbg != nil {
-			_, _ = fmt.Fprintf(dbg, format+"\n", a...)
-		}
-	}
-
 	dir, err := getRepoDir()
 	if err != nil {
-		logf("getRepoDir: %v", err)
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	logf("dir: %s", dir)
 
 	remoteURL, err := wm.RemoteURL(dir)
 	if err != nil {
-		logf("RemoteURL: %v", err)
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	logf("remoteURL: %s", remoteURL)
 
 	f, err := forge.Detect(remoteURL)
 	if err != nil {
-		logf("Detect: %v", err)
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	logf("forge: %s", f.Name())
 
 	// Try to use cache for fast completions
 	gitCommonDir, gcErr := exec.Run(dir, "rev-parse", "--git-common-dir")
@@ -89,10 +70,8 @@ func completePR(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCo
 
 	prs, err := f.ListPRs(ctx)
 	if err != nil {
-		logf("ListPRs: %v", err)
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	logf("prs: %d", len(prs))
 
 	var completions []string
 	for _, pr := range prs {
@@ -169,6 +148,19 @@ func runPR(cmd *cobra.Command, arg string, wm *git.WorktreeManager, exec git.Exe
 
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Checked out %s → %s\n",
 		greenBold("✔"), prLink, cyan(wtPath))
+
+	// Background validation: verify PR is still open so we can warn about stale data.
+	go func() {
+		vCtx, vCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer vCancel()
+		freshPR, gErr := f.GetPR(vCtx, pr.Number)
+		if gErr != nil {
+			return
+		}
+		if freshPR.IsDraft && !pr.IsDraft {
+			_, _ = fmt.Fprintf(stderr, "%s PR #%d is now a draft\n", yellow("⚠"), pr.Number)
+		}
+	}()
 
 	// Run setup — failures are warnings, not errors
 	if runner != nil {

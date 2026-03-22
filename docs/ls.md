@@ -81,7 +81,7 @@ PR numbers are clickable hyperlinks (like commit hashes). Review status icons:
 - `○` review pending
 - `draft` for draft PRs
 
-PR data is cached (5-minute TTL) for fast subsequent lookups. Requires `gh` or `glab` CLI for authentication.
+PR data uses lazy loading for instant results. Cached data is displayed immediately, while fresh data is fetched from the API in the background. If the fresh data differs, the table is re-rendered in-place automatically. This means the first render is always fast (even on slow connections) and the displayed data is always up-to-date by the time the command finishes. When output is piped (non-TTY), a single synchronous fetch is used instead. Requires `gh` or `glab` CLI for authentication.
 
 ## Commit hyperlinks
 
