@@ -15,6 +15,7 @@ var (
 	ErrWorktreeIsCurrentDir = errors.New("cannot remove worktree for the currently checked out branch")
 	ErrBranchAlreadyInUse   = errors.New("branch is already checked out")
 	ErrPathAlreadyExists    = errors.New("worktree path already exists")
+	ErrWorktreeHasChanges   = errors.New("worktree has uncommitted changes")
 )
 
 // Worktree represents a single git worktree entry.
@@ -113,6 +114,9 @@ func (wm *WorktreeManager) Find(dir, query string) (Worktree, error) {
 
 	var matches []Worktree
 	for _, wt := range wts {
+		if wt.Branch == query {
+			return wt, nil
+		}
 		if strings.Contains(wt.Branch, query) {
 			matches = append(matches, wt)
 		}
@@ -155,6 +159,9 @@ func (wm *WorktreeManager) Remove(dir, branch, cwd string, force bool) error {
 	}
 
 	if _, err := wm.executor.Run(dir, args...); err != nil {
+		if strings.Contains(err.Error(), "modified or untracked files") {
+			return fmt.Errorf("%w: use --force to remove anyway", ErrWorktreeHasChanges)
+		}
 		return fmt.Errorf("removing worktree: %w", err)
 	}
 

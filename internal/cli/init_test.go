@@ -26,7 +26,7 @@ func TestInitCommand_Bash(t *testing.T) {
 	err := runInit(cmd, "bash", detector)
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), `wtf()`)
-	assert.Contains(t, buf.String(), `command wtf sw "$@"`)
+	assert.Contains(t, buf.String(), `command wtf "$_c" "$@"`)
 }
 
 func TestInitCommand_Zsh(t *testing.T) {

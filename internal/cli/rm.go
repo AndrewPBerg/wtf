@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,10 +18,10 @@ var (
 )
 
 func init() {
-	rmCmd.Flags().BoolVar(&rmForce, "force", false, "Force remove even with uncommitted changes")
+	rmCmd.Flags().BoolVarP(&rmForce, "force", "F", false, "Force remove even with uncommitted changes")
 	rmCmd.Flags().BoolVarP(&rmGlobal, "global", "g", false, "Remove worktree across all registered repos")
 	rootCmd.AddCommand(rmCmd)
-	rmgCmd.Flags().BoolVar(&rmForce, "force", false, "Force remove even with uncommitted changes")
+	rmgCmd.Flags().BoolVarP(&rmForce, "force", "F", false, "Force remove even with uncommitted changes")
 	rootCmd.AddCommand(rmgCmd)
 }
 
@@ -103,6 +104,21 @@ func runOnRemoveHooks(cmd *cobra.Command, repoDir string) {
 	}
 }
 
+// friendlyError returns a short, user-facing message for known error types,
+// stripping noisy git internals.
+func friendlyError(err error) string {
+	switch {
+	case errors.Is(err, git.ErrWorktreeHasChanges):
+		return "has uncommitted changes — use --force to remove anyway"
+	case errors.Is(err, git.ErrMainWorktree):
+		return "cannot remove main worktree"
+	case errors.Is(err, git.ErrWorktreeIsCurrentDir):
+		return "cannot remove worktree you are currently inside"
+	default:
+		return err.Error()
+	}
+}
+
 func runRmGlobal(cmd *cobra.Command, branches []string, wm *git.WorktreeManager) error {
 	repos, err := config.LoadValid()
 	if err != nil {
@@ -139,7 +155,7 @@ func runRmGlobal(cmd *cobra.Command, branches []string, wm *git.WorktreeManager)
 		case len(matches) == 1:
 			m := matches[0]
 			if rmErr := wm.Remove(m.repo, branch, cwd, rmForce); rmErr != nil {
-				_, _ = fmt.Fprintf(stderr, "%s failed to remove %s: %v\n", redBold("✗"), cyan(branch), rmErr)
+				_, _ = fmt.Fprintf(stderr, "%s failed to remove %s: %s\n", redBold("✗"), cyan(branch), friendlyError(rmErr))
 				errs = append(errs, fmt.Errorf("removing %q: %w", branch, rmErr))
 			} else {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Removed worktree for %s %s\n",

@@ -7,20 +7,50 @@ import (
 	"strings"
 
 	"github.com/AndrewPBerg/wtf/internal/config"
+	"github.com/AndrewPBerg/wtf/internal/ui"
+	"github.com/mattn/go-isatty"
 )
 
 // CmdExecutor abstracts shell command execution for testability.
 type CmdExecutor interface {
 	RunShell(dir, command string) error
+	RunInteractive(dir, command string) error
 }
 
 // RealCmdExecutor executes shell commands via /bin/sh.
 type RealCmdExecutor struct{}
 
 // RunShell executes a command string via /bin/sh in the given directory.
+// When stdout is a terminal, output is displayed in a fixed-height scrolling
+// region so long builds don't flood the screen.
 func (r *RealCmdExecutor) RunShell(dir, command string) error {
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = dir
+
+	if isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd()) {
+		sw := ui.NewScrollWriter(os.Stdout, ui.DefaultScrollHeight)
+		cmd.Stdout = sw
+		cmd.Stderr = sw
+		err := cmd.Run()
+		sw.Flush()
+		return err
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// RunInteractive executes a command with full terminal access (stdin/stdout/stderr).
+// Uses the user's login shell with -ic so aliases and shell functions are available.
+func (r *RealCmdExecutor) RunInteractive(dir, command string) error {
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "sh"
+	}
+	cmd := exec.Command(shell, "-ic", command)
+	cmd.Dir = dir
+	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -92,13 +122,14 @@ func (r *Runner) RunSetup(cfg *config.ProjectConfig, mainDir, targetDir, branch 
 }
 
 // RunHooks runs a list of hook commands in the given directory.
+// Hooks run interactively with full terminal access, bypassing the scroll writer.
 func (r *Runner) RunHooks(commands []string, dir string) error {
 	for _, cmd := range commands {
 		cmd = strings.TrimSpace(cmd)
 		if cmd == "" {
 			continue
 		}
-		if err := r.CmdExec.RunShell(dir, cmd); err != nil {
+		if err := r.CmdExec.RunInteractive(dir, cmd); err != nil {
 			return fmt.Errorf("running hook %q: %w", cmd, err)
 		}
 	}

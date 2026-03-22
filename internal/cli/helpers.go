@@ -121,6 +121,14 @@ func FormatError(err error) string {
 			dim("hint:"),
 		)
 
+	case errors.Is(err, git.ErrWorktreeHasChanges):
+		return fmt.Sprintf(
+			"%s worktree has uncommitted changes\n  %s run with %s to remove anyway",
+			redBold("wtf?"),
+			dim("hint:"),
+			cyan("--force"),
+		)
+
 	case errors.Is(err, git.ErrMainWorktree):
 		return fmt.Sprintf(
 			"%s %s\n  %s the main worktree is managed by git directly",

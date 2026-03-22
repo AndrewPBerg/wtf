@@ -381,3 +381,7 @@ func (m *mockSetupExecutor) RunShell(_ string, command string) error {
 	m.commands = append(m.commands, command)
 	return nil
 }
+
+func (m *mockSetupExecutor) RunInteractive(_ string, command string) error {
+	return m.RunShell("", command)
+}

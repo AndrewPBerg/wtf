@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/AndrewPBerg/wtf/internal/config"
@@ -59,9 +61,15 @@ func runSw(cmd *cobra.Command, query string, wm *git.WorktreeManager) error {
 		return err
 	}
 
+	cwd, _ := os.Getwd()
+
 	wt, err := wm.Find(dir, query)
 	if err == nil {
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), wt.Path)
+		if cwd != "" && isCurrentWorktree(cwd, wt.Path) {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "wtf? you are already on %s!\n", cyan(wt.Branch))
+			return nil
+		}
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Switched to %s\n", wt.Path)
 		runOnSwitchHooks(cmd, dir)
 		return nil
@@ -131,6 +139,11 @@ func runSwGlobal(cmd *cobra.Command, query string, wm *git.WorktreeManager) erro
 
 	if len(matches) == 1 {
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), matches[0].wt.Path)
+		cwd, _ := os.Getwd()
+		if cwd != "" && isCurrentWorktree(cwd, matches[0].wt.Path) {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "wtf? you are already on %s!\n", cyan(matches[0].wt.Branch))
+			return nil
+		}
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Switched to %s\n", matches[0].wt.Path)
 		runOnSwitchHooks(cmd, matches[0].repo)
 		return nil
@@ -251,6 +264,25 @@ func fuzzyScore(target, query string) int {
 	}
 
 	return matched
+}
+
+// isCurrentWorktree returns true if cwd is inside the given worktree path.
+func isCurrentWorktree(cwd, wtPath string) bool {
+	// Resolve symlinks for reliable comparison
+	cwdReal, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		cwdReal = cwd
+	}
+	wtReal, err := filepath.EvalSymlinks(wtPath)
+	if err != nil {
+		wtReal = wtPath
+	}
+	// Check if cwd is the worktree path or a subdirectory of it
+	rel, err := filepath.Rel(wtReal, cwdReal)
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..")
 }
 
 // runOnSwitchHooks loads config and runs on_switch hooks if present.

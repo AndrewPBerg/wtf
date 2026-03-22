@@ -36,6 +36,34 @@ func TestSwCommand(t *testing.T) {
 	assert.Contains(t, stderr.String(), "feature-switch")
 }
 
+func TestSwCommand_AlreadyOnBranch(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	wtPath, err := wm.Add(dir, "feature-already", "main")
+	require.NoError(t, err)
+
+	// cd into the target worktree so we're "already on it"
+	t.Chdir(wtPath)
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := swCmd
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+
+	err = runSw(cmd, "already", wm)
+	require.NoError(t, err)
+
+	// Should still print the path to stdout (shell function needs it for safe cd)
+	assert.Contains(t, stdout.String(), "feature-already")
+	// Should tell the user they're already there
+	assert.Contains(t, stderr.String(), "wtf?")
+	assert.Contains(t, stderr.String(), "already on")
+	assert.Contains(t, stderr.String(), "feature-already")
+}
+
 func TestSwCommand_NoMatch(t *testing.T) {
 	dir := initCLITestRepo(t)
 	t.Chdir(dir)

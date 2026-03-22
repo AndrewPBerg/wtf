@@ -35,6 +35,10 @@ func (m *mockCmdExecutor) RunShell(dir, command string) error {
 	return nil
 }
 
+func (m *mockCmdExecutor) RunInteractive(dir, command string) error {
+	return m.RunShell(dir, command)
+}
+
 func (m *mockCmdExecutor) commandStrings() []string {
 	var cmds []string
 	for _, c := range m.commands {
@@ -304,4 +308,9 @@ type orderTrackingExecutor struct {
 func (o *orderTrackingExecutor) RunShell(dir, command string) error {
 	*o.order = append(*o.order, command)
 	return o.inner.RunShell(dir, command)
+}
+
+func (o *orderTrackingExecutor) RunInteractive(dir, command string) error {
+	*o.order = append(*o.order, command)
+	return o.inner.RunInteractive(dir, command)
 }

@@ -93,6 +93,7 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 - [ ] `wtf pr <number|branch>` — Checkout a PR as a worktree
 - [ ] `wtf ls --prs` — List worktrees with PR status inline
+- [ ] add special hook into the .worktree-forge.toml for on-pr-create on-pr-switch on-pr-delete
 
 ### Completions
 
