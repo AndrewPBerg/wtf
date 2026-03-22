@@ -108,3 +108,55 @@ func TestFormatError_GenericError(t *testing.T) {
 	msg := FormatError(err)
 	assert.Contains(t, msg, "something went wrong")
 }
+
+func TestFormatError_PathAlreadyExists(t *testing.T) {
+	err := fmt.Errorf("%w: /tmp/some-path", git.ErrPathAlreadyExists)
+	msg := FormatError(err)
+	assert.Contains(t, msg, "squatting at that path")
+	assert.Contains(t, msg, "/tmp/some-path")
+}
+
+func TestFormatError_UnknownShorthandFlag(t *testing.T) {
+	err := fmt.Errorf("unknown shorthand flag: 'x'")
+	msg := FormatError(err)
+	assert.Contains(t, msg, "unknown shorthand flag")
+	assert.Contains(t, msg, "wtf --help")
+}
+
+func TestLevenshtein(t *testing.T) {
+	tests := []struct {
+		a, b string
+		want int
+	}{
+		{"", "", 0},
+		{"", "abc", 3},
+		{"abc", "", 3},
+		{"abc", "abc", 0},
+		{"kitten", "sitting", 3},
+		{"a", "b", 1},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s_%s", tt.a, tt.b), func(t *testing.T) {
+			assert.Equal(t, tt.want, levenshtein(tt.a, tt.b))
+		})
+	}
+}
+
+func TestSuggestCommands(t *testing.T) {
+	// Close match
+	suggestions := suggestCommands("lss")
+	assert.Contains(t, suggestions, "ls")
+
+	// No close match
+	suggestions = suggestCommands("zzzzz")
+	assert.Empty(t, suggestions)
+}
+
+func TestFormatError_AtMostArgs(t *testing.T) {
+	// Test the "accepts at most N arg(s)" variant
+	err := fmt.Errorf("accepts at most 1 arg(s), received 3")
+	msg := FormatError(err)
+	assert.Contains(t, msg, "too many arguments")
+	assert.Contains(t, msg, "expected 1")
+	assert.Contains(t, msg, "got 3")
+}

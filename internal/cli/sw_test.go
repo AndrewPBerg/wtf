@@ -103,6 +103,29 @@ func TestSwCommand_NoMatchShowsAvailable(t *testing.T) {
 	assert.Contains(t, stderrStr, "alpha")
 }
 
+func TestSwCommand_NoMatch_BareRepoOnly(t *testing.T) {
+	// Test the case where Find fails and List returns only bare worktrees
+	// (which get filtered out, leaving no branches to suggest)
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+
+	stderr := new(bytes.Buffer)
+	cmd := swCmd
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(stderr)
+
+	// "x" is a single-char query (below fuzzy threshold) and won't substring match "main"
+	err := runSw(cmd, "xxxxxxxxx", wm)
+	assert.Error(t, err)
+	stderrStr := stderr.String()
+	assert.Contains(t, stderrStr, "error:")
+	// Should show available worktrees with "main" since no fuzzy matches
+	assert.Contains(t, stderrStr, "Available worktrees:")
+	assert.Contains(t, stderrStr, "main")
+}
+
 func TestFuzzyFilter_SortsByScore(t *testing.T) {
 	branches := []string{"feature-authentication", "feat-auth-flow", "bugfix-authorization"}
 	result := fuzzyFilter(branches, "fauth")

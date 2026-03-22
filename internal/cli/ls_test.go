@@ -212,6 +212,144 @@ func TestLsCommand_WithDetachedHead(t *testing.T) {
 	assert.Contains(t, output, "(detached)")
 }
 
+func TestHyperlink(t *testing.T) {
+	result := hyperlink("https://example.com", "click me")
+	assert.Contains(t, result, "https://example.com")
+	assert.Contains(t, result, "click me")
+	// Verify OSC 8 escape sequences
+	assert.Contains(t, result, "\033]8;;")
+	assert.Contains(t, result, "\033\\")
+}
+
+func TestPrintWorktreeTableWithWidths_CommitURL(t *testing.T) {
+	buf := new(bytes.Buffer)
+	cmd := lsCmd
+	cmd.SetOut(buf)
+
+	rows := []lsRow{
+		{
+			branch:    "feature-x",
+			path:      "/tmp/test",
+			head:      "abc1234",
+			commitURL: "https://github.com/user/repo/commit/abc1234",
+			isMain:    false,
+		},
+	}
+	w := calcWidths(rows)
+	printWorktreeTableWithWidths(cmd, rows, "", w)
+
+	output := buf.String()
+	assert.Contains(t, output, "BRANCH")
+	assert.Contains(t, output, "abc1234")
+	// Should contain the hyperlink escape
+	assert.Contains(t, output, "\033]8;;https://github.com/user/repo/commit/abc1234")
+}
+
+func TestLsCommand_Global_Table_CurrentRepoHighlighted(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WTF_HOME", home)
+
+	repo := initCLITestRepo(t)
+	// chdir into the repo so getRepoDir() matches
+	t.Chdir(repo)
+
+	require.NoError(t, config.Add(repo))
+
+	buf := new(bytes.Buffer)
+	cmd := lsCmd
+	cmd.SetOut(buf)
+	lsJSON = false
+	lsGlobal = true
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	err := runLs(cmd, wm)
+	require.NoError(t, err)
+
+	output := buf.String()
+	// Current repo gets the "▸" marker
+	assert.Contains(t, output, "▸")
+}
+
+func TestLsCommand_Global_Table_NonCurrentRepo(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WTF_HOME", home)
+
+	repo := initCLITestRepo(t)
+	// chdir to a different directory so the repo is NOT current
+	t.Chdir(t.TempDir())
+
+	require.NoError(t, config.Add(repo))
+
+	buf := new(bytes.Buffer)
+	cmd := lsCmd
+	cmd.SetOut(buf)
+	lsJSON = false
+	lsGlobal = true
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	err := runLs(cmd, wm)
+	require.NoError(t, err)
+
+	output := buf.String()
+	// Non-current repo should NOT have the "▸" marker
+	assert.NotContains(t, output, "▸")
+	assert.Contains(t, output, "BRANCH")
+}
+
+func TestLsCommand_WithRemoteURL(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	// Add a fake remote to trigger the commitURL path
+	exec := &git.RealExecutor{}
+	_, err := exec.Run(dir, "remote", "add", "origin", "https://github.com/user/repo.git")
+	require.NoError(t, err)
+
+	buf := new(bytes.Buffer)
+	cmd := lsCmd
+	cmd.SetOut(buf)
+	lsJSON = false
+	lsGlobal = false
+
+	wm := git.NewWorktreeManager(exec)
+	err = runLs(cmd, wm)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "BRANCH")
+	// Should contain hyperlink escape since remote URL is set
+	assert.Contains(t, output, "\033]8;;")
+}
+
+func TestLsCommand_Global_MultipleRepos(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WTF_HOME", home)
+
+	repo1 := initCLITestRepo(t)
+	repo2 := initCLITestRepo(t)
+
+	require.NoError(t, config.Add(repo1))
+	require.NoError(t, config.Add(repo2))
+
+	// chdir to repo1 to test current repo highlighting
+	t.Chdir(repo1)
+
+	buf := new(bytes.Buffer)
+	cmd := lsCmd
+	cmd.SetOut(buf)
+	lsJSON = false
+	lsGlobal = true
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	err := runLs(cmd, wm)
+	require.NoError(t, err)
+
+	output := buf.String()
+	// Current repo (repo1) should have "▸", repo2 should not
+	assert.Contains(t, output, "▸")
+	assert.Contains(t, output, "BRANCH")
+}
+
 func TestShortHead(t *testing.T) {
 	tests := []struct {
 		input string
