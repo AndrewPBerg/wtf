@@ -4,7 +4,7 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 ## v0.1.0 — Core Worktree Operations
 
-**Status:** in-progress
+**Status:** complete
 
 **Goals:**
 - Solid `internal/git/` foundation everything else builds on

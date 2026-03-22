@@ -1,14 +1,18 @@
 package cli
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/AndrewPBerg/wtf/internal/setup"
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
 
@@ -134,20 +138,15 @@ func runRmGlobal(cmd *cobra.Command, branches []string, wm *git.WorktreeManager)
 		return fmt.Errorf("getting working directory: %w", err)
 	}
 
-	type match struct {
-		wt   git.Worktree
-		repo string
-	}
-
 	stderr := cmd.ErrOrStderr()
 	var errs []error
 
 	for _, branch := range branches {
-		var matches []match
+		var matches []rmMatch
 		for _, repo := range repos {
 			wt, findErr := wm.Find(repo, branch)
 			if findErr == nil {
-				matches = append(matches, match{wt: wt, repo: repo})
+				matches = append(matches, rmMatch{wt: wt, repo: repo})
 			}
 		}
 
@@ -163,11 +162,20 @@ func runRmGlobal(cmd *cobra.Command, branches []string, wm *git.WorktreeManager)
 			}
 
 		case len(matches) > 1:
-			_, _ = fmt.Fprintf(stderr, "%s multiple worktrees match %s across repos:\n", redBold("error:"), cyan(branch))
-			for _, m := range matches {
-				_, _ = fmt.Fprintf(stderr, "  %s %s %s\n", yellow("→"), cyan(m.wt.Branch), dim("("+m.repo+")"))
+			selected, promptErr := promptMultiRemove(cmd, branch, matches)
+			if promptErr != nil {
+				errs = append(errs, promptErr)
+				continue
 			}
-			errs = append(errs, fmt.Errorf("multiple global matches for %q — use the full branch name to disambiguate", branch))
+			for _, m := range selected {
+				if rmErr := wm.Remove(m.repo, branch, cwd, rmForce); rmErr != nil {
+					_, _ = fmt.Fprintf(stderr, "%s failed to remove %s: %s\n", redBold("✗"), cyan(branch), friendlyError(rmErr))
+					errs = append(errs, fmt.Errorf("removing %q from %s: %w", branch, filepath.Base(m.repo), rmErr))
+				} else {
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Removed worktree for %s %s\n",
+						greenBold("✔"), cyan(m.wt.Branch), dim("("+filepath.Base(m.repo)+")"))
+				}
+			}
 
 		default:
 			_, _ = fmt.Fprintf(stderr, "%s no worktree found matching %s across registered repos\n", redBold("error:"), cyan(branch))
@@ -182,4 +190,72 @@ func runRmGlobal(cmd *cobra.Command, branches []string, wm *git.WorktreeManager)
 		return fmt.Errorf("failed to remove %d of %d worktrees", len(errs), len(branches))
 	}
 	return nil
+}
+
+type rmMatch struct {
+	wt   git.Worktree
+	repo string
+}
+
+// promptMultiRemove displays numbered matches and asks the user which to remove.
+// Falls back to an error if stdin is not a TTY.
+func promptMultiRemove(cmd *cobra.Command, branch string, matches []rmMatch) ([]rmMatch, error) {
+	stderr := cmd.ErrOrStderr()
+
+	// Non-interactive: fall back to error
+	if !stdinIsTTY() {
+		_, _ = fmt.Fprintf(stderr, "%s multiple worktrees match %s across repos:\n", redBold("error:"), cyan(branch))
+		for _, m := range matches {
+			_, _ = fmt.Fprintf(stderr, "  %s %s %s\n", yellow("→"), cyan(m.wt.Branch), dim("("+m.repo+")"))
+		}
+		return nil, fmt.Errorf("multiple global matches for %q — use the full branch name to disambiguate", branch)
+	}
+
+	_, _ = fmt.Fprintf(stderr, "\n%s multiple worktrees match %s:\n", yellow("?"), cyan(branch))
+	for i, m := range matches {
+		_, _ = fmt.Fprintf(stderr, "  %s %s %s\n",
+			cyanBold(fmt.Sprintf("[%d]", i+1)),
+			cyan(m.wt.Branch),
+			dim("("+filepath.Base(m.repo)+")"))
+	}
+	_, _ = fmt.Fprintf(stderr, "\nRemove which? [1-%d, all, none] %s ", len(matches), dim("(default: none)"))
+
+	scanner := bufio.NewScanner(cmd.InOrStdin())
+	if !scanner.Scan() {
+		return nil, nil
+	}
+	input := strings.TrimSpace(scanner.Text())
+
+	if input == "" || strings.EqualFold(input, "none") {
+		_, _ = fmt.Fprintf(stderr, "%s skipped %s\n", dim("—"), cyan(branch))
+		return nil, nil
+	}
+
+	if strings.EqualFold(input, "all") {
+		return matches, nil
+	}
+
+	// Parse comma-separated indices
+	parts := strings.Split(input, ",")
+	seen := make(map[int]bool)
+	var selected []rmMatch
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		idx, err := strconv.Atoi(p)
+		if err != nil || idx < 1 || idx > len(matches) {
+			_, _ = fmt.Fprintf(stderr, "%s invalid selection %q — skipping %s\n", redBold("✗"), p, cyan(branch))
+			return nil, nil
+		}
+		if !seen[idx] {
+			seen[idx] = true
+			selected = append(selected, matches[idx-1])
+		}
+	}
+	return selected, nil
+}
+
+// stdinIsTTY reports whether os.Stdin is a terminal.
+// Declared as a variable so tests can override it.
+var stdinIsTTY = func() bool {
+	return isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
 }
