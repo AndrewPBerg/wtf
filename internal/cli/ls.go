@@ -45,6 +45,7 @@ type lsRow struct {
 	branch     string // plain text for width calculation
 	path       string
 	head       string
+	commitURL  string // web URL for the commit (empty if unavailable)
 	isMain     bool
 	isDetached bool
 }
@@ -70,6 +71,9 @@ func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
 		return enc.Encode(wts)
 	}
 
+	// Best-effort remote URL for commit hyperlinks.
+	remoteURL, _ := wm.RemoteURL(dir)
+
 	rows := make([]lsRow, len(wts))
 	for i, wt := range wts {
 		branch := wt.Branch
@@ -83,6 +87,7 @@ func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
 			branch:     branch,
 			path:       wt.Path,
 			head:       shortHead(wt.Head),
+			commitURL:  git.CommitURL(remoteURL, wt.Head),
 			isMain:     wt.IsMain,
 			isDetached: wt.IsDetached,
 		}
@@ -153,11 +158,17 @@ func printWorktreeTableWithWidths(cmd *cobra.Command, rows []lsRow, prefix strin
 		default:
 			coloredBranch = cyan(pad(r.branch, w.branch+gap))
 		}
+
+		headStr := dim(r.head)
+		if r.commitURL != "" {
+			headStr = hyperlink(r.commitURL, dim(r.head))
+		}
+
 		_, _ = fmt.Fprintf(out, "%s%s%s%s\n",
 			prefix,
 			coloredBranch,
 			pad(r.path, w.path+gap),
-			dim(r.head),
+			headStr,
 		)
 	}
 }
@@ -193,11 +204,15 @@ func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
 
 	out := cmd.OutOrStdout()
 
+	// Detect current repo so we can highlight it.
+	currentRepo, _ := getRepoDir()
+
 	// First pass: collect all rows per repo and compute global column widths.
 	type repoRows struct {
-		name string
-		path string
-		rows []lsRow
+		name      string
+		path      string
+		rows      []lsRow
+		isCurrent bool
 	}
 	var groups []repoRows
 	globalW := colWidths{}
@@ -208,6 +223,9 @@ func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s Could not list %s: %v\n", yellow("⚠"), cyan(repo), err)
 			continue
 		}
+
+		// Best-effort remote URL for commit hyperlinks.
+		remoteURL, _ := wm.RemoteURL(repo)
 
 		rows := make([]lsRow, len(wts))
 		for j, wt := range wts {
@@ -222,17 +240,22 @@ func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
 				branch:     branch,
 				path:       wt.Path,
 				head:       shortHead(wt.Head),
+				commitURL:  git.CommitURL(remoteURL, wt.Head),
 				isMain:     wt.IsMain,
 				isDetached: wt.IsDetached,
 			}
 		}
 		globalW = mergeWidths(globalW, calcWidths(rows))
-		groups = append(groups, repoRows{name: filepath.Base(repo), path: repo, rows: rows})
+		groups = append(groups, repoRows{name: filepath.Base(repo), path: repo, rows: rows, isCurrent: repo == currentRepo})
 	}
 
 	// Second pass: print with consistent widths.
 	for i, g := range groups {
-		_, _ = fmt.Fprintf(out, "%s %s\n", cyanBold(g.name), dim("("+g.path+")"))
+		if g.isCurrent {
+			_, _ = fmt.Fprintf(out, "%s %s %s\n", green("▸"), cyanBold(g.name), dim("("+g.path+")"))
+		} else {
+			_, _ = fmt.Fprintf(out, "  %s %s\n", cyanBold(g.name), dim("("+g.path+")"))
+		}
 		printWorktreeTableWithWidths(cmd, g.rows, "  ", globalW)
 
 		if i < len(groups)-1 {

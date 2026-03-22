@@ -5,7 +5,8 @@ List all git worktrees for the current repository, or across all registered repo
 ## Usage
 
 ```bash
-wtf ls [--json] [--global]
+wtf ls [--json] [-g|--global]
+wtf lsg [--json]
 ```
 
 ## Flags
@@ -13,7 +14,9 @@ wtf ls [--json] [--global]
 | Flag              | Description                                    |
 |-------------------|------------------------------------------------|
 | `--json`          | Output in JSON format                          |
-| `--global`, `-g`  | List worktrees across all registered repos     |
+| `-g`, `--global`  | List worktrees across all registered repos     |
+
+`lsg` is a shortcut for `ls -g` (same flags minus `--global`).
 
 ## Examples
 
@@ -39,13 +42,13 @@ $ wtf ls --json
 ]
 
 # List worktrees across all registered repos
-$ wtf ls --global
-myrepo (/home/user/code/myrepo)
+$ wtf lsg
+▸ myrepo (/home/user/code/myrepo)
   BRANCH        PATH                              HEAD
   main *        /home/user/code/myrepo             abc1234
   feature/x     /home/user/code/myrepo--feat-x     def5678
 
-other (/home/user/code/other)
+  other (/home/user/code/other)
   BRANCH        PATH                              HEAD
   main *        /home/user/code/other              111aaaa
 
@@ -58,6 +61,14 @@ $ wtf ls -g --json
   }
 ]
 ```
+
+## Commit hyperlinks
+
+In table output, commit hashes are rendered as clickable hyperlinks (using OSC 8 terminal escape sequences). Clicking a commit hash opens the commit on GitHub or GitLab. This requires a modern terminal emulator with hyperlink support. The remote URL is detected from the `origin` remote on a best-effort basis.
+
+## Global mode
+
+In global mode, the current repo is highlighted with a green `▸` indicator. Column widths are aligned consistently across all repos.
 
 ## Auto-registration
 

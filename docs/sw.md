@@ -5,14 +5,17 @@ Switch to a worktree by branch name (fuzzy substring match). Prints the path to 
 ## Usage
 
 ```bash
-wtf sw <query> [--global]
+wtf sw <query> [-g|--global]
+wtf swg <query>
 ```
 
 ## Flags
 
 | Flag              | Description                                    |
 |-------------------|------------------------------------------------|
-| `--global`, `-G`  | Search across all registered repos             |
+| `-g`, `--global`  | Search across all registered repos             |
+
+`swg` is a shortcut for `sw -g`.
 
 Since a subprocess can't change the parent shell's directory, `wtf sw` prints the path. Use `wtf setup` for automatic configuration, or see `wtf init --help` for manual setup.
 
@@ -42,7 +45,11 @@ $ wtf sw auth
 Switched to /code/myrepo--feature-auth
 
 # Search across all registered repos
-$ wtf sw -G auth
+$ wtf sw -g auth
+/home/user/code/myrepo--feature-auth
+
+# Same, using the shortcut command
+$ wtf swg auth
 /home/user/code/myrepo--feature-auth
 
 # No match — shows suggestions

@@ -66,6 +66,43 @@ func TestFormatError_MainWorktree(t *testing.T) {
 	assert.Contains(t, msg, "managed by git")
 }
 
+func TestFormatError_MissingArgs(t *testing.T) {
+	err := fmt.Errorf("accepts 1 arg(s), received 0")
+	msg := FormatError(err)
+	assert.Contains(t, msg, "missing required argument")
+	assert.Contains(t, msg, "wtf --help")
+}
+
+func TestFormatError_TooManyArgs(t *testing.T) {
+	err := fmt.Errorf("accepts 1 arg(s), received 3")
+	msg := FormatError(err)
+	assert.Contains(t, msg, "too many arguments")
+	assert.Contains(t, msg, "expected 1")
+	assert.Contains(t, msg, "got 3")
+}
+
+func TestFormatError_UnknownCommand(t *testing.T) {
+	err := fmt.Errorf(`unknown command "foo" for "wtf"`)
+	msg := FormatError(err)
+	assert.Contains(t, msg, "is not a wtf command")
+	assert.Contains(t, msg, "wtf --help")
+}
+
+func TestFormatError_UnknownCommandSuggestion(t *testing.T) {
+	err := fmt.Errorf(`unknown command "swe" for "wtf"`)
+	msg := FormatError(err)
+	assert.Contains(t, msg, "is not a wtf command")
+	assert.Contains(t, msg, "Did you mean")
+	assert.Contains(t, msg, "sw")
+}
+
+func TestFormatError_UnknownFlag(t *testing.T) {
+	err := fmt.Errorf("unknown flag: --foo")
+	msg := FormatError(err)
+	assert.Contains(t, msg, "unknown flag: --foo")
+	assert.Contains(t, msg, "wtf --help")
+}
+
 func TestFormatError_GenericError(t *testing.T) {
 	err := fmt.Errorf("something went wrong")
 	msg := FormatError(err)
