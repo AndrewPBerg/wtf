@@ -1,0 +1,136 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }}_${{ matrix.arch }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          # Linux
+          - os: linux
+            arch: amd64
+          - os: linux
+            arch: arm64
+          - os: linux
+            arch: arm
+          - os: linux
+            arch: "386"
+          # macOS
+          - os: darwin
+            arch: amd64
+          - os: darwin
+            arch: arm64
+          # Windows
+          - os: windows
+            arch: amd64
+          - os: windows
+            arch: arm64
+          - os: windows
+            arch: "386"
+          # BSDs
+          - os: freebsd
+            arch: amd64
+          - os: freebsd
+            arch: arm64
+          - os: openbsd
+            arch: amd64
+          - os: netbsd
+            arch: amd64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set binary name
+        id: name
+        run: |
+          BINARY=wtf
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            BINARY=wtf.exe
+          fi
+          echo "binary=${BINARY}" >> "$GITHUB_OUTPUT"
+          echo "asset=wtf_${{ matrix.os }}_${{ matrix.arch }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: 0
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          go build \
+            -trimpath \
+            -ldflags="-s -w -X github.com/AndrewPBerg/wtf/internal/cli.Version=${VERSION}" \
+            -o "${{ steps.name.outputs.binary }}" \
+            ./cmd/wtf
+
+      - name: Package (tar.gz for non-Windows)
+        if: matrix.os != 'windows'
+        run: |
+          ASSET="${{ steps.name.outputs.asset }}"
+          tar czf "${ASSET}.tar.gz" "${{ steps.name.outputs.binary }}" README.md LICENSE
+          sha256sum "${ASSET}.tar.gz" >> SHA256SUMS
+
+      - name: Package (zip for Windows)
+        if: matrix.os == 'windows'
+        run: |
+          ASSET="${{ steps.name.outputs.asset }}"
+          zip "${ASSET}.zip" "${{ steps.name.outputs.binary }}" README.md LICENSE
+          sha256sum "${ASSET}.zip" >> SHA256SUMS
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.asset }}
+          path: |
+            *.tar.gz
+            *.zip
+            SHA256SUMS
+          retention-days: 1
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Merge SHA256SUMS
+        run: |
+          cat dist/SHA256SUMS > SHA256SUMS
+          echo "--- checksums ---"
+          cat SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            SHA256SUMS

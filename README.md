@@ -7,7 +7,19 @@ A fast git worktree workflow tool. Create, switch, and clean up worktrees with s
 ## Install
 
 ```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/AndrewPBerg/wtf/main/install.sh | sh
+
+# Windows (PowerShell) — download and run manually, don't pipe to iex
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/AndrewPBerg/wtf/main/install.ps1 -OutFile install.ps1
+.\install.ps1
+Remove-Item install.ps1
+
+# Go (all platforms)
 go install github.com/AndrewPBerg/wtf/cmd/wtf@latest
+
+# Windows Package Manager (once published)
+winget install AndrewPBerg.wtf
 ```
 
 ## Quickstart
