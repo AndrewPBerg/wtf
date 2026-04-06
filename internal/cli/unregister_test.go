@@ -11,28 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUnregisterCommand_CurrentRepo(t *testing.T) {
-	repo := initCLITestRepo(t)
-	t.Chdir(repo)
-	setupGlobalRegistry(t, []string{repo})
-
-	stdout := new(bytes.Buffer)
-	cmd := unregisterCmd
-	cmd.SetOut(stdout)
-
-	err := cmd.RunE(cmd, []string{})
-	require.NoError(t, err)
-
-	output := stdout.String()
-	assert.Contains(t, output, "Unregistered")
-	assert.Contains(t, output, repo)
-
-	// Verify removed from registry
-	paths, err := config.Load()
-	require.NoError(t, err)
-	assert.Empty(t, paths)
-}
-
 func TestUnregisterCommand_ExplicitPath(t *testing.T) {
 	repo := initCLITestRepo(t)
 	setupGlobalRegistry(t, []string{repo})
@@ -81,18 +59,17 @@ func TestUnregisterCommand_PreservesOtherRepos(t *testing.T) {
 	assert.Equal(t, []string{repo2}, paths)
 }
 
-func TestUnregisterCommand_NotARepo(t *testing.T) {
-	dir := t.TempDir()
-	t.Chdir(dir)
+func TestUnregisterCommand_NoArgsEmptyRegistry(t *testing.T) {
 	setupGlobalRegistry(t, []string{})
 
+	stdout := new(bytes.Buffer)
 	cmd := unregisterCmd
-	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetOut(stdout)
 
-	// No args, not in a repo
+	// No args, empty registry — should report no repos.
 	err := cmd.RunE(cmd, []string{})
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, ErrNotARepo)
+	require.NoError(t, err)
+	assert.Contains(t, stdout.String(), "No registered repos")
 }
 
 func TestResolveRepoArg_AbsPath(t *testing.T) {
@@ -118,7 +95,7 @@ func TestResolveRepoArg_RegistryMatch(t *testing.T) {
 func TestResolveRepoArg_NoMatch(t *testing.T) {
 	setupGlobalRegistry(t, []string{})
 
-	// Without match, falls back to abs path
+	// Without match, falls back to abs path.
 	result := resolveRepoArg("nonexistent-repo")
 	assert.True(t, filepath.IsAbs(result))
 }
