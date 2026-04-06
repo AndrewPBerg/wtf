@@ -10,6 +10,7 @@ import (
 
 	"github.com/AndrewPBerg/wtf/internal/forge"
 	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/port"
 	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/spf13/cobra"
 )
@@ -21,6 +22,7 @@ var (
 	newNoSetup    bool
 	newNoEnv      bool
 	newNoInstall  bool
+	newNoServe    bool
 )
 
 func init() {
@@ -30,6 +32,7 @@ func init() {
 	newCmd.Flags().BoolVar(&newNoSetup, "no-setup", false, "Skip all post-create setup (env files and install)")
 	newCmd.Flags().BoolVar(&newNoEnv, "no-env", false, "Skip env file symlinking")
 	newCmd.Flags().BoolVar(&newNoInstall, "no-install", false, "Skip package manager install")
+	newCmd.Flags().BoolVar(&newNoServe, "no-serve", false, "Skip starting dev server")
 	newCmd.MarkFlagsMutuallyExclusive("branch", "pr")
 
 	_ = newCmd.RegisterFlagCompletionFunc("branch", completeRemoteBranchValues)
@@ -323,6 +326,47 @@ func runPostCreateSetup(cmd *cobra.Command, wm *git.WorktreeManager, runner *set
 	opts := setupOptsFromFlags()
 	if setupErr := runner.RunSetup(mainWt.Path, wtPath, opts); setupErr != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s setup failed: %v\n", yellow("⚠"), setupErr)
+	}
+
+	allocatePortForWorktree(cmd, dir, wtPath)
+}
+
+// allocatePortForWorktree allocates a unique dev-server port for the worktree
+// branch, starts the dev server (unless --no-serve), and prints status to stderr.
+// Failures are non-fatal warnings.
+func allocatePortForWorktree(cmd *cobra.Command, repoDir, wtPath string) {
+	exec := &git.RealExecutor{}
+	branch, err := exec.Run(wtPath, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return
+	}
+
+	alloc, err := portAllocator(repoDir)
+	if err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s port allocation failed: %v\n", yellow("⚠"), err)
+		return
+	}
+
+	p, err := alloc.Allocate(branch)
+	if err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s port allocation failed: %v\n", yellow("⚠"), err)
+		return
+	}
+
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s PORT=%d\n", dim("port:"), p)
+
+	if newNoServe {
+		return
+	}
+
+	result, sErr := port.StartDevServer(wtPath, p)
+	if sErr != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s dev server failed: %v\n", yellow("⚠"), sErr)
+		return
+	}
+	if result != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s %s (pid %d, log %s)\n",
+			dim("serve:"), cyan(result.Command), result.PID, dim(result.LogFile))
 	}
 }
 

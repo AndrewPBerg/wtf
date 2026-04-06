@@ -11,6 +11,8 @@ import (
 
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/port"
+	"github.com/AndrewPBerg/wtf/internal/ui"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
@@ -29,32 +31,30 @@ func init() {
 }
 
 var rmgCmd = &cobra.Command{
-	Use:               "rmg <branch> [branch...]",
+	Use:               "rmg [branch...]",
 	Short:             "Remove worktrees globally (shortcut for rm -g)",
 	ValidArgsFunction: completeWorktrees,
-	Args: func(_ *cobra.Command, args []string) error {
-		if len(args) == 0 {
-			return fmt.Errorf("please specify at least one branch name to remove\n\nUsage: wtf rmg <branch> [branch...]")
-		}
-		return nil
-	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runRmGlobal(cmd, args, git.NewWorktreeManager(&git.RealExecutor{}))
+		wm := git.NewWorktreeManager(&git.RealExecutor{})
+		if len(args) == 0 {
+			return runRmInteractiveGlobal(cmd, wm)
+		}
+		return runRmGlobal(cmd, args, wm)
 	},
 }
 
 var rmCmd = &cobra.Command{
-	Use:               "rm <branch> [branch...]",
+	Use:               "rm [branch...]",
 	Short:             "Remove worktrees and their branches",
 	ValidArgsFunction: completeWorktrees,
-	Args: func(_ *cobra.Command, args []string) error {
-		if len(args) == 0 {
-			return fmt.Errorf("please specify at least one branch name to remove\n\nUsage: wtf rm <branch> [branch...]")
-		}
-		return nil
-	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		wm := git.NewWorktreeManager(&git.RealExecutor{})
+		if len(args) == 0 {
+			if rmGlobal {
+				return runRmInteractiveGlobal(cmd, wm)
+			}
+			return runRmInteractive(cmd, wm)
+		}
 		if rmGlobal {
 			return runRmGlobal(cmd, args, wm)
 		}
@@ -110,8 +110,23 @@ func runRm(cmd *cobra.Command, branch string, wm *git.WorktreeManager) error {
 	return nil
 }
 
-// runOnRemoveHooks is a no-op placeholder for future CLI-driven hooks.
-func runOnRemoveHooks(_ *cobra.Command, _ string, _ string) {}
+// runOnRemoveHooks stops the dev server and releases port for the worktree.
+func runOnRemoveHooks(cmd *cobra.Command, repoDir, branch string) {
+	// Stop dev server if running in this worktree
+	exec := &git.RealExecutor{}
+	wm := git.NewWorktreeManager(exec)
+	if wt, err := wm.Find(repoDir, branch); err == nil {
+		_ = port.StopDevServer(wt.Path)
+	}
+
+	alloc, err := portAllocator(repoDir)
+	if err != nil {
+		return
+	}
+	if err := alloc.Release(branch); err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s port release failed: %v\n", yellow("⚠"), err)
+	}
+}
 
 // friendlyError returns a short, user-facing message for known error types,
 // stripping noisy git internals.
@@ -296,4 +311,135 @@ func promptMultiRemove(cmd *cobra.Command, branch string, matches []rmMatch) ([]
 // Declared as a variable so tests can override it.
 var stdinIsTTY = func() bool {
 	return isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
+}
+
+// runRmInteractive launches an interactive multi-select picker for removing worktrees.
+func runRmInteractive(cmd *cobra.Command, wm *git.WorktreeManager) error {
+	if !stdinIsTTY() {
+		return fmt.Errorf("please specify at least one branch name to remove\n\nUsage: wtf rm <branch> [branch...]")
+	}
+
+	dir, err := getRepoDir()
+	if err != nil {
+		return err
+	}
+
+	cwd, _ := os.Getwd()
+
+	wts, err := wm.List(dir)
+	if err != nil {
+		return err
+	}
+
+	// Filter out main worktree and the worktree the user is currently inside.
+	items := removablePickerItems(wts, cwd, "")
+	if len(items) == 0 {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), dim("No removable worktrees."))
+		return nil
+	}
+
+	result, err := runPickerFunc(items, true)
+	if err != nil {
+		return err
+	}
+	if result.Quit || len(result.Items) == 0 {
+		return nil
+	}
+
+	var errs []error
+	for _, item := range result.Items {
+		runOnRemoveHooks(cmd, dir, item.Branch)
+		if rmErr := wm.Remove(dir, item.Branch, cwd, rmForce); rmErr != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s failed to remove %s: %s\n", redBold("✗"), cyan(item.Branch), friendlyError(rmErr))
+			errs = append(errs, rmErr)
+		} else {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Removed worktree for %s\n", greenBold("✔"), cyan(item.Branch))
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to remove %d of %d worktrees", len(errs), len(result.Items))
+	}
+	return nil
+}
+
+// runRmInteractiveGlobal launches an interactive multi-select picker across all repos.
+func runRmInteractiveGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
+	if !stdinIsTTY() {
+		return fmt.Errorf("please specify at least one branch name to remove\n\nUsage: wtf rmg <branch> [branch...]")
+	}
+
+	repos, err := config.LoadValid()
+	if err != nil {
+		return fmt.Errorf("loading registry: %w", err)
+	}
+
+	if len(repos) == 0 {
+		return fmt.Errorf("no registered repos — run a wtf command inside a repo to auto-register it")
+	}
+
+	cwd, _ := os.Getwd()
+
+	var allItems []ui.PickerItem
+	for _, repo := range repos {
+		wts, listErr := wm.List(repo)
+		if listErr != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s Could not list %s: %v\n", yellow("⚠"), cyan(repo), listErr)
+			continue
+		}
+		// Use full repo path as the Repo field to avoid basename collisions.
+		allItems = append(allItems, removablePickerItems(wts, cwd, repo)...)
+	}
+
+	if len(allItems) == 0 {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), dim("No removable worktrees across registered repos."))
+		return nil
+	}
+
+	result, err := runPickerFunc(allItems, true)
+	if err != nil {
+		return err
+	}
+	if result.Quit || len(result.Items) == 0 {
+		return nil
+	}
+
+	var errs []error
+	for _, item := range result.Items {
+		repo := item.Repo
+		runOnRemoveHooks(cmd, repo, item.Branch)
+		if rmErr := wm.Remove(repo, item.Branch, cwd, rmForce); rmErr != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s failed to remove %s: %s\n", redBold("✗"), cyan(item.Branch), friendlyError(rmErr))
+			errs = append(errs, rmErr)
+		} else {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Removed worktree for %s %s\n",
+				greenBold("✔"), cyan(item.Branch), dim("("+filepath.Base(item.Repo)+")"))
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to remove %d of %d worktrees", len(errs), len(result.Items))
+	}
+	return nil
+}
+
+// removablePickerItems filters worktrees into picker items, excluding main and current directory.
+func removablePickerItems(wts []git.Worktree, cwd, repo string) []ui.PickerItem {
+	var items []ui.PickerItem
+	for _, wt := range wts {
+		if wt.IsMain || wt.IsBare || wt.Branch == "" {
+			continue
+		}
+		if cwd != "" && isCurrentWorktree(cwd, wt.Path) {
+			continue
+		}
+		items = append(items, ui.PickerItem{
+			Branch: wt.Branch,
+			Path:   wt.Path,
+			Head:   wt.Head,
+			IsMain: wt.IsMain,
+			Repo:   repo,
+		})
+	}
+	return items
 }

@@ -118,19 +118,19 @@ func TestWorktreePath(t *testing.T) {
 			name:     "simple branch",
 			mainPath: "/code/myrepo",
 			branch:   "feature",
-			want:     "/code/myrepo--feature",
+			want:     "/code/feature--myrepo",
 		},
 		{
 			name:     "branch with slash",
 			mainPath: "/code/myrepo",
 			branch:   "feature/auth",
-			want:     "/code/myrepo--feature-auth",
+			want:     "/code/feature-auth--myrepo",
 		},
 		{
 			name:     "nested slashes",
 			mainPath: "/code/myrepo",
 			branch:   "feature/auth/login",
-			want:     "/code/myrepo--feature-auth-login",
+			want:     "/code/feature-auth-login--myrepo",
 		},
 	}
 
@@ -160,7 +160,7 @@ func TestWorktreeManager_AddAndList_Integration(t *testing.T) {
 
 	wtPath, err := wm.Add(dir, "test-branch", "main")
 	require.NoError(t, err)
-	assert.Contains(t, wtPath, "--test-branch")
+	assert.Contains(t, wtPath, "test-branch--")
 
 	wts, err := wm.List(dir)
 	require.NoError(t, err)

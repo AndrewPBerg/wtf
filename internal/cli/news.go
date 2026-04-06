@@ -19,6 +19,7 @@ func init() {
 	newsCmd.Flags().BoolVar(&newNoSetup, "no-setup", false, "Skip all post-create setup (env files and install)")
 	newsCmd.Flags().BoolVar(&newNoEnv, "no-env", false, "Skip env file symlinking")
 	newsCmd.Flags().BoolVar(&newNoInstall, "no-install", false, "Skip package manager install")
+	newsCmd.Flags().BoolVar(&newNoServe, "no-serve", false, "Skip starting dev server")
 	newsCmd.MarkFlagsMutuallyExclusive("branch", "pr")
 
 	_ = newsCmd.RegisterFlagCompletionFunc("branch", completeRemoteBranchValues)

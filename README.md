@@ -26,8 +26,8 @@ go install github.com/AndrewPBerg/wtf/cmd/wtf@latest
 # Set up shell integration (one-time)
 wtf setup shell
 
-# List all worktrees
-wtf ls
+# List / pick worktrees interactively
+wtf sw
 
 # Create a worktree for a new branch
 wtf new feature/auth
@@ -109,9 +109,8 @@ Worktrees are created as sibling directories to the main repo. Slashes in branch
 
 | Command     | Description                                          |
 |-------------|------------------------------------------------------|
-| `wtf ls`    | List worktrees (`--json`, `--global`)                |
 | `wtf new`   | Create a worktree (`--base`, `--pr`, `--no-setup`)   |
-| `wtf sw`    | Switch to a worktree (`--global` to search all repos)|
+| `wtf sw`    | Switch/list worktrees (`--global`, `--prs`, `--json`)|
 | `wtf rm`    | Remove a worktree and branch (`--force`)             |
 | `wtf clean` | Remove merged/prunable worktrees (`--dry-run`)       |
 | `wtf news`  | Create a worktree and switch to it (`--base`)        |

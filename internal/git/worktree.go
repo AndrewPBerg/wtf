@@ -234,10 +234,13 @@ func isInsideWorktree(cwd, wtPath string) bool {
 }
 
 // WorktreePath computes the sibling worktree directory path.
-// /code/myrepo + feature/auth → /code/myrepo--feature-auth
+// The branch name is the prefix so worktrees sort by purpose:
+//
+//	/code/myrepo + feature/auth → /code/feature-auth--myrepo
+//	/code/myrepo + pr-711       → /code/pr-711--myrepo
 func WorktreePath(mainPath, branch string) string {
 	sanitized := strings.ReplaceAll(branch, "/", "-")
 	parent := filepath.Dir(mainPath)
 	base := filepath.Base(mainPath)
-	return filepath.Join(parent, base+"--"+sanitized)
+	return filepath.Join(parent, sanitized+"--"+base)
 }

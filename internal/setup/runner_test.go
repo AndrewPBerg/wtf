@@ -260,3 +260,58 @@ func (o *orderTrackingExecutor) RunInteractive(dir, command string) error {
 	*o.order = append(*o.order, command)
 	return o.inner.RunInteractive(dir, command)
 }
+
+func TestRunSetup_SymlinksVenv(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create .venv directory in main worktree
+	require.NoError(t, os.Mkdir(filepath.Join(mainDir, ".venv"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".venv", "pyvenv.cfg"), []byte("home = /usr/bin"), 0o644))
+
+	mock := newMockCmdExecutor()
+	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler()}
+
+	err := runner.RunSetup(mainDir, targetDir, Options{})
+	require.NoError(t, err)
+
+	link := filepath.Join(targetDir, ".venv")
+	info, err := os.Lstat(link)
+	require.NoError(t, err)
+	assert.True(t, info.Mode()&os.ModeSymlink != 0, ".venv should be a symlink")
+}
+
+func TestRunSetup_SkipsVenvWhenMissing(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+	// No .venv in mainDir
+
+	mock := newMockCmdExecutor()
+	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler()}
+
+	err := runner.RunSetup(mainDir, targetDir, Options{})
+	require.NoError(t, err)
+
+	_, err = os.Lstat(filepath.Join(targetDir, ".venv"))
+	assert.True(t, os.IsNotExist(err))
+}
+
+func TestRunSetup_SkipsVenvWhenAlreadyExists(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	require.NoError(t, os.Mkdir(filepath.Join(mainDir, ".venv"), 0o755))
+	require.NoError(t, os.Mkdir(filepath.Join(targetDir, ".venv"), 0o755))
+
+	mock := newMockCmdExecutor()
+	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler()}
+
+	err := runner.RunSetup(mainDir, targetDir, Options{})
+	require.NoError(t, err)
+
+	// Should still be a real directory, not a symlink
+	info, err := os.Lstat(filepath.Join(targetDir, ".venv"))
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+	assert.False(t, info.Mode()&os.ModeSymlink != 0)
+}

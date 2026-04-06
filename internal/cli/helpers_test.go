@@ -38,7 +38,7 @@ func TestFormatError_WorktreeNotFound(t *testing.T) {
 	err := fmt.Errorf("%w: %q", git.ErrWorktreeNotFound, "my-branch")
 	msg := FormatError(err)
 	assert.Contains(t, msg, "couldn't find that worktree")
-	assert.Contains(t, msg, "wtf ls")
+	assert.Contains(t, msg, "wtf sw")
 }
 
 func TestFormatError_MultipleMatches(t *testing.T) {
@@ -151,8 +151,8 @@ func TestLevenshtein(t *testing.T) {
 
 func TestSuggestCommands(t *testing.T) {
 	// Close match
-	suggestions := suggestCommands("lss")
-	assert.Contains(t, suggestions, "ls")
+	suggestions := suggestCommands("sww")
+	assert.Contains(t, suggestions, "sw")
 
 	// No close match
 	suggestions = suggestCommands("zzzzz")

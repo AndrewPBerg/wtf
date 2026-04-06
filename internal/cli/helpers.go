@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/port"
 )
 
 var (
@@ -40,7 +42,7 @@ func getRepoDir() (string, error) {
 
 // suggestCommands returns command names similar to the given unknown command.
 func suggestCommands(unknown string) []string {
-	known := []string{"sw", "swg", "new", "news", "ls", "rm", "rmg", "watch", "repos", "init", "setup", "config", "completion", "register", "unregister"}
+	known := []string{"sw", "swg", "new", "news", "rm", "rmg", "watch", "repos", "init", "setup", "config", "completion", "register", "unregister"}
 	unknown = strings.ToLower(unknown)
 	var suggestions []string
 	for _, cmd := range known {
@@ -79,6 +81,23 @@ func levenshtein(a, b string) int {
 	return prev[lb]
 }
 
+// portAllocator creates a port.Allocator for the given repo directory.
+// It resolves the .git/wtf/ports.json path and auto-detects the base port.
+func portAllocator(repoDir string) (*port.Allocator, error) {
+	exec := &git.RealExecutor{}
+	gitCommonDir, err := exec.Run(repoDir, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return nil, fmt.Errorf("getting git common dir: %w", err)
+	}
+	if !filepath.IsAbs(gitCommonDir) {
+		gitCommonDir = filepath.Join(repoDir, gitCommonDir)
+	}
+
+	storePath := filepath.Join(gitCommonDir, "wtf", "ports.json")
+	base := port.DetectBasePort(repoDir)
+	return port.New(base, port.NewFileStore(storePath)), nil
+}
+
 // FormatError returns a user-friendly, WTF-themed error string.
 func FormatError(err error) string {
 	switch {
@@ -95,7 +114,7 @@ func FormatError(err error) string {
 			"%s couldn't find that worktree\n  %s run %s to see available worktrees",
 			redBold("wtf?"),
 			dim("hint:"),
-			cyan("wtf ls"),
+			cyan("wtf sw"),
 		)
 
 	case errors.Is(err, git.ErrMultipleMatches):

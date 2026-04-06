@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/AndrewPBerg/wtf/internal/ui"
@@ -76,9 +77,14 @@ type Options struct {
 	EnvStrategy string // "symlink" (default), "copy", "none"
 }
 
+// DefaultSymlinkDirs are directories symlinked from the main worktree when
+// they exist. This avoids re-creating heavyweight directories per worktree.
+var DefaultSymlinkDirs = []string{".venv"}
+
 // RunSetup runs the setup flow for a new worktree.
-// By default: symlink env files from mainDir → targetDir, then auto-detect
-// package manager and run install.
+//  1. Symlink env files (.env, .env.local, …) from mainDir → targetDir
+//  2. Symlink shared directories (.venv) from mainDir → targetDir
+//  3. Auto-detect package manager and run install
 func (r *Runner) RunSetup(mainDir, targetDir string, opts Options) error {
 	// 1. Handle env files
 	if !opts.SkipEnv {
@@ -91,13 +97,46 @@ func (r *Runner) RunSetup(mainDir, targetDir string, opts Options) error {
 		}
 	}
 
-	// 2. Auto-detect and install
+	// 2. Symlink shared directories
+	if !opts.SkipEnv {
+		if err := symlinkDirs(mainDir, targetDir, DefaultSymlinkDirs); err != nil {
+			return fmt.Errorf("symlinking directories: %w", err)
+		}
+	}
+
+	// 3. Auto-detect and install
 	if !opts.SkipInstall {
 		if err := r.runAutoSetup(targetDir); err != nil {
 			return fmt.Errorf("auto setup: %w", err)
 		}
 	}
 
+	return nil
+}
+
+// symlinkDirs creates symlinks for directories that exist in mainDir.
+func symlinkDirs(mainDir, targetDir string, dirs []string) error {
+	for _, d := range dirs {
+		src := filepath.Join(mainDir, d)
+		info, err := os.Lstat(src)
+		if err != nil || !info.IsDir() {
+			continue // skip if doesn't exist or isn't a directory
+		}
+
+		dst := filepath.Join(targetDir, d)
+		// Skip if already exists (don't overwrite)
+		if _, err := os.Lstat(dst); err == nil {
+			continue
+		}
+
+		rel, err := filepath.Rel(targetDir, src)
+		if err != nil {
+			return fmt.Errorf("computing relative path for %s: %w", d, err)
+		}
+		if err := os.Symlink(rel, dst); err != nil {
+			return fmt.Errorf("symlinking %s: %w", d, err)
+		}
+	}
 	return nil
 }
 

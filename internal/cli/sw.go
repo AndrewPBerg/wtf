@@ -12,30 +12,40 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var swPRs bool
+
 var swGlobal bool
 
 func init() {
 	swCmd.Flags().BoolVarP(&swGlobal, "global", "g", false, "Search across all registered repos")
+	swCmd.Flags().BoolVarP(&swPRs, "prs", "p", false, "Show PR status for each worktree (list mode)")
 	rootCmd.AddCommand(swCmd)
+	swgCmd.Flags().BoolVarP(&swPRs, "prs", "p", false, "Show PR status for each worktree (list mode)")
 	rootCmd.AddCommand(swgCmd)
 }
 
 var swgCmd = &cobra.Command{
-	Use:               "swg <branch>",
+	Use:               "swg [branch]",
 	Short:             "Switch to a worktree globally (shortcut for sw -g)",
-	Args:              cobra.ExactArgs(1),
+	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: completeWorktrees,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		wm := git.NewWorktreeManager(&git.RealExecutor{})
+		if len(args) == 0 {
+			lsGlobal = true
+			lsPRs = swPRs
+			return runLs(cmd, wm)
+		}
 		return runSwGlobal(cmd, args[0], wm)
 	},
 }
 
 var swCmd = &cobra.Command{
-	Use:               "sw <branch>",
+	Use:               "sw [branch]",
 	Short:             "Switch to a worktree (prints path for cd)",
 	ValidArgsFunction: completeWorktrees,
 	Long: `Switch to a worktree by branch name (substring match).
+With no arguments, lists all worktrees in an interactive picker.
 Prints the worktree path to stdout so you can cd to it.
 
 To enable the 'sw' shell function that cds automatically, run:
@@ -47,9 +57,18 @@ Or add this to your shell profile manually:
   eval "$(wtf init)"
 
 See 'wtf init --help' and 'wtf setup --help' for details.`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		wm := git.NewWorktreeManager(&git.RealExecutor{})
+		if len(args) == 0 {
+			lsPRs = swPRs
+			if swGlobal {
+				lsGlobal = true
+			} else {
+				lsGlobal = false
+			}
+			return runLs(cmd, wm)
+		}
 		if swGlobal {
 			return runSwGlobal(cmd, args[0], wm)
 		}
