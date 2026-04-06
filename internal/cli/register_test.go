@@ -201,3 +201,71 @@ func TestDiscoverRepos_CurrentDirAndChildren(t *testing.T) {
 	assert.Equal(t, filepath.Base(parent), items[0].Name, "current dir listed first")
 	assert.Equal(t, "sub-repo", items[1].Name)
 }
+
+// --- registerAndReport JSON ---
+
+func TestRegisterAndReport_JSON(t *testing.T) {
+	repo := initCLITestRepo(t)
+	setupGlobalRegistry(t, []string{})
+
+	jsonOutput = true
+	defer func() { jsonOutput = false }()
+
+	stdout := new(bytes.Buffer)
+	cmd := registerCmd
+	cmd.SetOut(stdout)
+
+	err := registerAndReport(cmd, []string{repo})
+	require.NoError(t, err)
+
+	out := stdout.String()
+	assert.Contains(t, out, `"registered"`)
+	assert.Contains(t, out, repo)
+}
+
+func TestRegisterAndReport_WithList(t *testing.T) {
+	repo := initCLITestRepo(t)
+	setupGlobalRegistry(t, []string{})
+
+	registerList = true
+	defer func() { registerList = false }()
+
+	stdout := new(bytes.Buffer)
+	cmd := registerCmd
+	cmd.SetOut(stdout)
+
+	err := registerAndReport(cmd, []string{repo})
+	require.NoError(t, err)
+
+	out := stdout.String()
+	assert.Contains(t, out, "Registered")
+	// --list should also show the repos list
+	assert.Contains(t, out, repo)
+}
+
+// --- resolveAndValidateRepo ---
+
+func TestResolveAndValidateRepo_AbsolutePath(t *testing.T) {
+	repo := initCLITestRepo(t)
+
+	resolved, err := resolveAndValidateRepo(repo)
+	require.NoError(t, err)
+	assert.Equal(t, repo, resolved)
+}
+
+func TestResolveAndValidateRepo_RelativePath(t *testing.T) {
+	repo := initCLITestRepo(t)
+	t.Chdir(filepath.Dir(repo))
+
+	resolved, err := resolveAndValidateRepo(filepath.Base(repo))
+	require.NoError(t, err)
+	assert.Equal(t, repo, resolved)
+}
+
+func TestResolveAndValidateRepo_NotARepo(t *testing.T) {
+	dir := t.TempDir()
+
+	_, err := resolveAndValidateRepo(dir)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not a git repository")
+}

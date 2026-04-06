@@ -522,8 +522,11 @@ func TestDispatchNew_NumericArgRoutesPR(t *testing.T) {
 	// from the forge/API layer (not branch creation), proving the routing worked.
 	err = dispatchNew(cmd, []string{"42"}, "main", "", "", false)
 	require.Error(t, err)
-	// Error must reference the PR number — proof it took the PR path
-	assert.Contains(t, err.Error(), "PR #42")
+	// Error must come from the forge/PR path — not from branch creation.
+	// With gh installed: "PR #42 not found"; without: "detecting forge: ..."
+	errMsg := err.Error()
+	assert.True(t, strings.Contains(errMsg, "PR #42") || strings.Contains(errMsg, "detecting forge"),
+		"expected PR-path error, got: %s", errMsg)
 }
 
 func TestDispatchNew_HashNumericArgRoutesPR(t *testing.T) {
@@ -541,7 +544,9 @@ func TestDispatchNew_HashNumericArgRoutesPR(t *testing.T) {
 	// "#7" should also be detected as a PR number
 	err = dispatchNew(cmd, []string{"#7"}, "main", "", "", false)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "PR #7")
+	errMsg := err.Error()
+	assert.True(t, strings.Contains(errMsg, "PR #7") || strings.Contains(errMsg, "detecting forge"),
+		"expected PR-path error, got: %s", errMsg)
 }
 
 func TestDispatchNew_NonNumericArgCreatesBranch(t *testing.T) {
@@ -589,4 +594,324 @@ func TestDispatchNew_NegativeIsNotPR(t *testing.T) {
 	if err != nil {
 		assert.NotContains(t, err.Error(), "detecting forge")
 	}
+}
+
+// --- setupOptsFromFlags tests ---
+
+func TestSetupOptsFromFlags(t *testing.T) {
+	tests := []struct {
+		name        string
+		noSetup     bool
+		noEnv       bool
+		noInstall   bool
+		wantSkipEnv bool
+		wantSkipPM  bool
+	}{
+		{"defaults", false, false, false, false, false},
+		{"no-setup skips all", true, false, false, true, true},
+		{"no-env only", false, true, false, true, false},
+		{"no-install only", false, false, true, false, true},
+		{"no-env and no-install", false, true, true, true, true},
+		{"no-setup overrides individual", true, true, true, true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			newNoSetup = tt.noSetup
+			newNoEnv = tt.noEnv
+			newNoInstall = tt.noInstall
+			defer func() { newNoSetup = false; newNoEnv = false; newNoInstall = false }()
+
+			opts := setupOptsFromFlags()
+			assert.Equal(t, tt.wantSkipEnv, opts.SkipEnv)
+			assert.Equal(t, tt.wantSkipPM, opts.SkipInstall)
+		})
+	}
+}
+
+// --- dispatchNew --base exclusivity tests ---
+
+func TestDispatchNew_BaseWithBranchFlagErrors(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	cmd := newCmd
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	require.NoError(t, cmd.Flags().Set("base", "develop"))
+	defer func() { _ = cmd.Flags().Set("base", "main") }()
+
+	err := dispatchNew(cmd, nil, "develop", "some-branch", "", false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--base cannot be used with --branch")
+}
+
+func TestDispatchNew_BaseWithPRFlagErrors(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	cmd := newCmd
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	require.NoError(t, cmd.Flags().Set("base", "develop"))
+	defer func() { _ = cmd.Flags().Set("base", "main") }()
+
+	err := dispatchNew(cmd, nil, "develop", "", "42", false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--base cannot be used with --pr")
+}
+
+func TestDispatchNew_BaseWithNumericArgErrors(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	realExec := &git.RealExecutor{}
+	_, err := realExec.Run(dir, "remote", "add", "origin", "https://github.com/test/repo.git")
+	require.NoError(t, err)
+
+	cmd := newCmd
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	require.NoError(t, cmd.Flags().Set("base", "develop"))
+	defer func() { _ = cmd.Flags().Set("base", "main") }()
+
+	err = dispatchNew(cmd, []string{"42"}, "develop", "", "", false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--base cannot be used with a PR number")
+}
+
+// --- JSON output tests ---
+
+func TestNewBranch_JSON(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	realExec := &git.RealExecutor{}
+	_, err := realExec.Run(dir, "checkout", "-b", "json-branch")
+	require.NoError(t, err)
+	_, err = realExec.Run(dir, "checkout", "main")
+	require.NoError(t, err)
+	_, err = realExec.Run(dir, "branch", "-D", "json-branch")
+	require.NoError(t, err)
+
+	exec := &stubFetchExecutor{real: realExec}
+	wm := git.NewWorktreeManager(exec)
+
+	_, err = realExec.Run(dir, "branch", "json-branch")
+	require.NoError(t, err)
+
+	jsonOutput = true
+	defer func() { jsonOutput = false }()
+
+	buf := new(bytes.Buffer)
+	cmd := newCmd
+	cmd.SetOut(buf)
+	cmd.SetErr(new(bytes.Buffer))
+
+	err = runNewBranch(cmd, "json-branch", wm, exec, nil, false)
+	require.NoError(t, err)
+
+	out := buf.String()
+	assert.Contains(t, out, `"path"`)
+	assert.Contains(t, out, `"branch"`)
+	assert.Contains(t, out, `"json-branch"`)
+}
+
+func TestRunNewPR_JSON(t *testing.T) {
+	dir := initCLITestRepo(t)
+
+	realExec := &git.RealExecutor{}
+	_, err := realExec.Run(dir, "remote", "add", "origin", "https://github.com/test/repo.git")
+	require.NoError(t, err)
+	_, err = realExec.Run(dir, "checkout", "-b", "pr-5")
+	require.NoError(t, err)
+	_, err = realExec.Run(dir, "checkout", "main")
+	require.NoError(t, err)
+
+	exec := &stubFetchExecutor{real: realExec}
+	wm := git.NewWorktreeManager(exec)
+
+	jsonOutput = true
+	defer func() { jsonOutput = false }()
+
+	var stdout, stderr bytes.Buffer
+	cmd := newCmd
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+
+	tf := &testForge{
+		name: "github",
+		prs: []forge.PR{
+			{Number: 5, Title: "JSON PR", Branch: "json-pr", Author: "tester"},
+		},
+	}
+	ff := func(_ string) (forge.Forge, error) { return tf, nil }
+
+	t.Chdir(dir)
+
+	err = runNewPR(cmd, "5", wm, exec, nil, ff, false)
+	require.NoError(t, err)
+
+	out := stdout.String()
+	assert.Contains(t, out, `"path"`)
+	assert.Contains(t, out, `"branch"`)
+	assert.Contains(t, out, `"pr"`)
+	assert.Contains(t, out, `"number"`)
+	assert.Contains(t, out, `"JSON PR"`)
+}
+
+func TestRunNewPR_NoRemote(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	exec := &stubFetchExecutor{real: &git.RealExecutor{}}
+	wm := git.NewWorktreeManager(exec)
+
+	cmd := newCmd
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+
+	ff := func(_ string) (forge.Forge, error) { return &testForge{name: "github"}, nil }
+
+	err := runNewPR(cmd, "1", wm, exec, nil, ff, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "remote URL")
+}
+
+// --- Clean JSON tests ---
+
+func TestCleanCommand_DryRun_JSON(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	exec := &git.RealExecutor{}
+	wm := git.NewWorktreeManager(exec)
+
+	wtPath, err := wm.Add(dir, "json-merged", "main")
+	require.NoError(t, err)
+	_, err = exec.Run(wtPath, "commit", "--allow-empty", "-m", "feature")
+	require.NoError(t, err)
+	_, err = exec.Run(dir, "merge", "--no-ff", "json-merged", "-m", "merge json-merged")
+	require.NoError(t, err)
+
+	jsonOutput = true
+	cleanDryRun = true
+	cleanForce = false
+	defer func() { jsonOutput = false; cleanDryRun = false }()
+
+	buf := new(bytes.Buffer)
+	cmd := cleanCmd
+	cmd.SetOut(buf)
+	cmd.SetErr(new(bytes.Buffer))
+
+	err = runClean(cmd, wm, exec)
+	require.NoError(t, err)
+
+	out := buf.String()
+	assert.Contains(t, out, `"dry_run"`)
+	assert.Contains(t, out, `"json-merged"`)
+	assert.Contains(t, out, `"merged"`)
+}
+
+func TestCleanCommand_Remove_JSON(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	exec := &git.RealExecutor{}
+	wm := git.NewWorktreeManager(exec)
+
+	wtPath, err := wm.Add(dir, "json-rm", "main")
+	require.NoError(t, err)
+	_, err = exec.Run(wtPath, "commit", "--allow-empty", "-m", "feature")
+	require.NoError(t, err)
+	_, err = exec.Run(dir, "merge", "--no-ff", "json-rm", "-m", "merge json-rm")
+	require.NoError(t, err)
+
+	jsonOutput = true
+	cleanDryRun = false
+	cleanForce = true
+	defer func() { jsonOutput = false; cleanForce = false }()
+
+	buf := new(bytes.Buffer)
+	cmd := cleanCmd
+	cmd.SetOut(buf)
+	cmd.SetErr(new(bytes.Buffer))
+
+	err = runClean(cmd, wm, exec)
+	require.NoError(t, err)
+
+	out := buf.String()
+	assert.Contains(t, out, `"json-rm"`)
+	assert.Contains(t, out, `"merged"`)
+}
+
+// --- runNewBranch fetch error ---
+
+func TestNewBranch_FetchError(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	failExec := &stubFailFetchExecutor{real: &git.RealExecutor{}}
+	wm := git.NewWorktreeManager(failExec)
+
+	buf := new(bytes.Buffer)
+	cmd := newCmd
+	cmd.SetOut(buf)
+	cmd.SetErr(new(bytes.Buffer))
+
+	err := runNewBranch(cmd, "some-branch", wm, failExec, nil, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fetching remote branch")
+}
+
+// --- runPostCreateSetup edge cases ---
+
+func TestRunPostCreateSetup_NilRunner(_ *testing.T) {
+	cmd := newCmd
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	// Should not panic with nil runner.
+	runPostCreateSetup(cmd, wm, nil, "/nonexistent", "/nonexistent")
+}
+
+func TestRunPostCreateSetup_MainWorktreeError(t *testing.T) {
+	dir := t.TempDir() // not a git repo
+	cmd := newCmd
+	stderr := new(bytes.Buffer)
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(stderr)
+
+	runner := &setup.Runner{
+		CmdExec:    &mockSetupExecutor{},
+		EnvHandler: setup.NewEnvFileHandler(),
+	}
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	runPostCreateSetup(cmd, wm, runner, dir, dir)
+	assert.Contains(t, stderr.String(), "setup skipped")
+}
+
+// --- newOutputWriters tests ---
+
+func TestNewOutputWriters_SwitchMode(t *testing.T) {
+	cmd := newCmd
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd.SetOut(stdout)
+	cmd.SetErr(stderr)
+
+	msgW, pathW := newOutputWriters(cmd, true)
+	assert.Equal(t, stderr, msgW, "in switch mode, messages go to stderr")
+	assert.Equal(t, stdout, pathW, "in switch mode, path goes to stdout")
+}
+
+func TestNewOutputWriters_NormalMode(t *testing.T) {
+	cmd := newCmd
+	stdout := new(bytes.Buffer)
+	cmd.SetOut(stdout)
+	cmd.SetErr(new(bytes.Buffer))
+
+	msgW, pathW := newOutputWriters(cmd, false)
+	assert.Equal(t, stdout, msgW, "in normal mode, messages go to stdout")
+	assert.Nil(t, pathW, "in normal mode, pathW is nil")
 }

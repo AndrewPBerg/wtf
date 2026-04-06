@@ -174,6 +174,32 @@ func TestCopyFile_SourceNotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "opening source")
 }
 
+func TestCopyFile_DestinationError(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.txt")
+	require.NoError(t, os.WriteFile(src, []byte("data"), 0o644))
+
+	// Destination in a non-existent directory
+	err := copyFile(src, filepath.Join(dir, "nonexistent", "dst.txt"))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "creating destination")
+}
+
+func TestCopyFile_PreservesPermissions(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.txt")
+	dst := filepath.Join(dir, "dst.txt")
+
+	require.NoError(t, os.WriteFile(src, []byte("hello"), 0o755))
+
+	err := copyFile(src, dst)
+	require.NoError(t, err)
+
+	info, err := os.Stat(dst)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm())
+}
+
 func TestHandleEnvFiles_RealSymlink(t *testing.T) {
 	mainDir := t.TempDir()
 	targetDir := t.TempDir()
