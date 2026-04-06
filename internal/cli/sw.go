@@ -9,7 +9,6 @@ import (
 
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
-	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/spf13/cobra"
 )
 
@@ -301,29 +300,8 @@ func isCurrentWorktree(cwd, wtPath string) bool {
 	return !strings.HasPrefix(rel, "..")
 }
 
-// runOnSwitchHooks loads config and runs on_switch hooks if present.
-// If the target branch is a PR worktree (pr-N or mr-N), on_pr_switch hooks also run.
-// Failures are logged as warnings, never fatal.
-func runOnSwitchHooks(cmd *cobra.Command, repoDir string, branch string) {
-	cfg, err := config.LoadProjectConfig(repoDir)
-	if err != nil || cfg == nil {
-		return
-	}
-
-	runner := setup.NewRunner()
-
-	if len(cfg.Hooks.OnSwitch) > 0 {
-		if err := runner.RunHooks(cfg.Hooks.OnSwitch, repoDir); err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s on_switch hook failed: %v\n", yellow("⚠"), err)
-		}
-	}
-
-	if isPRBranch(branch) && len(cfg.Hooks.OnPRSwitch) > 0 {
-		if err := runner.RunHooks(cfg.Hooks.OnPRSwitch, repoDir); err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s on_pr_switch hook failed: %v\n", yellow("⚠"), err)
-		}
-	}
-}
+// runOnSwitchHooks is a no-op placeholder for future CLI-driven hooks.
+func runOnSwitchHooks(_ *cobra.Command, _ string, _ string) {}
 
 // isPRBranch returns true if the branch name matches the PR worktree pattern (pr-N or mr-N).
 func isPRBranch(branch string) bool {

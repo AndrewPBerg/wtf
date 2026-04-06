@@ -39,18 +39,6 @@ $ wtf watch -i 30
 $ wtf watch --no-desktop
 ```
 
-## Configuration
-
-The poll interval and desktop notifications can be configured per-project in `.wt-forge.toml`:
-
-```toml
-[watch]
-interval = 30     # poll interval in seconds (default 60, min 10)
-desktop = false   # set to false for terminal-only notifications
-```
-
-CLI flags take precedence over config file values.
-
 ## Behavior
 
 - **Single repo**: Polls the forge API for the current repo's PRs and prints changes to the terminal. Desktop notifications are sent by default.

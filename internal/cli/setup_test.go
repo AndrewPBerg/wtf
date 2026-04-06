@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -221,7 +220,7 @@ func TestSetupShellCommand_EmptyAnswer(t *testing.T) {
 
 // --- Project setup tests ---
 
-func TestProjectSetup_NoConfig(t *testing.T) {
+func TestProjectSetup_Default(t *testing.T) {
 	dir := initCLITestRepo(t)
 	t.Chdir(dir)
 
@@ -240,62 +239,7 @@ func TestProjectSetup_NoConfig(t *testing.T) {
 	assert.Contains(t, buf.String(), "Setup complete")
 }
 
-func TestProjectSetup_WithConfig(t *testing.T) {
-	dir := initCLITestRepo(t)
-	t.Chdir(dir)
-
-	cfgContent := `
-[env]
-strategy = "none"
-
-[[setup]]
-name = "test"
-run = "echo hello"
-`
-	require.NoError(t, os.WriteFile(filepath.Join(dir, config.ProjectConfigFile), []byte(cfgContent), 0o644))
-
-	mock := &mockSetupExecutor{}
-	runner := &setup.Runner{
-		CmdExec:    mock,
-		EnvHandler: setup.NewEnvFileHandler(),
-	}
-
-	buf := new(bytes.Buffer)
-	cmd := setupCmd
-	cmd.SetOut(buf)
-
-	err := runProjectSetup(cmd, runner)
-	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "Setup complete")
-	assert.Contains(t, mock.commands, "echo hello")
-}
-
-func TestProjectSetup_InvalidConfig(t *testing.T) {
-	dir := initCLITestRepo(t)
-	t.Chdir(dir)
-
-	cfgContent := `
-[env]
-strategy = "bogus"
-`
-	require.NoError(t, os.WriteFile(filepath.Join(dir, config.ProjectConfigFile), []byte(cfgContent), 0o644))
-
-	mock := &mockSetupExecutor{}
-	runner := &setup.Runner{
-		CmdExec:    mock,
-		EnvHandler: setup.NewEnvFileHandler(),
-	}
-
-	buf := new(bytes.Buffer)
-	cmd := setupCmd
-	cmd.SetOut(buf)
-
-	err := runProjectSetup(cmd, runner)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid project config")
-}
-
-func TestProjectSetup_EnvOnly_NoConfig(t *testing.T) {
+func TestProjectSetup_EnvOnly(t *testing.T) {
 	dir := initCLITestRepo(t)
 	t.Chdir(dir)
 
@@ -314,7 +258,7 @@ func TestProjectSetup_EnvOnly_NoConfig(t *testing.T) {
 
 	err := runProjectSetup(cmd, runner)
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "nothing to do")
+	assert.Contains(t, buf.String(), "Env files handled")
 }
 
 func TestProjectSetup_InstallOnly_NoPackageManager(t *testing.T) {

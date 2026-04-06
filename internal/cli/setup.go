@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/spf13/cobra"
@@ -28,8 +27,8 @@ var setupCmd = &cobra.Command{
 	Short: "Run project setup in current worktree",
 	Long: `Runs project setup steps for the current worktree.
 
-Auto-detects the package manager and runs install. If a .wt-forge.toml
-config file exists, also handles env files and runs custom setup steps.
+Symlinks env files from the main worktree and auto-detects the package
+manager to run install.
 
 Use 'wtf setup shell' for shell integration setup.`,
 	Args: cobra.NoArgs,
@@ -59,17 +58,6 @@ func runProjectSetup(cmd *cobra.Command, runner *setup.Runner) error {
 
 	out := cmd.OutOrStdout()
 
-	cfg, err := config.LoadProjectConfig(dir)
-	if err != nil {
-		return fmt.Errorf("loading project config: %w", err)
-	}
-
-	if cfg != nil {
-		if err := config.ValidateProjectConfig(cfg); err != nil {
-			return fmt.Errorf("invalid project config: %w", err)
-		}
-	}
-
 	// Get the main worktree dir for env file resolution
 	exec := &git.RealExecutor{}
 	mainDir, err := exec.Run(dir, "worktree", "list", "--porcelain")
@@ -78,15 +66,8 @@ func runProjectSetup(cmd *cobra.Command, runner *setup.Runner) error {
 	}
 	mainPath := parseMainWorktreePath(mainDir)
 
-	// Get current branch
-	branch, _ := exec.Run(dir, "rev-parse", "--abbrev-ref", "HEAD")
-
 	if setupEnvOnly {
-		if cfg == nil {
-			_, _ = fmt.Fprintf(out, "%s No .wt-forge.toml found, nothing to do\n", yellow("⚠"))
-			return nil
-		}
-		if err := runner.EnvHandler.HandleEnvFiles(mainPath, dir, cfg.Env.Strategy, cfg.Env.Files); err != nil {
+		if err := runner.EnvHandler.HandleEnvFiles(mainPath, dir, "symlink", nil); err != nil {
 			return fmt.Errorf("handling env files: %w", err)
 		}
 		_, _ = fmt.Fprintf(out, "%s Env files handled\n", greenBold("✔"))
@@ -109,7 +90,8 @@ func runProjectSetup(cmd *cobra.Command, runner *setup.Runner) error {
 		return nil
 	}
 
-	if err := runner.RunSetup(cfg, mainPath, dir, branch); err != nil {
+	opts := setup.Options{}
+	if err := runner.RunSetup(mainPath, dir, opts); err != nil {
 		return fmt.Errorf("running setup: %w", err)
 	}
 

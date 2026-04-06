@@ -6,6 +6,7 @@ Create a new worktree for a branch, from a remote branch, or from a pull request
 
 ```bash
 wtf new <branch> [--base <branch>]
+wtf new <number>
 wtf new --branch <name>
 wtf new --pr <number|branch|title>
 ```
@@ -17,8 +18,13 @@ wtf new --pr <number|branch|title>
 | `--base`          |       | `main`  | Base branch to create from (positional mode only)    |
 | `--branch`        | `-b`  |         | Fetch and track an existing remote branch            |
 | `--pr`            | `-P`  |         | Checkout a pull request (number, branch, or title)   |
+| `--no-setup`      |       |         | Skip all post-create setup (env files and install)   |
+| `--no-env`        |       |         | Skip env file symlinking                             |
+| `--no-install`    |       |         | Skip package manager install                         |
 
-The three modes (positional branch, `--branch`, `--pr`) are mutually exclusive.
+The positional branch, `--branch`, and `--pr` modes are mutually exclusive.
+
+Numeric positional arguments (e.g. `42` or `#42`) are automatically detected as PR numbers -- no `--pr` flag needed.
 
 ## Examples
 
@@ -35,17 +41,28 @@ $ wtf new hotfix/bug --base release/v2
 $ wtf new --branch feature-x
 ✔ Created worktree at /code/myrepo--feature-x
 
-# Checkout PR by number
-$ wtf new --pr 42
+# Checkout PR by number (auto-detected)
+$ wtf new 42
+→ Detected PR number, checking out PR #42…
 ✔ Checked out #42 → /code/myrepo--pr-42
 
-# Checkout PR by branch name
+# Same thing with a hash prefix
+$ wtf new #42
+→ Detected PR number, checking out PR #42…
+✔ Checked out #42 → /code/myrepo--pr-42
+
+# Checkout PR by branch name or title (requires --pr flag)
 $ wtf new -P feature-auth
 ✔ Checked out #42 → /code/myrepo--pr-42
 
-# Checkout PR by title (fuzzy match)
 $ wtf new -P "fix login"
 ✔ Checked out #43 → /code/myrepo--pr-43
+
+# Create worktree without running setup
+$ wtf new feature/auth --no-setup
+
+# Create worktree but skip package install
+$ wtf new feature/auth --no-install
 ```
 
 ## Worktree Path Convention
@@ -58,16 +75,14 @@ Slashes in branch names are replaced with dashes.
 
 ## Automatic Setup
 
-After creating the worktree, `wtf new` automatically runs project setup:
+After creating the worktree, `wtf new` automatically:
 
-1. Loads `.wt-forge.toml` if present
-2. Handles env files (symlink/copy)
-3. Runs setup steps with condition evaluation
-4. Runs `on_create` hooks (or `on_pr_create` for PR mode)
+1. **Symlinks env files** from the main worktree (`.env`, `.env.local`, `.env.development`, `.env.development.local` -- only files that exist)
+2. **Auto-detects the package manager** from lockfiles and runs install
 
-Without a `.wt-forge.toml`, it auto-detects the package manager and runs install.
+No config file needed. Use `--no-setup`, `--no-env`, or `--no-install` to skip.
 
-Setup failures are reported as warnings — the worktree is still created. See [setup](setup.md) and [.wt-forge.toml](wt-forge-toml.md) for details.
+Setup failures are reported as warnings -- the worktree is still created successfully. See [setup](setup.md) for details.
 
 ## PR Authentication
 

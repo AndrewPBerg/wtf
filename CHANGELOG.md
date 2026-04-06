@@ -4,6 +4,20 @@ All notable changes to WorkTreeForge (wtf) will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Zero-config setup** — Removed `.wt-forge.toml` config file. Setup now works automatically with sensible defaults: symlink env files + auto-detect package manager. No config file needed.
+- **CLI flags replace config** — `--no-setup`, `--no-env`, `--no-install` flags on `wtf new` and `wtf news` control post-create behavior.
+- **`wtf setup`** — No longer reads a config file. Symlinks env files from main worktree and runs detected package install by default.
+- **`wtf watch`** — Interval and notification settings are now CLI-flag-only (`-i`, `--no-desktop`).
+
+### Removed
+
+- **`.wt-forge.toml`** — Declarative config file and all related machinery (setup steps, conditions, hooks, watch config).
+- **`wtf config init`** — No config file to generate.
+- **Lifecycle hooks** — `on_create`, `on_switch`, `on_remove`, `on_pr_create`, `on_pr_switch`, `on_pr_delete` hooks removed.
+- **`go-toml/v2` dependency** — No longer needed.
+
 ### Added
 
 - **Automatic tab completions via `wtf init`** — `eval "$(wtf init)"` now includes both the shell wrapper and tab completions. No separate completion script needed.

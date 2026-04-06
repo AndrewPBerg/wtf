@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/forge"
 	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/AndrewPBerg/wtf/internal/setup"
@@ -109,49 +108,12 @@ func TestNewCommand_WithRunner(t *testing.T) {
 	assert.Contains(t, buf.String(), "Created worktree at")
 }
 
-func TestNewCommand_WithConfig(t *testing.T) {
-	dir := initCLITestRepo(t)
-	t.Chdir(dir)
-
-	cfgContent := `
-[env]
-strategy = "none"
-
-[[setup]]
-name = "test"
-run = "echo hello"
-`
-	require.NoError(t, os.WriteFile(filepath.Join(dir, config.ProjectConfigFile), []byte(cfgContent), 0o644))
-
-	buf := new(bytes.Buffer)
-	stderr := new(bytes.Buffer)
-	cmd := newCmd
-	cmd.SetOut(buf)
-	cmd.SetErr(stderr)
-	newBase = "main"
-
-	mock := &mockSetupExecutor{}
-	runner := &setup.Runner{
-		CmdExec:    mock,
-		EnvHandler: setup.NewEnvFileHandler(),
-	}
-
-	wm := git.NewWorktreeManager(&git.RealExecutor{})
-	err := runNew(cmd, "config-test", newBase, wm, runner, false)
-	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "Created worktree at")
-	assert.Contains(t, mock.commands, "echo hello")
-}
-
 func TestNewCommand_SetupFailureIsWarning(t *testing.T) {
 	dir := initCLITestRepo(t)
 	t.Chdir(dir)
 
-	cfgContent := `
-[env]
-strategy = "bogus"
-`
-	require.NoError(t, os.WriteFile(filepath.Join(dir, config.ProjectConfigFile), []byte(cfgContent), 0o644))
+	// Create a .env file to trigger symlink during setup
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("x"), 0o644))
 
 	buf := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
@@ -159,15 +121,23 @@ strategy = "bogus"
 	cmd.SetOut(buf)
 	cmd.SetErr(stderr)
 	newBase = "main"
+	newNoSetup = false
+	newNoEnv = false
+	newNoInstall = false
 
-	runner := setup.NewRunner()
+	runner := &setup.Runner{
+		CmdExec: &mockSetupExecutor{},
+		EnvHandler: &setup.EnvFileHandler{
+			Symlink: func(_, _ string) error { return fmt.Errorf("symlink broken") },
+		},
+	}
 
 	wm := git.NewWorktreeManager(&git.RealExecutor{})
 	err := runNew(cmd, "warn-test", newBase, wm, runner, false)
 	// Should succeed — setup failures are warnings
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Created worktree at")
-	assert.Contains(t, stderr.String(), "setup skipped")
+	assert.Contains(t, stderr.String(), "setup failed")
 }
 
 // --- Branch flag tests ---
@@ -527,4 +497,96 @@ func TestNewCmd_PRAndPositionalExclusive(t *testing.T) {
 	err := cmd.RunE(cmd, []string{"my-branch"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "mutually exclusive")
+}
+
+// --- Auto-detect PR number tests ---
+
+func TestDispatchNew_NumericArgRoutesPR(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	realExec := &git.RealExecutor{}
+	_, err := realExec.Run(dir, "remote", "add", "origin", "https://github.com/test/repo.git")
+	require.NoError(t, err)
+
+	// Reset flags so only the positional arg "42" is active
+	newBranchFlag = ""
+	newPRFlag = ""
+	defer func() { newBranchFlag = ""; newPRFlag = "" }()
+
+	cmd := newCmd
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+
+	// Numeric positional arg should route to PR path. The error will come
+	// from the forge/API layer (not branch creation), proving the routing worked.
+	err = dispatchNew(cmd, []string{"42"}, "main", "", "", false)
+	require.Error(t, err)
+	// Error must reference the PR number — proof it took the PR path
+	assert.Contains(t, err.Error(), "PR #42")
+}
+
+func TestDispatchNew_HashNumericArgRoutesPR(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	realExec := &git.RealExecutor{}
+	_, err := realExec.Run(dir, "remote", "add", "origin", "https://github.com/test/repo.git")
+	require.NoError(t, err)
+
+	cmd := newCmd
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+
+	// "#7" should also be detected as a PR number
+	err = dispatchNew(cmd, []string{"#7"}, "main", "", "", false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "PR #7")
+}
+
+func TestDispatchNew_NonNumericArgCreatesBranch(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	cmd := newCmd
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(new(bytes.Buffer))
+
+	// Non-numeric arg should create a branch, not attempt PR checkout
+	err := dispatchNew(cmd, []string{"feature-branch"}, "main", "", "", false)
+	require.NoError(t, err)
+	assert.Contains(t, stdout.String(), "Created worktree at")
+}
+
+func TestDispatchNew_ZeroIsNotPR(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	cmd := newCmd
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+
+	// "0" should NOT be treated as a PR (n > 0 guard)
+	err := dispatchNew(cmd, []string{"0"}, "main", "", "", false)
+	// Should go to branch creation path, which will fail on invalid branch
+	// name or succeed — either way it should NOT hit the forge path
+	if err != nil {
+		assert.NotContains(t, err.Error(), "detecting forge")
+	}
+}
+
+func TestDispatchNew_NegativeIsNotPR(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	cmd := newCmd
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+
+	// "-1" is not a valid PR number — should go to branch creation path
+	err := dispatchNew(cmd, []string{"-1"}, "main", "", "", false)
+	if err != nil {
+		assert.NotContains(t, err.Error(), "detecting forge")
+	}
 }

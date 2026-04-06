@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/ui"
 	"github.com/mattn/go-isatty"
 )
@@ -70,52 +69,33 @@ func NewRunner() *Runner {
 	}
 }
 
-// RunSetup runs the full setup flow for a worktree.
-// If cfg is nil, auto-detect package manager and run install if found.
-// If cfg exists: handle env files → auto-detect + run install → evaluate & run setup steps → run hooks.
-func (r *Runner) RunSetup(cfg *config.ProjectConfig, mainDir, targetDir, branch string) error {
-	if cfg == nil {
-		return r.runAutoSetup(targetDir)
-	}
+// Options controls which setup steps run after worktree creation.
+type Options struct {
+	SkipEnv     bool   // skip env file handling
+	SkipInstall bool   // skip package manager install
+	EnvStrategy string // "symlink" (default), "copy", "none"
+}
 
+// RunSetup runs the setup flow for a new worktree.
+// By default: symlink env files from mainDir → targetDir, then auto-detect
+// package manager and run install.
+func (r *Runner) RunSetup(mainDir, targetDir string, opts Options) error {
 	// 1. Handle env files
-	strategy := cfg.Env.Strategy
-	files := cfg.Env.Files
-	if err := r.EnvHandler.HandleEnvFiles(mainDir, targetDir, strategy, files); err != nil {
-		return fmt.Errorf("handling env files: %w", err)
+	if !opts.SkipEnv {
+		strategy := opts.EnvStrategy
+		if strategy == "" {
+			strategy = "symlink"
+		}
+		if err := r.EnvHandler.HandleEnvFiles(mainDir, targetDir, strategy, nil); err != nil {
+			return fmt.Errorf("handling env files: %w", err)
+		}
 	}
 
 	// 2. Auto-detect and install
-	if err := r.runAutoSetup(targetDir); err != nil {
-		return fmt.Errorf("auto setup: %w", err)
-	}
-
-	// 3. Run setup steps
-	ctx := &ConditionContext{
-		Branch: branch,
-		Dir:    targetDir,
-		GetEnv: os.Getenv,
-	}
-
-	for _, step := range cfg.Setup {
-		if step.If != "" {
-			ok, err := EvalCondition(step.If, ctx)
-			if err != nil {
-				return fmt.Errorf("evaluating condition for step %q: %w", step.Name, err)
-			}
-			if !ok {
-				continue
-			}
+	if !opts.SkipInstall {
+		if err := r.runAutoSetup(targetDir); err != nil {
+			return fmt.Errorf("auto setup: %w", err)
 		}
-
-		if err := r.CmdExec.RunShell(targetDir, step.Run); err != nil {
-			return fmt.Errorf("running setup step %q: %w", step.Name, err)
-		}
-	}
-
-	// 4. Run on_create hooks
-	if err := r.RunHooks(cfg.Hooks.OnCreate, targetDir); err != nil {
-		return fmt.Errorf("running on_create hooks: %w", err)
 	}
 
 	return nil

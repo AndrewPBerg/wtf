@@ -11,7 +11,6 @@ import (
 
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
-	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
@@ -111,29 +110,8 @@ func runRm(cmd *cobra.Command, branch string, wm *git.WorktreeManager) error {
 	return nil
 }
 
-// runOnRemoveHooks loads config and runs on_remove hooks if present.
-// If the branch is a PR worktree (pr-N or mr-N), on_pr_delete hooks also run.
-// Failures are logged as warnings, never fatal.
-func runOnRemoveHooks(cmd *cobra.Command, repoDir string, branch string) {
-	cfg, err := config.LoadProjectConfig(repoDir)
-	if err != nil || cfg == nil {
-		return
-	}
-
-	runner := setup.NewRunner()
-
-	if len(cfg.Hooks.OnRemove) > 0 {
-		if err := runner.RunHooks(cfg.Hooks.OnRemove, repoDir); err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s on_remove hook failed: %v\n", yellow("⚠"), err)
-		}
-	}
-
-	if isPRBranch(branch) && len(cfg.Hooks.OnPRDelete) > 0 {
-		if err := runner.RunHooks(cfg.Hooks.OnPRDelete, repoDir); err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s on_pr_delete hook failed: %v\n", yellow("⚠"), err)
-		}
-	}
-}
+// runOnRemoveHooks is a no-op placeholder for future CLI-driven hooks.
+func runOnRemoveHooks(_ *cobra.Command, _ string, _ string) {}
 
 // friendlyError returns a short, user-facing message for known error types,
 // stripping noisy git internals.

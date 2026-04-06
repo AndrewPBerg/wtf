@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/forge"
 	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/AndrewPBerg/wtf/internal/setup"
@@ -19,12 +18,18 @@ var (
 	newBase       string
 	newBranchFlag string
 	newPRFlag     string
+	newNoSetup    bool
+	newNoEnv      bool
+	newNoInstall  bool
 )
 
 func init() {
 	newCmd.Flags().StringVar(&newBase, "base", "main", "Base branch to create from")
 	newCmd.Flags().StringVarP(&newBranchFlag, "branch", "b", "", "Fetch and track an existing remote branch")
 	newCmd.Flags().StringVarP(&newPRFlag, "pr", "P", "", "Checkout a pull request (number, branch, or title)")
+	newCmd.Flags().BoolVar(&newNoSetup, "no-setup", false, "Skip all post-create setup (env files and install)")
+	newCmd.Flags().BoolVar(&newNoEnv, "no-env", false, "Skip env file symlinking")
+	newCmd.Flags().BoolVar(&newNoInstall, "no-install", false, "Skip package manager install")
 	newCmd.MarkFlagsMutuallyExclusive("branch", "pr")
 
 	_ = newCmd.RegisterFlagCompletionFunc("branch", completeRemoteBranchValues)
@@ -36,17 +41,37 @@ func init() {
 var newCmd = &cobra.Command{
 	Use:   "new [branch]",
 	Short: "Create a new worktree for a branch",
-	Long: `Create a new worktree from a branch name, remote branch, or pull request.
-
-Modes (mutually exclusive):
-  wtf new <branch>           Create a new branch from --base
-  wtf new --branch <name>    Fetch and track an existing remote branch
-  wtf new --pr <id>          Checkout a pull request by number, branch, or title`,
+	Long: "Create a new worktree from a branch name, remote branch, or pull request.\n\n" +
+		bold("Modes") + dim(" (mutually exclusive):") + "\n" +
+		"  " + cyan("wtf new <branch>") + "           Create a new branch from --base\n" +
+		"  " + cyan("wtf new <number>") + "           Checkout a pull request by number (auto-detected)\n" +
+		"  " + cyan("wtf new --branch <name>") + "    Fetch and track an existing remote branch\n" +
+		"  " + cyan("wtf new --pr <id>") + "          Checkout a pull request by number, branch, or title\n\n" +
+		bold("Setup:") + "\n" +
+		"  By default, env files are symlinked from the main worktree and the\n" +
+		"  detected package manager runs install. Use --no-setup, --no-env, or\n" +
+		"  --no-install to skip.",
 	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: completeRemoteBranches,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return dispatchNew(cmd, args, newBase, newBranchFlag, newPRFlag, false)
 	},
+}
+
+// setupOptsFromFlags builds Options from the CLI flags.
+func setupOptsFromFlags() setup.Options {
+	opts := setup.Options{}
+	if newNoSetup {
+		opts.SkipEnv = true
+		opts.SkipInstall = true
+	}
+	if newNoEnv {
+		opts.SkipEnv = true
+	}
+	if newNoInstall {
+		opts.SkipInstall = true
+	}
+	return opts
 }
 
 // dispatchNew validates the mode and dispatches to the appropriate handler.
@@ -84,6 +109,16 @@ func dispatchNew(cmd *cobra.Command, args []string, base, branchFlag, prFlag str
 		}
 		return runNewPR(cmd, prFlag, wm, exec, runner, nil, switchMode)
 	default:
+		arg := args[0]
+		// Auto-detect PR numbers: bare "42" or "#42" routes to PR checkout.
+		trimmed := strings.TrimPrefix(arg, "#")
+		if n, err := strconv.Atoi(trimmed); err == nil && n > 0 {
+			if cmd.Flags().Changed("base") {
+				return fmt.Errorf("--base cannot be used with a PR number")
+			}
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s Detected PR number, checking out PR #%d…\n", dim("→"), n)
+			return runNewPR(cmd, arg, wm, exec, runner, nil, switchMode)
+		}
 		return runNew(cmd, args[0], base, wm, runner, switchMode)
 	}
 }
@@ -117,7 +152,7 @@ func runNew(cmd *cobra.Command, branch, base string, wm *git.WorktreeManager, ru
 	}
 	_, _ = fmt.Fprintf(msgW, "%s Created worktree at %s\n", greenBold("✔"), cyan(wtPath))
 
-	runPostCreateSetup(cmd, wm, runner, dir, wtPath, branch)
+	runPostCreateSetup(cmd, wm, runner, dir, wtPath)
 
 	return nil
 }
@@ -157,7 +192,7 @@ func runNewBranch(cmd *cobra.Command, branch string, wm *git.WorktreeManager, ex
 	}
 	_, _ = fmt.Fprintf(msgW, "%s Created worktree at %s\n", greenBold("✔"), cyan(wtPath))
 
-	runPostCreateSetup(cmd, wm, runner, dir, wtPath, branch)
+	runPostCreateSetup(cmd, wm, runner, dir, wtPath)
 
 	return nil
 }
@@ -257,14 +292,7 @@ func runNewPR(cmd *cobra.Command, arg string, wm *git.WorktreeManager, exec git.
 		}
 	}()
 
-	cfg := runPostCreateSetup(cmd, wm, runner, dir, wtPath, localBranch)
-	if cfg != nil && len(cfg.Hooks.OnPRCreate) > 0 {
-		if runner != nil {
-			if hookErr := runner.RunHooks(cfg.Hooks.OnPRCreate, wtPath); hookErr != nil {
-				_, _ = fmt.Fprintf(stderr, "%s on_pr_create hook failed: %v\n", yellow("⚠"), hookErr)
-			}
-		}
-	}
+	runPostCreateSetup(cmd, wm, runner, dir, wtPath)
 
 	return nil
 }
@@ -280,36 +308,22 @@ func newOutputWriters(cmd *cobra.Command, switchMode bool) (msgW io.Writer, path
 }
 
 // runPostCreateSetup runs project setup after worktree creation.
-// Returns the loaded config (or nil) so callers can run additional hooks.
-func runPostCreateSetup(cmd *cobra.Command, wm *git.WorktreeManager, runner *setup.Runner, dir, wtPath, branch string) *config.ProjectConfig {
+// By default, symlinks env files and auto-detects + runs package install.
+func runPostCreateSetup(cmd *cobra.Command, wm *git.WorktreeManager, runner *setup.Runner, dir, wtPath string) {
 	if runner == nil {
-		return nil
+		return
 	}
 
 	mainWt, mainErr := wm.MainWorktree(dir)
 	if mainErr != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s setup skipped: %v\n", yellow("⚠"), mainErr)
-		return nil
+		return
 	}
 
-	cfg, cfgErr := config.LoadProjectConfig(mainWt.Path)
-	if cfgErr != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s setup skipped: %v\n", yellow("⚠"), cfgErr)
-		return nil
-	}
-
-	if cfg != nil {
-		if valErr := config.ValidateProjectConfig(cfg); valErr != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s setup skipped: %v\n", yellow("⚠"), valErr)
-			return nil
-		}
-	}
-
-	if setupErr := runner.RunSetup(cfg, mainWt.Path, wtPath, branch); setupErr != nil {
+	opts := setupOptsFromFlags()
+	if setupErr := runner.RunSetup(mainWt.Path, wtPath, opts); setupErr != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s setup failed: %v\n", yellow("⚠"), setupErr)
 	}
-
-	return cfg
 }
 
 // resolvePR finds a PR by number, branch name, or title.
