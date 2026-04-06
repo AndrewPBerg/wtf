@@ -67,14 +67,18 @@ func DiscoverEnvFiles(rootDir string) ([]string, error) {
 }
 
 // HandleEnvFiles processes env files according to the strategy.
-func (h *EnvFileHandler) HandleEnvFiles(mainDir, targetDir, strategy string, files []string) error {
+// Returns the list of files that were actually handled (skips files that
+// don't exist in mainDir or already have a correct symlink at the target).
+func (h *EnvFileHandler) HandleEnvFiles(mainDir, targetDir, strategy string, files []string) ([]string, error) {
 	if strategy == "none" || strategy == "" {
-		return nil
+		return nil, nil
 	}
 
 	if len(files) == 0 {
 		files = DefaultEnvFiles
 	}
+
+	var handled []string
 
 	for _, f := range files {
 		src := filepath.Join(mainDir, f)
@@ -87,47 +91,50 @@ func (h *EnvFileHandler) HandleEnvFiles(mainDir, targetDir, strategy string, fil
 		// Ensure parent directory exists (for subdirectory env files like app/.env)
 		if dir := filepath.Dir(dst); dir != targetDir {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return fmt.Errorf("creating directory for %s: %w", f, err)
+				return handled, fmt.Errorf("creating directory for %s: %w", f, err)
 			}
+		}
+
+		// Compute the expected relative symlink target once, used for both
+		// the "already correct?" check and the actual symlink creation.
+		wantRel, relErr := filepath.Rel(filepath.Dir(dst), src)
+		if relErr != nil {
+			return handled, fmt.Errorf("computing relative path for %s: %w", f, relErr)
 		}
 
 		// Handle existing file at target
 		if info, lErr := os.Lstat(dst); lErr == nil {
 			if info.Mode()&os.ModeSymlink != 0 {
-				// Already a symlink — check if it points to the right place
-				rel, _ := filepath.Rel(filepath.Dir(dst), src)
 				existing, _ := os.Readlink(dst)
-				if existing == rel {
+				if existing == wantRel {
 					continue // already correct
 				}
 			}
 			// Remove existing file/symlink before creating new one
 			if err := os.Remove(dst); err != nil {
-				return fmt.Errorf("removing existing %s: %w", f, err)
+				return handled, fmt.Errorf("removing existing %s: %w", f, err)
 			}
 		}
 
 		switch strategy {
 		case "symlink":
-			rel, err := filepath.Rel(filepath.Dir(dst), src)
-			if err != nil {
-				return fmt.Errorf("computing relative path for %s: %w", f, err)
-			}
-			if err := h.Symlink(rel, dst); err != nil {
-				return fmt.Errorf("symlinking %s: %w", f, err)
+			if err := h.Symlink(wantRel, dst); err != nil {
+				return handled, fmt.Errorf("symlinking %s: %w", f, err)
 			}
 
 		case "copy":
 			if err := h.CopyFile(src, dst); err != nil {
-				return fmt.Errorf("copying %s: %w", f, err)
+				return handled, fmt.Errorf("copying %s: %w", f, err)
 			}
 
 		default:
-			return fmt.Errorf("unknown env strategy: %q", strategy)
+			return handled, fmt.Errorf("unknown env strategy: %q", strategy)
 		}
+
+		handled = append(handled, f)
 	}
 
-	return nil
+	return handled, nil
 }
 
 // copyFile copies a file from src to dst.

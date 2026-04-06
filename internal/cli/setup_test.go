@@ -258,7 +258,33 @@ func TestProjectSetup_EnvOnly(t *testing.T) {
 
 	err := runProjectSetup(cmd, runner)
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "Env files handled")
+	// Test repo has no .env files in mainDir
+	assert.Contains(t, buf.String(), "No env files found")
+}
+
+func TestProjectSetup_EnvOnly_WithFiles(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	// Create .env in the repo (acts as main worktree)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("SECRET=1"), 0o644))
+
+	setupEnvOnly = true
+	defer func() { setupEnvOnly = false }()
+
+	mock := &mockSetupExecutor{}
+	runner := &setup.Runner{
+		CmdExec:    mock,
+		EnvHandler: setup.NewEnvFileHandler(),
+	}
+
+	buf := new(bytes.Buffer)
+	cmd := setupCmd
+	cmd.SetOut(buf)
+
+	err := runProjectSetup(cmd, runner)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), ".env symlinked")
 }
 
 func TestProjectSetup_InstallOnly_NoPackageManager(t *testing.T) {

@@ -67,10 +67,21 @@ func runProjectSetup(cmd *cobra.Command, runner *setup.Runner) error {
 	mainPath := parseMainWorktreePath(mainDir)
 
 	if setupEnvOnly {
-		if err := runner.EnvHandler.HandleEnvFiles(mainPath, dir, "symlink", nil); err != nil {
-			return fmt.Errorf("handling env files: %w", err)
+		envFiles, dErr := setup.DiscoverEnvFiles(mainPath)
+		if dErr != nil {
+			return fmt.Errorf("discovering env files: %w", dErr)
 		}
-		_, _ = fmt.Fprintf(out, "%s Env files handled\n", greenBold("✔"))
+		handled, hErr := runner.EnvHandler.HandleEnvFiles(mainPath, dir, "symlink", envFiles)
+		if hErr != nil {
+			return fmt.Errorf("handling env files: %w", hErr)
+		}
+		if len(handled) == 0 {
+			_, _ = fmt.Fprintf(out, "%s No env files found\n", yellow("⚠"))
+		} else {
+			for _, f := range handled {
+				_, _ = fmt.Fprintf(out, "%s %s symlinked\n", greenBold("✔"), f)
+			}
+		}
 		return nil
 	}
 

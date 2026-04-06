@@ -103,19 +103,24 @@ func (r *Runner) RunSetup(mainDir, targetDir string, opts Options) error {
 		}
 
 		if len(envFiles) > 0 {
-			if err := r.EnvHandler.HandleEnvFiles(mainDir, targetDir, strategy, envFiles); err != nil {
+			handled, err := r.EnvHandler.HandleEnvFiles(mainDir, targetDir, strategy, envFiles)
+			if err != nil {
 				return fmt.Errorf("handling env files: %w", err)
 			}
-			for _, f := range envFiles {
-				_, _ = fmt.Fprintf(r.Out, "  env: %s %s\n", f, strategy+"d")
+			for _, f := range handled {
+				_, _ = fmt.Fprintf(r.Out, "  env: %s → %s\n", f, strategy)
 			}
 		}
 	}
 
 	// 2. Symlink shared directories
 	if !opts.SkipEnv {
-		if err := symlinkDirs(mainDir, targetDir, DefaultSymlinkDirs); err != nil {
+		linked, err := symlinkDirs(mainDir, targetDir, DefaultSymlinkDirs)
+		if err != nil {
 			return fmt.Errorf("symlinking directories: %w", err)
+		}
+		for _, d := range linked {
+			_, _ = fmt.Fprintf(r.Out, "  dir: %s → symlink\n", d)
 		}
 	}
 
@@ -130,7 +135,9 @@ func (r *Runner) RunSetup(mainDir, targetDir string, opts Options) error {
 }
 
 // symlinkDirs creates symlinks for directories that exist in mainDir.
-func symlinkDirs(mainDir, targetDir string, dirs []string) error {
+// Returns the list of directories that were actually symlinked.
+func symlinkDirs(mainDir, targetDir string, dirs []string) ([]string, error) {
+	var linked []string
 	for _, d := range dirs {
 		src := filepath.Join(mainDir, d)
 		info, err := os.Lstat(src)
@@ -146,13 +153,14 @@ func symlinkDirs(mainDir, targetDir string, dirs []string) error {
 
 		rel, err := filepath.Rel(targetDir, src)
 		if err != nil {
-			return fmt.Errorf("computing relative path for %s: %w", d, err)
+			return linked, fmt.Errorf("computing relative path for %s: %w", d, err)
 		}
 		if err := os.Symlink(rel, dst); err != nil {
-			return fmt.Errorf("symlinking %s: %w", d, err)
+			return linked, fmt.Errorf("symlinking %s: %w", d, err)
 		}
+		linked = append(linked, d)
 	}
-	return nil
+	return linked, nil
 }
 
 // RunHooks runs a list of hook commands in the given directory.

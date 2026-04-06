@@ -25,13 +25,14 @@ func TestHandleEnvFiles_Symlink(t *testing.T) {
 		},
 	}
 
-	err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env", ".env.local", ".env.missing"})
+	handled, err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env", ".env.local", ".env.missing"})
 	require.NoError(t, err)
 
 	// Only existing files should be symlinked
 	assert.Len(t, symlinks, 2)
 	assert.Equal(t, filepath.Join(targetDir, ".env"), symlinks[0].new)
 	assert.Equal(t, filepath.Join(targetDir, ".env.local"), symlinks[1].new)
+	assert.Equal(t, []string{".env", ".env.local"}, handled)
 }
 
 func TestHandleEnvFiles_Copy(t *testing.T) {
@@ -42,24 +43,27 @@ func TestHandleEnvFiles_Copy(t *testing.T) {
 
 	h := NewEnvFileHandler()
 
-	err := h.HandleEnvFiles(mainDir, targetDir, "copy", []string{".env"})
+	handled, err := h.HandleEnvFiles(mainDir, targetDir, "copy", []string{".env"})
 	require.NoError(t, err)
 
 	data, err := os.ReadFile(filepath.Join(targetDir, ".env"))
 	require.NoError(t, err)
 	assert.Equal(t, "KEY=val", string(data))
+	assert.Equal(t, []string{".env"}, handled)
 }
 
 func TestHandleEnvFiles_None(t *testing.T) {
 	h := NewEnvFileHandler()
-	err := h.HandleEnvFiles("/main", "/target", "none", []string{".env"})
+	handled, err := h.HandleEnvFiles("/main", "/target", "none", []string{".env"})
 	assert.NoError(t, err)
+	assert.Empty(t, handled)
 }
 
 func TestHandleEnvFiles_EmptyStrategy(t *testing.T) {
 	h := NewEnvFileHandler()
-	err := h.HandleEnvFiles("/main", "/target", "", []string{".env"})
+	handled, err := h.HandleEnvFiles("/main", "/target", "", []string{".env"})
 	assert.NoError(t, err)
+	assert.Empty(t, handled)
 }
 
 func TestHandleEnvFiles_DefaultFiles(t *testing.T) {
@@ -79,10 +83,11 @@ func TestHandleEnvFiles_DefaultFiles(t *testing.T) {
 		},
 	}
 
-	err := h.HandleEnvFiles(mainDir, targetDir, "copy", nil)
+	handled, err := h.HandleEnvFiles(mainDir, targetDir, "copy", nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, DefaultEnvFiles, copied)
+	assert.Equal(t, DefaultEnvFiles, handled)
 }
 
 func TestHandleEnvFiles_UnknownStrategy(t *testing.T) {
@@ -91,7 +96,7 @@ func TestHandleEnvFiles_UnknownStrategy(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".env"), []byte("x"), 0o644))
 
 	h := NewEnvFileHandler()
-	err := h.HandleEnvFiles(mainDir, targetDir, "move", []string{".env"})
+	_, err := h.HandleEnvFiles(mainDir, targetDir, "move", []string{".env"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown env strategy")
 }
@@ -107,7 +112,7 @@ func TestHandleEnvFiles_SymlinkError(t *testing.T) {
 		},
 	}
 
-	err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env"})
+	_, err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "symlinking")
 }
@@ -123,7 +128,7 @@ func TestHandleEnvFiles_CopyError(t *testing.T) {
 		},
 	}
 
-	err := h.HandleEnvFiles(mainDir, targetDir, "copy", []string{".env"})
+	_, err := h.HandleEnvFiles(mainDir, targetDir, "copy", []string{".env"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "copying")
 }
@@ -141,9 +146,10 @@ func TestHandleEnvFiles_SkipsMissingFiles(t *testing.T) {
 	}
 
 	// No files exist in mainDir
-	err := h.HandleEnvFiles(mainDir, targetDir, "copy", []string{".env", ".env.local"})
+	handled, err := h.HandleEnvFiles(mainDir, targetDir, "copy", []string{".env", ".env.local"})
 	require.NoError(t, err)
 	assert.Empty(t, copied)
+	assert.Empty(t, handled)
 }
 
 func TestCopyFile(t *testing.T) {
@@ -175,8 +181,9 @@ func TestHandleEnvFiles_RealSymlink(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".env"), []byte("REAL=yes"), 0o644))
 
 	h := NewEnvFileHandler()
-	err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env"})
+	handled, err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env"})
 	require.NoError(t, err)
+	assert.Equal(t, []string{".env"}, handled)
 
 	// Verify symlink was created and resolves correctly
 	link := filepath.Join(targetDir, ".env")
@@ -198,8 +205,9 @@ func TestHandleEnvFiles_OverwritesExistingFile(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(targetDir, ".env"), []byte("OLD=1"), 0o644))
 
 	h := NewEnvFileHandler()
-	err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env"})
+	handled, err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env"})
 	require.NoError(t, err)
+	assert.Equal(t, []string{".env"}, handled)
 
 	link := filepath.Join(targetDir, ".env")
 	info, err := os.Lstat(link)
@@ -219,10 +227,11 @@ func TestHandleEnvFiles_SkipsCorrectSymlink(t *testing.T) {
 
 	h := NewEnvFileHandler()
 	// Create the symlink first
-	err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env"})
+	handled, err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env"})
 	require.NoError(t, err)
+	assert.Equal(t, []string{".env"}, handled)
 
-	// Run again — should skip without error
+	// Run again — should skip without error and return empty handled
 	callCount := 0
 	h2 := &EnvFileHandler{
 		Symlink: func(old, new string) error {
@@ -230,9 +239,10 @@ func TestHandleEnvFiles_SkipsCorrectSymlink(t *testing.T) {
 			return os.Symlink(old, new)
 		},
 	}
-	err = h2.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env"})
+	handled, err = h2.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env"})
 	require.NoError(t, err)
 	assert.Equal(t, 0, callCount, "should not re-symlink when already correct")
+	assert.Empty(t, handled)
 }
 
 func TestHandleEnvFiles_SubdirectoryFiles(t *testing.T) {
@@ -246,8 +256,9 @@ func TestHandleEnvFiles_SubdirectoryFiles(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(targetDir, "app"), 0o755))
 
 	h := NewEnvFileHandler()
-	err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{filepath.Join("app", ".env")})
+	handled, err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{filepath.Join("app", ".env")})
 	require.NoError(t, err)
+	assert.Equal(t, []string{filepath.Join("app", ".env")}, handled)
 
 	link := filepath.Join(targetDir, "app", ".env")
 	data, err := os.ReadFile(link)
@@ -263,8 +274,9 @@ func TestHandleEnvFiles_CreatesParentDir(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(mainDir, "packages", "api", ".env"), []byte("X=1"), 0o644))
 
 	h := NewEnvFileHandler()
-	err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{filepath.Join("packages", "api", ".env")})
+	handled, err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{filepath.Join("packages", "api", ".env")})
 	require.NoError(t, err)
+	assert.Equal(t, []string{filepath.Join("packages", "api", ".env")}, handled)
 
 	link := filepath.Join(targetDir, "packages", "api", ".env")
 	data, err := os.ReadFile(link)
