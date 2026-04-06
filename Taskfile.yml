@@ -5,7 +5,7 @@ vars:
   BUILD_DIR: bin
   COVER_PROFILE: coverage.out
   MIN_COVERAGE: 90
-  VERSION: 0.4.2
+  VERSION: 0.4.3
 
 tasks:
   build:

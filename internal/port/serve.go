@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 // ServeResult is returned after starting a dev server.
@@ -45,7 +44,7 @@ func StartDevServer(dir string, port int) (*ServeResult, error) {
 	cmd.Stderr = logFile
 	cmd.Env = append(os.Environ(), fmt.Sprintf("PORT=%d", port))
 	// Detach from parent process group so the server survives after wtf exits.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setSysProcAttr(cmd)
 
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close()
@@ -89,7 +88,7 @@ func StopDevServer(dir string) error {
 	}
 
 	// Kill the process group (negative PID) to catch child processes
-	_ = syscall.Kill(-pid, syscall.SIGTERM)
+	killProcessGroup(pid)
 
 	_ = os.Remove(pidPath)
 	_ = os.Remove(filepath.Join(dir, ".wtf-server.log"))
