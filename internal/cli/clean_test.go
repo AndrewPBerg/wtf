@@ -37,7 +37,7 @@ func TestCleanCommand_DryRun(t *testing.T) {
 	// Create a worktree, add a commit, then merge it into main so it's truly merged.
 	_, err := wm.Add(dir, "merged-feature", "main")
 	require.NoError(t, err)
-	wtPath := filepath.Join(filepath.Dir(dir), filepath.Base(dir)+"--merged-feature")
+	wtPath := filepath.Join(filepath.Dir(dir), "merged-feature--"+filepath.Base(dir))
 	_, err = exec.Run(wtPath, "commit", "--allow-empty", "-m", "feature work")
 	require.NoError(t, err)
 	_, err = exec.Run(dir, "merge", "--no-ff", "merged-feature", "-m", "merge merged-feature")
@@ -85,7 +85,7 @@ func TestCleanCommand_ForceRemove(t *testing.T) {
 	// Create worktree, diverge, then merge so it's truly merged.
 	_, err := wm.Add(dir, "force-clean", "main")
 	require.NoError(t, err)
-	wtPath := filepath.Join(filepath.Dir(dir), filepath.Base(dir)+"--force-clean")
+	wtPath := filepath.Join(filepath.Dir(dir), "force-clean--"+filepath.Base(dir))
 	_, err = exec.Run(wtPath, "commit", "--allow-empty", "-m", "feature work")
 	require.NoError(t, err)
 	_, err = exec.Run(dir, "merge", "--no-ff", "force-clean", "-m", "merge force-clean")
@@ -149,7 +149,7 @@ func TestCleanCommand_RemovesMerged(t *testing.T) {
 	// Create worktree, diverge, then merge so it's truly merged.
 	_, err := wm.Add(dir, "merged-branch", "main")
 	require.NoError(t, err)
-	wtPath := filepath.Join(filepath.Dir(dir), filepath.Base(dir)+"--merged-branch")
+	wtPath := filepath.Join(filepath.Dir(dir), "merged-branch--"+filepath.Base(dir))
 	_, err = exec.Run(wtPath, "commit", "--allow-empty", "-m", "feature work")
 	require.NoError(t, err)
 	_, err = exec.Run(dir, "merge", "--no-ff", "merged-branch", "-m", "merge merged-branch")

@@ -135,3 +135,14 @@ func TestAppendInit(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestIsInitPresent_UnreadableFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".bashrc")
+	require.NoError(t, os.WriteFile(path, []byte("content"), 0o000))
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+
+	_, err := IsInitPresent(path)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "reading rc file")
+}

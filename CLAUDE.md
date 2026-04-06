@@ -46,12 +46,19 @@ task clean          # remove build artifacts
 cmd/              # CLI entry points, wiring only
 internal/
   git/            # git/worktree operations
-  config/         # configuration loading
-  setup/          # project setup automation
-  cache/          # caching layer
+  config/         # repo registry (~/.wtf/repos.json)
+  setup/          # project setup (env symlinking, PM detection, shell integration)
   forge/          # GitHub/GitLab integration
 docs/             # one markdown per command
 ```
+
+## Setup Model
+
+Zero config. When a worktree is created (`wtf new` / `wtf news`), setup runs automatically:
+1. Symlinks env files (`.env`, `.env.local`, etc.) from main worktree
+2. Auto-detects package manager from lockfiles and runs install
+
+CLI flags (`--no-setup`, `--no-env`, `--no-install`) override defaults. No config file.
 
 ## Pre-commit (prek)
 

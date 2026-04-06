@@ -3,8 +3,6 @@ package cli
 import (
 	"bytes"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -468,43 +466,11 @@ func TestRmGlobal_MultipleMatches_InvalidSelection(t *testing.T) {
 	assert.Contains(t, stderr.String(), "invalid selection")
 }
 
-func TestRunOnRemoveHooks_NoConfig(t *testing.T) {
-	dir := t.TempDir()
+func TestRunOnRemoveHooks_NoOp(t *testing.T) {
 	cmd := rmCmd
 	cmd.SetErr(new(bytes.Buffer))
-
-	// No config file — should return silently
-	runOnRemoveHooks(cmd, dir, "feature")
-}
-
-func TestRunOnRemoveHooks_WithConfig(t *testing.T) {
-	dir := initCLITestRepo(t)
-
-	cfgContent := `[hooks]
-on_remove = ["true"]
-on_pr_delete = ["true"]
-`
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".wt-forge.toml"), []byte(cfgContent), 0o644))
-
-	stderr := new(bytes.Buffer)
-	cmd := rmCmd
-	cmd.SetErr(stderr)
-
-	runOnRemoveHooks(cmd, dir, "feature")
-	runOnRemoveHooks(cmd, dir, "pr-42")
-}
-
-func TestRunOnRemoveHooks_EmptyHooks(t *testing.T) {
-	dir := initCLITestRepo(t)
-
-	cfgContent := `[hooks]
-`
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".wt-forge.toml"), []byte(cfgContent), 0o644))
-
-	stderr := new(bytes.Buffer)
-	cmd := rmCmd
-	cmd.SetErr(stderr)
-	runOnRemoveHooks(cmd, dir, "feature")
+	// Should be a no-op — no config file system anymore
+	runOnRemoveHooks(cmd, t.TempDir(), "feature")
 }
 
 func TestFriendlyError(t *testing.T) {

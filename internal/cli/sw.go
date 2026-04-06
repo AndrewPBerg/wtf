@@ -9,34 +9,43 @@ import (
 
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
-	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/spf13/cobra"
 )
+
+var swPRs bool
 
 var swGlobal bool
 
 func init() {
 	swCmd.Flags().BoolVarP(&swGlobal, "global", "g", false, "Search across all registered repos")
+	swCmd.Flags().BoolVarP(&swPRs, "prs", "p", false, "Show PR status for each worktree (list mode)")
 	rootCmd.AddCommand(swCmd)
+	swgCmd.Flags().BoolVarP(&swPRs, "prs", "p", false, "Show PR status for each worktree (list mode)")
 	rootCmd.AddCommand(swgCmd)
 }
 
 var swgCmd = &cobra.Command{
-	Use:               "swg <branch>",
+	Use:               "swg [branch]",
 	Short:             "Switch to a worktree globally (shortcut for sw -g)",
-	Args:              cobra.ExactArgs(1),
+	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: completeWorktrees,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		wm := git.NewWorktreeManager(&git.RealExecutor{})
+		if len(args) == 0 {
+			lsGlobal = true
+			lsPRs = swPRs
+			return runLs(cmd, wm)
+		}
 		return runSwGlobal(cmd, args[0], wm)
 	},
 }
 
 var swCmd = &cobra.Command{
-	Use:               "sw <branch>",
+	Use:               "sw [branch]",
 	Short:             "Switch to a worktree (prints path for cd)",
 	ValidArgsFunction: completeWorktrees,
 	Long: `Switch to a worktree by branch name (substring match).
+With no arguments, lists all worktrees in an interactive picker.
 Prints the worktree path to stdout so you can cd to it.
 
 To enable the 'sw' shell function that cds automatically, run:
@@ -48,9 +57,18 @@ Or add this to your shell profile manually:
   eval "$(wtf init)"
 
 See 'wtf init --help' and 'wtf setup --help' for details.`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		wm := git.NewWorktreeManager(&git.RealExecutor{})
+		if len(args) == 0 {
+			lsPRs = swPRs
+			if swGlobal {
+				lsGlobal = true
+			} else {
+				lsGlobal = false
+			}
+			return runLs(cmd, wm)
+		}
 		if swGlobal {
 			return runSwGlobal(cmd, args[0], wm)
 		}
@@ -301,29 +319,8 @@ func isCurrentWorktree(cwd, wtPath string) bool {
 	return !strings.HasPrefix(rel, "..")
 }
 
-// runOnSwitchHooks loads config and runs on_switch hooks if present.
-// If the target branch is a PR worktree (pr-N or mr-N), on_pr_switch hooks also run.
-// Failures are logged as warnings, never fatal.
-func runOnSwitchHooks(cmd *cobra.Command, repoDir string, branch string) {
-	cfg, err := config.LoadProjectConfig(repoDir)
-	if err != nil || cfg == nil {
-		return
-	}
-
-	runner := setup.NewRunner()
-
-	if len(cfg.Hooks.OnSwitch) > 0 {
-		if err := runner.RunHooks(cfg.Hooks.OnSwitch, repoDir); err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s on_switch hook failed: %v\n", yellow("⚠"), err)
-		}
-	}
-
-	if isPRBranch(branch) && len(cfg.Hooks.OnPRSwitch) > 0 {
-		if err := runner.RunHooks(cfg.Hooks.OnPRSwitch, repoDir); err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s on_pr_switch hook failed: %v\n", yellow("⚠"), err)
-		}
-	}
-}
+// runOnSwitchHooks is a no-op placeholder for future CLI-driven hooks.
+func runOnSwitchHooks(_ *cobra.Command, _ string, _ string) {}
 
 // isPRBranch returns true if the branch name matches the PR worktree pattern (pr-N or mr-N).
 func isPRBranch(branch string) bool {

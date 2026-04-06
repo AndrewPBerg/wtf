@@ -46,6 +46,6 @@ It purely removes wtf's awareness of the repo for global commands.
 
 ## Notes
 
-- Repos are auto-registered when you run any wtf command inside them, so re-registering is as simple as running `wtf ls` in the repo again.
+- Repos are auto-registered when you run any wtf command inside them, so re-registering is as simple as running `wtf sw` in the repo again.
 - To see which repos are currently registered, check `~/.wtf/repos.json`.
 - Stale entries (deleted repos) are also cleaned up automatically by `wtf` via pruning.

@@ -355,47 +355,11 @@ func TestIsCurrentWorktree(t *testing.T) {
 	}
 }
 
-func TestRunOnSwitchHooks_NoConfig(t *testing.T) {
-	dir := t.TempDir()
+func TestRunOnSwitchHooks_NoOp(t *testing.T) {
 	cmd := swCmd
 	cmd.SetErr(new(bytes.Buffer))
-
-	// No config file — should return silently
-	runOnSwitchHooks(cmd, dir, "feature")
-}
-
-func TestRunOnSwitchHooks_WithConfig(t *testing.T) {
-	dir := initCLITestRepo(t)
-
-	// Create a config with on_switch hooks that run a no-op
-	cfgContent := `[hooks]
-on_switch = ["true"]
-on_pr_switch = ["true"]
-`
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".wt-forge.toml"), []byte(cfgContent), 0o644))
-
-	stderr := new(bytes.Buffer)
-	cmd := swCmd
-	cmd.SetErr(stderr)
-
-	// Non-PR branch — only on_switch hooks run
-	runOnSwitchHooks(cmd, dir, "feature")
-
-	// PR branch — both on_switch and on_pr_switch hooks run
-	runOnSwitchHooks(cmd, dir, "pr-42")
-}
-
-func TestRunOnSwitchHooks_EmptyHooks(t *testing.T) {
-	dir := initCLITestRepo(t)
-
-	cfgContent := `[hooks]
-`
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".wt-forge.toml"), []byte(cfgContent), 0o644))
-
-	stderr := new(bytes.Buffer)
-	cmd := swCmd
-	cmd.SetErr(stderr)
-	runOnSwitchHooks(cmd, dir, "feature")
+	// Should be a no-op — no config file system anymore
+	runOnSwitchHooks(cmd, t.TempDir(), "feature")
 }
 
 func TestSwGlobal_FuzzySuggestions(t *testing.T) {

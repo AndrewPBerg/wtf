@@ -40,7 +40,7 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 **Goals:**
 - Zero-friction worktree setup — no manual `pnpm install` or `.env` copying
-- Declarative `.wt-forge.toml` per project
+- Zero config required — sensible defaults, CLI flags for overrides
 - Auto-detect package manager and env files
 
 ### Features
@@ -52,23 +52,15 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
   - `yarn.lock` → `yarn install`
   - `uv.lock` → `uv sync`
   - `pyproject.toml` → `uv sync`
-- [x] Env file handling (symlink | copy | none):
+  - Plus: go, cargo, bundler, composer, maven, gradle, dotnet, mix, swift
+- [x] Env file symlinking from main worktree (default):
   - `.env`, `.env.local`, `.env.development`, `.env.development.local`
-- [x] `.wt-forge.toml` support:
-  - `[worktree]` — root path, default base branch
-  - `[env]` — strategy and file list
-  - `[setup]` — ordered steps with optional if-conditions
-  - `[hooks]` — on_create, on_switch, on_remove
-- [x] Setup conditions (if-DSL):
-  - `branch contains 'feature'`
-  - `file exists 'path'`
-  - `env VAR is set`
+- [x] CLI flags for setup control: `--no-setup`, `--no-env`, `--no-install`
 
 ### Commands
 
-- [x] `wtf setup` — Re-run setup steps on current worktree (`--env`, `--install`)
+- [x] `wtf setup` — Re-run setup in current worktree (`--env`, `--install`)
 - [x] `wtf setup shell` — Shell integration (moved from `wtf setup`)
-- [x] `wtf config init` — Generate default `.wt-forge.toml` with auto-detection
 ---
 
 ## v0.3.0 — Platform Integration (GitHub & GitLab)
@@ -93,7 +85,6 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 - [x] `wtf pr <number|branch>` — Checkout a PR as a worktree
 - [x] `wtf ls --prs` — List worktrees with PR status inline (lazy-loaded)
-- [x] add special hook into the .worktree-forge.toml for on-pr-create on-pr-switch on-pr-delete
 - [x] news isn't working as expected
 
 ### Completions
@@ -106,41 +97,6 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 - [x] `wtf init` embeds completions inline — `eval "$(wtf init)"` handles everything
 - [x] `wtf completion --install` writes to standard user-local path
 
----
-
-## v0.4.0 — abus-Ready & Polish
-
-**Status:** planned
-
-**Goals:**
-- Every command has `--json` output for abus consumption
-- Shell completions fully working across bash, zsh, fish
-- Dogfooded on this repo, README quickstart verified
-
-### Features
-
-- [ ] `--json` flag on all commands (machine-readable, stable schema), alias `-j`
-- [ ] CONTRIBUTING.md and docs/ complete
-- [ ] add a pr watch funcationality for repos, could be global too for notifications you are subscribed to w/ native Notifivations from the process
-
-### Commands
-
-- [x] `wtf completion <shell>` — Generate shell completion script (bash, zsh, fish, powershell)
-- [ ] `wtf doctor` — Verify environment health (git, gh/glab, tokens)
-
-### Internals
-
-- [x] Completion dynamic hooks for branch and PR names
-- [ ] JSON output layer across all commands
-
----
-
-## Principles
-
-- All business logic in `internal/` — never in `cmd/`
-- No global state — pass dependencies explicitly
-- Table-driven tests as default pattern
-- Errors wrapped with context: `fmt.Errorf("doing X: %w", err)`
-- 90% test coverage enforced in CI at every milestone
+--
 - Changelog updated with every PR
 - `docs/` has one markdown per command, updated as commands ship

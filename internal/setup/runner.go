@@ -2,11 +2,12 @@ package setup
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
-	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/ui"
 	"github.com/mattn/go-isatty"
 )
@@ -60,6 +61,7 @@ func (r *RealCmdExecutor) RunInteractive(dir, command string) error {
 type Runner struct {
 	CmdExec    CmdExecutor
 	EnvHandler *EnvFileHandler
+	Out        io.Writer // progress output (stderr in CLI context)
 }
 
 // NewRunner creates a Runner with real implementations.
@@ -67,58 +69,98 @@ func NewRunner() *Runner {
 	return &Runner{
 		CmdExec:    &RealCmdExecutor{},
 		EnvHandler: NewEnvFileHandler(),
+		Out:        io.Discard,
 	}
 }
 
-// RunSetup runs the full setup flow for a worktree.
-// If cfg is nil, auto-detect package manager and run install if found.
-// If cfg exists: handle env files → auto-detect + run install → evaluate & run setup steps → run hooks.
-func (r *Runner) RunSetup(cfg *config.ProjectConfig, mainDir, targetDir, branch string) error {
-	if cfg == nil {
-		return r.runAutoSetup(targetDir)
-	}
+// Options controls which setup steps run after worktree creation.
+type Options struct {
+	SkipEnv     bool   // skip env file handling
+	SkipInstall bool   // skip package manager install
+	EnvStrategy string // "symlink" (default), "copy", "none"
+}
 
-	// 1. Handle env files
-	strategy := cfg.Env.Strategy
-	files := cfg.Env.Files
-	if err := r.EnvHandler.HandleEnvFiles(mainDir, targetDir, strategy, files); err != nil {
-		return fmt.Errorf("handling env files: %w", err)
-	}
+// DefaultSymlinkDirs are directories symlinked from the main worktree when
+// they exist. This avoids re-creating heavyweight directories per worktree.
+var DefaultSymlinkDirs = []string{".venv"}
 
-	// 2. Auto-detect and install
-	if err := r.runAutoSetup(targetDir); err != nil {
-		return fmt.Errorf("auto setup: %w", err)
-	}
+// RunSetup runs the setup flow for a new worktree.
+//  1. Discover and symlink env files (.env, .env.local, …) from mainDir → targetDir
+//  2. Symlink shared directories (.venv) from mainDir → targetDir
+//  3. Auto-detect package manager and run install
+func (r *Runner) RunSetup(mainDir, targetDir string, opts Options) error {
+	// 1. Discover and handle env files
+	if !opts.SkipEnv {
+		strategy := opts.EnvStrategy
+		if strategy == "" {
+			strategy = "symlink"
+		}
 
-	// 3. Run setup steps
-	ctx := &ConditionContext{
-		Branch: branch,
-		Dir:    targetDir,
-		GetEnv: os.Getenv,
-	}
+		// Discover env files in mainDir (including subdirectories like app/.env)
+		envFiles, err := DiscoverEnvFiles(mainDir)
+		if err != nil {
+			return fmt.Errorf("discovering env files: %w", err)
+		}
 
-	for _, step := range cfg.Setup {
-		if step.If != "" {
-			ok, err := EvalCondition(step.If, ctx)
+		if len(envFiles) > 0 {
+			handled, err := r.EnvHandler.HandleEnvFiles(mainDir, targetDir, strategy, envFiles)
 			if err != nil {
-				return fmt.Errorf("evaluating condition for step %q: %w", step.Name, err)
+				return fmt.Errorf("handling env files: %w", err)
 			}
-			if !ok {
-				continue
+			for _, f := range handled {
+				_, _ = fmt.Fprintf(r.Out, "  env: %s → %s\n", f, strategy)
 			}
-		}
-
-		if err := r.CmdExec.RunShell(targetDir, step.Run); err != nil {
-			return fmt.Errorf("running setup step %q: %w", step.Name, err)
 		}
 	}
 
-	// 4. Run on_create hooks
-	if err := r.RunHooks(cfg.Hooks.OnCreate, targetDir); err != nil {
-		return fmt.Errorf("running on_create hooks: %w", err)
+	// 2. Symlink shared directories
+	if !opts.SkipEnv {
+		linked, err := symlinkDirs(mainDir, targetDir, DefaultSymlinkDirs)
+		if err != nil {
+			return fmt.Errorf("symlinking directories: %w", err)
+		}
+		for _, d := range linked {
+			_, _ = fmt.Fprintf(r.Out, "  dir: %s → symlink\n", d)
+		}
+	}
+
+	// 3. Auto-detect and install
+	if !opts.SkipInstall {
+		if err := r.runAutoSetup(targetDir); err != nil {
+			return fmt.Errorf("auto setup: %w", err)
+		}
 	}
 
 	return nil
+}
+
+// symlinkDirs creates symlinks for directories that exist in mainDir.
+// Returns the list of directories that were actually symlinked.
+func symlinkDirs(mainDir, targetDir string, dirs []string) ([]string, error) {
+	var linked []string
+	for _, d := range dirs {
+		src := filepath.Join(mainDir, d)
+		info, err := os.Lstat(src)
+		if err != nil || !info.IsDir() {
+			continue // skip if doesn't exist or isn't a directory
+		}
+
+		dst := filepath.Join(targetDir, d)
+		// Skip if already exists (don't overwrite)
+		if _, err := os.Lstat(dst); err == nil {
+			continue
+		}
+
+		rel, err := filepath.Rel(targetDir, src)
+		if err != nil {
+			return linked, fmt.Errorf("computing relative path for %s: %w", d, err)
+		}
+		if err := os.Symlink(rel, dst); err != nil {
+			return linked, fmt.Errorf("symlinking %s: %w", d, err)
+		}
+		linked = append(linked, d)
+	}
+	return linked, nil
 }
 
 // RunHooks runs a list of hook commands in the given directory.
@@ -145,6 +187,8 @@ func (r *Runner) runAutoSetup(dir string) error {
 	if pm == nil {
 		return nil
 	}
+
+	_, _ = fmt.Fprintf(r.Out, "  install: %s\n", pm.InstallCmd)
 
 	if err := r.CmdExec.RunShell(dir, pm.InstallCmd); err != nil {
 		return fmt.Errorf("running %s: %w", pm.InstallCmd, err)

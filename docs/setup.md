@@ -5,21 +5,43 @@ Run project setup in the current worktree.
 ## Usage
 
 ```bash
-wtf setup              # full setup (env files + install + custom steps)
-wtf setup --env        # only handle env files
+wtf setup              # full setup (symlink env files + install)
+wtf setup --env        # only symlink env files
 wtf setup --install    # only run package install
 wtf setup shell        # configure shell integration (one-time)
 ```
 
 ## What It Does
 
-1. Loads [`.wt-forge.toml`](https://github.com/AndrewPBerg/wtf/blob/main/docs/wt-forge-toml.md) if present
-2. Handles env files according to the configured strategy
-3. Auto-detects the package manager and runs install
-4. Runs custom setup steps from config
-5. Runs `on_create` hooks
+1. **Symlinks env files** from the main worktree (`.env`, `.env.local`, `.env.development`, `.env.development.local` -- only files that exist in the main worktree)
+2. **Auto-detects the package manager** from lockfiles and runs install
 
-Without a `.wt-forge.toml`, it auto-detects the package manager and runs install. See the [`.wt-forge.toml` reference](https://github.com/AndrewPBerg/wtf/blob/main/docs/wt-forge-toml.md) for full config options.
+No config file needed. This is the same setup that runs automatically after `wtf new` and `wtf news`.
+
+## Package Manager Detection
+
+WTF detects the package manager by checking for lockfiles in priority order:
+
+| Lockfile              | Command                           |
+|-----------------------|-----------------------------------|
+| `pnpm-lock.yaml`      | `pnpm install`                    |
+| `bun.lockb`           | `bun install`                     |
+| `yarn.lock`           | `yarn install`                    |
+| `package-lock.json`   | `npm install`                     |
+| `uv.lock`             | `uv sync`                         |
+| `poetry.lock`         | `poetry install`                  |
+| `requirements.txt`    | `pip install -r requirements.txt` |
+| `go.sum`              | `go mod download`                 |
+| `Cargo.lock`          | `cargo build`                     |
+| `Gemfile.lock`        | `bundle install`                  |
+| `composer.lock`       | `composer install`                |
+| `pom.xml`             | `mvn install`                     |
+| `build.gradle(.kts)`  | `gradle build`                    |
+| `packages.lock.json`  | `dotnet restore`                  |
+| `mix.lock`            | `mix deps.get`                    |
+| `Package.resolved`    | `swift package resolve`           |
+
+First match wins. If no lockfile is found, the install step is skipped.
 
 ## Examples
 
@@ -32,14 +54,14 @@ $ wtf setup
 $ wtf setup --install
 ✔ Ran pnpm install
 
-# Only handle env files
+# Only symlink env files
 $ wtf setup --env
 ✔ Env files handled
 ```
 
 ## Shell Integration
 
-Shell integration has moved to `wtf setup shell`:
+Shell integration is configured via `wtf setup shell`:
 
 ```bash
 $ wtf setup shell

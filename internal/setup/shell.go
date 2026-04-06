@@ -104,8 +104,8 @@ func DefaultFuncs() []ShellFunc {
 	return []ShellFunc{
 		{
 			Name: "wtf",
-			Bash: `wtf() { case "$1" in sw|news) local _c="$1"; shift; local _p; _p="$(command wtf "$_c" "$@")" || return 1; builtin cd "$_p"; return;; *) command wtf "$@";; esac; }`,
-			Fish: `function wtf; if contains -- "$argv[1]" sw news; set -l _c $argv[1]; set -l _p (command wtf $_c $argv[2..]); or return 1; builtin cd "$_p"; return; else command wtf $argv; end; end`,
+			Bash: `wtf() { case "$1" in sw|swg|news) if [ ! -t 1 ]; then command wtf "$@"; return; fi; local _c="$1"; shift; local _p; _p="$(command wtf "$_c" "$@")" || return 1; [ -z "$_p" ] && return 0; builtin cd "$_p"; local _port; _port="$(command wtf port 2>/dev/null)"; [ -n "$_port" ] && export PORT="$_port"; return;; *) command wtf "$@";; esac; }`,
+			Fish: `function wtf; if contains -- "$argv[1]" sw swg news; if not isatty stdout; command wtf $argv; return; end; set -l _c $argv[1]; set -l _p (command wtf $_c $argv[2..]); or return 1; if test -z "$_p"; return 0; end; builtin cd "$_p"; set -l _port (command wtf port 2>/dev/null); if test -n "$_port"; set -gx PORT $_port; end; return; else command wtf $argv; end; end`,
 		},
 	}
 }

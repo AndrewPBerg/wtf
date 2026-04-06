@@ -76,3 +76,15 @@ func (s *stubFetchExecutor) Run(dir string, args ...string) (string, error) {
 	}
 	return s.real.Run(dir, args...)
 }
+
+// stubFailFetchExecutor wraps a real executor but fails on fetch commands.
+type stubFailFetchExecutor struct {
+	real git.Executor
+}
+
+func (s *stubFailFetchExecutor) Run(dir string, args ...string) (string, error) {
+	if len(args) > 0 && args[0] == "fetch" {
+		return "", fmt.Errorf("fetch failed: remote not found")
+	}
+	return s.real.Run(dir, args...)
+}

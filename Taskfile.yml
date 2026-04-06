@@ -1,11 +1,11 @@
-version: '3'
+version: "3"
 
 vars:
   BINARY: wtf
   BUILD_DIR: bin
   COVER_PROFILE: coverage.out
   MIN_COVERAGE: 90
-  VERSION: 0.4.0
+  VERSION: 0.42.0
 
 tasks:
   build:

@@ -147,6 +147,17 @@ func TestCompleteRegisteredRepos(t *testing.T) {
 	assert.GreaterOrEqual(t, len(completions), 4) // 2 name entries + 2 path entries
 }
 
+func TestCompleteRemoteBranchValues_Delegates(t *testing.T) {
+	// completeRemoteBranchValues just delegates to completeRemoteBranches
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	completions, directive := completeRemoteBranchValues(nil, nil, "")
+	assert.Equal(t, cobra.ShellCompDirectiveNoFileComp, directive)
+	// In a repo with no remote, should return empty (not panic)
+	assert.Empty(t, completions)
+}
+
 func TestCompleteRegisteredRepos_NoRepos(t *testing.T) {
 	setupGlobalRegistry(t, []string{})
 

@@ -1,12 +1,12 @@
 # wtf rm
 
-Remove one or more worktrees and delete their branches.
+Remove one or more worktrees and delete their branches. With no arguments, launches an interactive multi-select picker.
 
 ## Usage
 
 ```bash
-wtf rm <branch> [branch...] [--force] [-g|--global]
-wtf rmg <branch> [branch...] [--force]
+wtf rm [branch...] [--force] [-g|--global]
+wtf rmg [branch...] [--force]
 ```
 
 ## Flags
@@ -15,6 +15,36 @@ wtf rmg <branch> [branch...] [--force]
 |------------------|------------------------------------------------|
 | `--force`        | Force remove even with uncommitted changes     |
 | `-g`, `--global` | Remove worktree across all registered repos    |
+
+## No Arguments — Interactive Picker
+
+When called with no arguments in a TTY, `wtf rm` launches an interactive multi-select picker:
+
+- Navigate with **j/k** or **up/down** arrows
+- Press **Space** to toggle selection on the current worktree
+- Press **Enter** to confirm and remove all selected worktrees
+- Press **q**, **Esc**, or **Ctrl+C** to cancel
+
+The main worktree and the worktree you're currently inside are excluded from the picker.
+
+```bash
+# Interactive multi-select
+$ wtf rm
+Select worktrees (space=toggle, enter=confirm, q=cancel)
+
+▸ [ ] feature/auth    /code/myrepo--feat-auth   def4567
+  [x] feature/wip     /code/myrepo--feat-wip    ghi7890
+  [ ] bugfix/typo     /code/myrepo--bugfix-typo abc1234
+
+# Interactive global multi-select
+$ wtf rmg
+Select worktrees (space=toggle, enter=confirm, q=cancel)
+
+▸ [ ] feature/auth    /code/myrepo--feat-auth   def4567  (myrepo)
+  [ ] feature/api     /code/other--feat-api     abc1234  (other)
+```
+
+When not in a TTY (piped/scripted), bare `rm`/`rmg` returns an error asking for branch names.
 
 ## Examples
 

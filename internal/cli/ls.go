@@ -21,32 +21,11 @@ import (
 var (
 	lsGlobal bool
 	lsPRs    bool
+
+	// runPickerFunc is the picker entry point. It is a var so tests can stub it
+	// without requiring a real TTY.
+	runPickerFunc = ui.RunPicker
 )
-
-func init() {
-	lsCmd.Flags().BoolVarP(&lsGlobal, "global", "g", false, "List worktrees across all registered repos")
-	lsCmd.Flags().BoolVarP(&lsPRs, "prs", "p", false, "Show PR status for each worktree")
-	rootCmd.AddCommand(lsCmd)
-	lsgCmd.Flags().BoolVarP(&lsPRs, "prs", "p", false, "Show PR status for each worktree")
-	rootCmd.AddCommand(lsgCmd)
-}
-
-var lsgCmd = &cobra.Command{
-	Use:   "lsg",
-	Short: "List all worktrees globally (shortcut for ls -g)",
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		lsGlobal = true
-		return runLs(cmd, git.NewWorktreeManager(&git.RealExecutor{}))
-	},
-}
-
-var lsCmd = &cobra.Command{
-	Use:   "ls",
-	Short: "List all worktrees",
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		return runLs(cmd, git.NewWorktreeManager(&git.RealExecutor{}))
-	},
-}
 
 type lsRow struct {
 	branch     string // plain text for width calculation
@@ -88,9 +67,18 @@ func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
 	// Best-effort remote URL for commit hyperlinks.
 	remoteURL, _ := wm.RemoteURL(dir)
 
-	// Two-phase async render: show cached PR data instantly, update when fresh arrives.
-	isTTY := isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())
-	if lsPRs && isTTY {
+	// Interactive picker when a user can interact (stdin is a TTY).
+	// The picker renders to stderr so stdout stays clean for path capture
+	// by the shell wrapper's $().
+	canInteract := stdinIsTTY()
+	stdoutTTY := isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())
+
+	if canInteract && !lsPRs {
+		return runLsInteractive(cmd, wts, dir)
+	}
+
+	// Async PR re-rendering needs stdout to be a real TTY (ANSI cursor control).
+	if lsPRs && stdoutTTY {
 		return runLsWithAsyncPRs(cmd, wts, remoteURL, dir)
 	}
 
@@ -103,6 +91,51 @@ func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
 	rows := buildRows(wts, remoteURL, prMap)
 	printWorktreeTable(cmd, rows, "")
 	return nil
+}
+
+// runLsInteractive launches an interactive worktree picker.
+// On selection, it prints the worktree path to stdout (like sw).
+func runLsInteractive(cmd *cobra.Command, wts []git.Worktree, dir string) error {
+	items := worktreesToPickerItems(wts, "")
+
+	result, err := runPickerFunc(items, false)
+	if err != nil {
+		return err
+	}
+	if result.Quit || len(result.Items) == 0 {
+		return nil
+	}
+
+	selected := result.Items[0]
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), selected.Path)
+
+	cwd, _ := os.Getwd()
+	if cwd != "" && isCurrentWorktree(cwd, selected.Path) {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "wtf? you are already on %s!\n", cyan(selected.Branch))
+		return nil
+	}
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Switched to %s\n", selected.Path)
+	runOnSwitchHooks(cmd, dir, selected.Branch)
+	return nil
+}
+
+// worktreesToPickerItems converts worktrees to picker items.
+// Bare and detached worktrees are excluded (no branch to switch to).
+func worktreesToPickerItems(wts []git.Worktree, repo string) []ui.PickerItem {
+	items := make([]ui.PickerItem, 0, len(wts))
+	for _, wt := range wts {
+		if wt.IsBare || wt.IsDetached || wt.Branch == "" {
+			continue
+		}
+		items = append(items, ui.PickerItem{
+			Branch: wt.Branch,
+			Path:   wt.Path,
+			Head:   wt.Head,
+			IsMain: wt.IsMain,
+			Repo:   repo,
+		})
+	}
+	return items
 }
 
 // runLsWithAsyncPRs renders the worktree table with lazy-loaded PR data.
@@ -525,6 +558,12 @@ func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
 		return runLsGlobalJSON(cmd, wm, repos)
 	}
 
+	// Interactive picker when stdin is a TTY (non-PR view).
+	// We check stdin (not stdout) because the shell wrapper captures stdout via $().
+	if stdinIsTTY() && !lsPRs {
+		return runLsGlobalInteractive(cmd, wm, repos)
+	}
+
 	out := cmd.OutOrStdout()
 
 	// Detect current repo so we can highlight it.
@@ -573,6 +612,52 @@ func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
 		if i < len(groups)-1 {
 			_, _ = fmt.Fprintln(out)
 		}
+	}
+	return nil
+}
+
+// runLsGlobalInteractive launches an interactive picker for all registered repos.
+func runLsGlobalInteractive(cmd *cobra.Command, wm *git.WorktreeManager, repos []string) error {
+	// Map repo label back to full path for switch hooks.
+	repoByPath := make(map[string]string, len(repos))
+	var allItems []ui.PickerItem
+	for _, repo := range repos {
+		wts, err := wm.List(repo)
+		if err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s Could not list %s: %v\n", yellow("⚠"), cyan(repo), err)
+			continue
+		}
+		items := worktreesToPickerItems(wts, filepath.Base(repo))
+		for _, it := range items {
+			repoByPath[it.Path] = repo
+		}
+		allItems = append(allItems, items...)
+	}
+
+	if len(allItems) == 0 {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), dim("No worktrees found across registered repos."))
+		return nil
+	}
+
+	result, err := runPickerFunc(allItems, false)
+	if err != nil {
+		return err
+	}
+	if result.Quit || len(result.Items) == 0 {
+		return nil
+	}
+
+	selected := result.Items[0]
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), selected.Path)
+
+	cwd, _ := os.Getwd()
+	if cwd != "" && isCurrentWorktree(cwd, selected.Path) {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "wtf? you are already on %s!\n", cyan(selected.Branch))
+		return nil
+	}
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Switched to %s\n", selected.Path)
+	if repo := repoByPath[selected.Path]; repo != "" {
+		runOnSwitchHooks(cmd, repo, selected.Branch)
 	}
 	return nil
 }

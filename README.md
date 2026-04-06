@@ -3,7 +3,7 @@
 
 # WorkTreeForge (WTF)
 
-A fast git worktree workflow tool. Create, switch, and clean up worktrees with automated project setup.
+A fast git worktree workflow tool. Create, switch, and clean up worktrees with automated project setup — zero config required.
 
 ## Install
 
@@ -26,15 +26,18 @@ go install github.com/AndrewPBerg/wtf/cmd/wtf@latest
 # Set up shell integration (one-time)
 wtf setup shell
 
-# List all worktrees
-wtf ls
+# List / pick worktrees interactively
+wtf sw
 
 # Create a worktree for a new branch
 wtf new feature/auth
-# Created worktree at /code/myrepo--feature-auth
+# ✔ Created worktree at /code/myrepo--feature-auth
 
 # Create a worktree and switch to it in one step
 wtf news feature/auth
+
+# Checkout a PR by number
+wtf new --pr 42
 
 # Switch to a worktree (cd's automatically with shell wrapper)
 wtf sw auth
@@ -49,33 +52,24 @@ wtf rm feature/auth
 wtf clean --dry-run
 wtf clean
 
-# Generate a .wt-forge.toml with auto-detected defaults
-wtf config init
-
 # Re-run setup in current worktree
 wtf setup
 ```
 
-## Project Setup (`.wt-forge.toml`)
+## Automatic Setup
 
-Drop a `.wt-forge.toml` in your repo root to automate worktree setup:
+When you create a worktree with `wtf new` or `wtf news`, WTF automatically:
 
-```toml
-[env]
-strategy = "symlink"
-files = [".env", ".env.local"]
+1. **Symlinks env files** (`.env`, `.env.local`, `.env.development`, `.env.development.local`) from the main worktree
+2. **Detects your package manager** and runs install (pnpm, bun, yarn, npm, uv, poetry, go, cargo, and more)
 
-[[setup]]
-name = "install"
-run = "pnpm install"
+No config file needed. Override with flags:
 
-[[setup]]
-name = "migrate"
-run = "pnpm db:migrate"
-if = "file exists 'prisma/schema.prisma'"
+```bash
+wtf new feature/auth --no-setup     # skip everything
+wtf new feature/auth --no-env       # skip env file symlinking
+wtf new feature/auth --no-install   # skip package install
 ```
-
-Generate one automatically with `wtf config init`. See [docs/wt-forge-toml.md](docs/wt-forge-toml.md) for the full reference.
 
 ## Shell Integration
 
@@ -115,20 +109,18 @@ Worktrees are created as sibling directories to the main repo. Slashes in branch
 
 | Command     | Description                                          |
 |-------------|------------------------------------------------------|
-| `wtf ls`    | List worktrees (`--json`, `--global`)                |
-| `wtf new`   | Create a worktree (`--base` to set origin branch)    |
-| `wtf sw`    | Switch to a worktree (`--global` to search all repos)|
+| `wtf new`   | Create a worktree (`--base`, `--pr`, `--no-setup`)   |
+| `wtf sw`    | Switch/list worktrees (`--global`, `--prs`, `--json`)|
 | `wtf rm`    | Remove a worktree and branch (`--force`)             |
 | `wtf clean` | Remove merged/prunable worktrees (`--dry-run`)       |
 | `wtf news`  | Create a worktree and switch to it (`--base`)        |
 
-### Setup & Configuration
+### Setup
 
 | Command            | Description                                            |
 |--------------------|--------------------------------------------------------|
 | `wtf setup`        | Run project setup in current worktree (`--env`, `--install`) |
 | `wtf setup shell`  | Auto-configure shell integration (one-time)            |
-| `wtf config init`  | Generate default `.wt-forge.toml` with auto-detection  |
 | `wtf init`         | Print shell functions + tab completions for eval/source |
 | `wtf completion`   | Generate shell completion script (`--shell`, `--install`) |
 

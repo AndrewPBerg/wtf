@@ -191,19 +191,11 @@ func resolveStateDir(exec *git.RealExecutor, dir string) (string, error) {
 	return filepath.Join(gitCommonDir, "wtf"), nil
 }
 
-func resolveInterval(dir string) time.Duration {
+func resolveInterval(_ string) time.Duration {
 	// CLI flag takes precedence.
 	if watchInterval > 0 {
 		d := time.Duration(watchInterval) * time.Second
 		return clampInterval(d)
-	}
-
-	// Check project config.
-	if dir != "" {
-		if cfg, _ := config.LoadProjectConfig(dir); cfg != nil && cfg.Watch.Interval > 0 {
-			d := time.Duration(cfg.Watch.Interval) * time.Second
-			return clampInterval(d)
-		}
 	}
 
 	return watch.DefaultInterval
@@ -216,17 +208,8 @@ func clampInterval(d time.Duration) time.Duration {
 	return d
 }
 
-func resolveNotifier(dir string) notify.Notifier {
-	terminalOnly := watchNoDesktop
-
-	// Check project config if flag not set.
-	if !terminalOnly && dir != "" {
-		if cfg, _ := config.LoadProjectConfig(dir); cfg != nil && cfg.Watch.Desktop != nil {
-			terminalOnly = !*cfg.Watch.Desktop
-		}
-	}
-
-	return notify.New(notify.WithTerminalOnly(terminalOnly))
+func resolveNotifier(_ string) notify.Notifier {
+	return notify.New(notify.WithTerminalOnly(watchNoDesktop))
 }
 
 func printBanner(cmd *cobra.Command, repoName string, interval time.Duration, n notify.Notifier) {

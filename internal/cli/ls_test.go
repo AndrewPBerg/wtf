@@ -16,7 +16,7 @@ func TestLsCommand_Table(t *testing.T) {
 	t.Chdir(dir)
 
 	buf := new(bytes.Buffer)
-	cmd := lsCmd
+	cmd := swCmd
 	cmd.SetOut(buf)
 	jsonOutput = false
 	lsGlobal = false
@@ -36,7 +36,7 @@ func TestLsCommand_JSON(t *testing.T) {
 	t.Chdir(dir)
 
 	buf := new(bytes.Buffer)
-	cmd := lsCmd
+	cmd := swCmd
 	cmd.SetOut(buf)
 	jsonOutput = true
 	lsGlobal = false
@@ -61,7 +61,7 @@ func TestLsCommand_Global_Table(t *testing.T) {
 	require.NoError(t, config.Add(repo2))
 
 	buf := new(bytes.Buffer)
-	cmd := lsCmd
+	cmd := swCmd
 	cmd.SetOut(buf)
 	jsonOutput = false
 	lsGlobal = true
@@ -85,7 +85,7 @@ func TestLsCommand_Global_JSON(t *testing.T) {
 	require.NoError(t, config.Add(repo1))
 
 	buf := new(bytes.Buffer)
-	cmd := lsCmd
+	cmd := swCmd
 	cmd.SetOut(buf)
 	jsonOutput = true
 	lsGlobal = true
@@ -105,7 +105,7 @@ func TestLsCommand_Global_NoRepos(t *testing.T) {
 	t.Setenv("WTF_HOME", home)
 
 	buf := new(bytes.Buffer)
-	cmd := lsCmd
+	cmd := swCmd
 	cmd.SetOut(buf)
 	jsonOutput = false
 	lsGlobal = true
@@ -126,7 +126,7 @@ func TestLsCommand_Global_StaleRepo(t *testing.T) {
 
 	buf := new(bytes.Buffer)
 	errBuf := new(bytes.Buffer)
-	cmd := lsCmd
+	cmd := swCmd
 	cmd.SetOut(buf)
 	cmd.SetErr(errBuf)
 	jsonOutput = false
@@ -204,7 +204,7 @@ func TestLsCommand_WithDetachedHead(t *testing.T) {
 	require.NoError(t, err)
 
 	buf := new(bytes.Buffer)
-	cmd := lsCmd
+	cmd := swCmd
 	cmd.SetOut(buf)
 	jsonOutput = false
 	lsGlobal = false
@@ -227,7 +227,7 @@ func TestHyperlink(t *testing.T) {
 
 func TestPrintWorktreeTableWithWidths_CommitURL(t *testing.T) {
 	buf := new(bytes.Buffer)
-	cmd := lsCmd
+	cmd := swCmd
 	cmd.SetOut(buf)
 
 	rows := []lsRow{
@@ -260,7 +260,7 @@ func TestLsCommand_Global_Table_CurrentRepoHighlighted(t *testing.T) {
 	require.NoError(t, config.Add(repo))
 
 	buf := new(bytes.Buffer)
-	cmd := lsCmd
+	cmd := swCmd
 	cmd.SetOut(buf)
 	jsonOutput = false
 	lsGlobal = true
@@ -285,7 +285,7 @@ func TestLsCommand_Global_Table_NonCurrentRepo(t *testing.T) {
 	require.NoError(t, config.Add(repo))
 
 	buf := new(bytes.Buffer)
-	cmd := lsCmd
+	cmd := swCmd
 	cmd.SetOut(buf)
 	jsonOutput = false
 	lsGlobal = true
@@ -310,7 +310,7 @@ func TestLsCommand_WithRemoteURL(t *testing.T) {
 	require.NoError(t, err)
 
 	buf := new(bytes.Buffer)
-	cmd := lsCmd
+	cmd := swCmd
 	cmd.SetOut(buf)
 	jsonOutput = false
 	lsGlobal = false
@@ -339,7 +339,7 @@ func TestLsCommand_Global_MultipleRepos(t *testing.T) {
 	t.Chdir(repo1)
 
 	buf := new(bytes.Buffer)
-	cmd := lsCmd
+	cmd := swCmd
 	cmd.SetOut(buf)
 	jsonOutput = false
 	lsGlobal = true
@@ -579,7 +579,7 @@ func TestBuildRows_NilPRMap(t *testing.T) {
 
 func TestPrintWorktreeTable_WithPRs(t *testing.T) {
 	buf := new(bytes.Buffer)
-	cmd := lsCmd
+	cmd := swCmd
 	cmd.SetOut(buf)
 
 	// Enable PR display

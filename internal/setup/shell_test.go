@@ -123,7 +123,7 @@ func TestRender_BashZsh(t *testing.T) {
 			out := Render(shell, funcs, nil)
 			assert.Contains(t, out, `wtf()`)
 			assert.Contains(t, out, `command wtf "$_c" "$@"`)
-			assert.Contains(t, out, `sw|news`)
+			assert.Contains(t, out, `sw|swg|news`)
 		})
 	}
 }
@@ -132,7 +132,7 @@ func TestRender_Fish(t *testing.T) {
 	out := Render(Fish, DefaultFuncs(), nil)
 	assert.Contains(t, out, "function wtf")
 	assert.Contains(t, out, "command wtf $_c $argv[2..]")
-	assert.Contains(t, out, "sw news")
+	assert.Contains(t, out, "sw swg news")
 	assert.Contains(t, out, "end")
 }
 
@@ -247,4 +247,27 @@ func TestParseShellName(t *testing.T) {
 func TestDefaultReadParentComm_InvalidPID(t *testing.T) {
 	_, err := defaultReadParentComm(999999999)
 	assert.Error(t, err)
+}
+
+func TestRender_BashPipeDetection(t *testing.T) {
+	out := Render(Bash, DefaultFuncs(), nil)
+	// Shell function should check if stdout is a TTY before cd'ing
+	assert.Contains(t, out, "! -t 1")
+}
+
+func TestRender_FishPipeDetection(t *testing.T) {
+	out := Render(Fish, DefaultFuncs(), nil)
+	assert.Contains(t, out, "isatty stdout")
+}
+
+func TestRender_BashPortExport(t *testing.T) {
+	out := Render(Bash, DefaultFuncs(), nil)
+	assert.Contains(t, out, "wtf port")
+	assert.Contains(t, out, "export PORT")
+}
+
+func TestRender_FishPortExport(t *testing.T) {
+	out := Render(Fish, DefaultFuncs(), nil)
+	assert.Contains(t, out, "wtf port")
+	assert.Contains(t, out, "set -gx PORT")
 }

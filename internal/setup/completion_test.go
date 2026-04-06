@@ -98,6 +98,29 @@ func TestWriteCompletionFile_UnsupportedShell(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsupported shell")
 }
 
+func TestWriteCompletionFile_DirCreationError(t *testing.T) {
+	// Use an unwritable parent so MkdirAll fails
+	dir := t.TempDir()
+	unwritable := filepath.Join(dir, "locked")
+	require.NoError(t, os.Mkdir(unwritable, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(unwritable, 0o755) })
+
+	_, err := WriteCompletionFile(Bash, filepath.Join(unwritable, "sub"), "content")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "creating completion directory")
+}
+
+func TestIsCompletionConfigured_RCReadError(t *testing.T) {
+	dir := t.TempDir()
+	rcPath := filepath.Join(dir, ".bashrc")
+	require.NoError(t, os.WriteFile(rcPath, []byte("content"), 0o000))
+	t.Cleanup(func() { _ = os.Chmod(rcPath, 0o644) })
+
+	_, err := IsCompletionConfigured(Bash, rcPath, dir)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "checking completion status")
+}
+
 func TestIsCompletionConfigured_AllShells(t *testing.T) {
 	for _, shell := range []Shell{Bash, Zsh, Fish} {
 		t.Run(string(shell), func(t *testing.T) {

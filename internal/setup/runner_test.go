@@ -1,12 +1,13 @@
 package setup
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -52,128 +53,117 @@ func TestNewRunner(t *testing.T) {
 	require.NotNil(t, r)
 	require.NotNil(t, r.CmdExec)
 	require.NotNil(t, r.EnvHandler)
+	require.NotNil(t, r.Out)
 }
 
-func TestRunSetup_NilConfig_WithPackageManager(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "pnpm-lock.yaml"), []byte(""), 0o644))
+func TestRunSetup_Default_WithPackageManager(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "pnpm-lock.yaml"), []byte(""), 0o644))
 
 	mock := newMockCmdExecutor()
-	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler()}
+	var buf bytes.Buffer
+	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler(), Out: &buf}
 
-	err := runner.RunSetup(nil, "", dir, "main")
+	err := runner.RunSetup(mainDir, targetDir, Options{})
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"pnpm install"}, mock.commandStrings())
+	assert.Contains(t, buf.String(), "pnpm install")
 }
 
-func TestRunSetup_NilConfig_NoPackageManager(t *testing.T) {
-	dir := t.TempDir()
+func TestRunSetup_Default_NoPackageManager(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
 
 	mock := newMockCmdExecutor()
-	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler()}
+	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler(), Out: io.Discard}
 
-	err := runner.RunSetup(nil, "", dir, "main")
+	err := runner.RunSetup(mainDir, targetDir, Options{})
 	require.NoError(t, err)
 
 	assert.Empty(t, mock.commands)
 }
 
-func TestRunSetup_WithConfig_FullFlow(t *testing.T) {
+func TestRunSetup_SymlinksEnvFiles(t *testing.T) {
 	mainDir := t.TempDir()
 	targetDir := t.TempDir()
 
-	// Create env file and lockfile in main
-	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".env"), []byte("S=1"), 0o644))
-	// Create lockfile in target (where install runs)
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "package-lock.json"), []byte(""), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".env"), []byte("SECRET=1"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".env.local"), []byte("LOCAL=1"), 0o644))
 
-	cfg := &config.ProjectConfig{
-		Env: config.EnvConfig{
-			Strategy: "copy",
-			Files:    []string{".env"},
+	var symlinked []string
+	envHandler := &EnvFileHandler{
+		Symlink: func(oldname, newname string) error {
+			symlinked = append(symlinked, filepath.Base(newname))
+			return os.Symlink(oldname, newname)
 		},
-		Setup: []config.SetupStep{
-			{Name: "compile", Run: "make build"},
-		},
-		Hooks: config.HooksConfig{
-			OnCreate: []string{"echo done"},
-		},
+		CopyFile: copyFile,
 	}
+
+	var buf bytes.Buffer
+	mock := newMockCmdExecutor()
+	runner := &Runner{CmdExec: mock, EnvHandler: envHandler, Out: &buf}
+
+	err := runner.RunSetup(mainDir, targetDir, Options{})
+	require.NoError(t, err)
+
+	assert.Contains(t, symlinked, ".env")
+	assert.Contains(t, symlinked, ".env.local")
+	assert.Contains(t, buf.String(), ".env")
+	assert.Contains(t, buf.String(), ".env.local")
+}
+
+func TestRunSetup_CopyStrategy(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".env"), []byte("S=1"), 0o644))
 
 	mock := newMockCmdExecutor()
 	envHandler := &EnvFileHandler{
 		CopyFile: copyFile,
 	}
-	runner := &Runner{CmdExec: mock, EnvHandler: envHandler}
+	runner := &Runner{CmdExec: mock, EnvHandler: envHandler, Out: io.Discard}
 
-	err := runner.RunSetup(cfg, mainDir, targetDir, "feature/test")
+	err := runner.RunSetup(mainDir, targetDir, Options{EnvStrategy: "copy"})
 	require.NoError(t, err)
 
-	cmds := mock.commandStrings()
-	// Should be: npm install, make build, echo done
-	assert.Equal(t, []string{"npm install", "make build", "echo done"}, cmds)
-
-	// Verify env file was copied
 	data, err := os.ReadFile(filepath.Join(targetDir, ".env"))
 	require.NoError(t, err)
 	assert.Equal(t, "S=1", string(data))
 }
 
-func TestRunSetup_ConditionSkipping(t *testing.T) {
+func TestRunSetup_SkipEnv(t *testing.T) {
+	mainDir := t.TempDir()
 	targetDir := t.TempDir()
-
-	cfg := &config.ProjectConfig{
-		Setup: []config.SetupStep{
-			{Name: "always", Run: "echo always"},
-			{Name: "skip", Run: "echo skip", If: "branch contains 'hotfix'"},
-			{Name: "run", Run: "echo run", If: "branch contains 'feature'"},
-		},
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".env"), []byte("x"), 0o644))
 
 	mock := newMockCmdExecutor()
-	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler()}
+	envHandler := &EnvFileHandler{
+		Symlink: func(_, _ string) error {
+			t.Fatal("should not symlink when SkipEnv is set")
+			return nil
+		},
+	}
+	runner := &Runner{CmdExec: mock, EnvHandler: envHandler, Out: io.Discard}
 
-	err := runner.RunSetup(cfg, "", targetDir, "feature/test")
+	err := runner.RunSetup(mainDir, targetDir, Options{SkipEnv: true})
+	require.NoError(t, err)
+}
+
+func TestRunSetup_SkipInstall(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "pnpm-lock.yaml"), []byte(""), 0o644))
+
+	mock := newMockCmdExecutor()
+	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler(), Out: io.Discard}
+
+	err := runner.RunSetup(mainDir, targetDir, Options{SkipInstall: true})
 	require.NoError(t, err)
 
-	cmds := mock.commandStrings()
-	assert.Equal(t, []string{"echo always", "echo run"}, cmds)
-}
-
-func TestRunSetup_ConditionError(t *testing.T) {
-	targetDir := t.TempDir()
-
-	cfg := &config.ProjectConfig{
-		Setup: []config.SetupStep{
-			{Name: "bad", Run: "echo bad", If: "invalid condition"},
-		},
-	}
-
-	mock := newMockCmdExecutor()
-	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler()}
-
-	err := runner.RunSetup(cfg, "", targetDir, "main")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "evaluating condition")
-}
-
-func TestRunSetup_StepFailure(t *testing.T) {
-	targetDir := t.TempDir()
-
-	cfg := &config.ProjectConfig{
-		Setup: []config.SetupStep{
-			{Name: "fail", Run: "bad command"},
-		},
-	}
-
-	mock := newMockCmdExecutor()
-	mock.failOn["bad command"] = fmt.Errorf("command failed")
-	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler()}
-
-	err := runner.RunSetup(cfg, "", targetDir, "main")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "running setup step")
+	assert.Empty(t, mock.commands)
 }
 
 func TestRunSetup_EnvError(t *testing.T) {
@@ -181,40 +171,55 @@ func TestRunSetup_EnvError(t *testing.T) {
 	targetDir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".env"), []byte("x"), 0o644))
 
-	cfg := &config.ProjectConfig{
-		Env: config.EnvConfig{
-			Strategy: "symlink",
-			Files:    []string{".env"},
-		},
-	}
-
 	h := &EnvFileHandler{
 		Symlink: func(_, _ string) error { return fmt.Errorf("symlink broken") },
 	}
 	mock := newMockCmdExecutor()
-	runner := &Runner{CmdExec: mock, EnvHandler: h}
+	runner := &Runner{CmdExec: mock, EnvHandler: h, Out: io.Discard}
 
-	err := runner.RunSetup(cfg, mainDir, targetDir, "main")
+	err := runner.RunSetup(mainDir, targetDir, Options{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "handling env files")
 }
 
-func TestRunSetup_HookFailure(t *testing.T) {
+func TestRunSetup_InstallFailure(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "yarn.lock"), []byte(""), 0o644))
+
+	mock := newMockCmdExecutor()
+	mock.failOn["yarn install"] = fmt.Errorf("yarn not found")
+	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler(), Out: io.Discard}
+
+	err := runner.RunSetup(mainDir, targetDir, Options{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "auto setup")
+}
+
+func TestRunSetup_Ordering(t *testing.T) {
+	mainDir := t.TempDir()
 	targetDir := t.TempDir()
 
-	cfg := &config.ProjectConfig{
-		Hooks: config.HooksConfig{
-			OnCreate: []string{"failing hook"},
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".env"), []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "pnpm-lock.yaml"), []byte(""), 0o644))
+
+	var order []string
+
+	mock := newMockCmdExecutor()
+	envHandler := &EnvFileHandler{
+		CopyFile: func(_, _ string) error {
+			order = append(order, "env")
+			return nil
 		},
 	}
 
-	mock := newMockCmdExecutor()
-	mock.failOn["failing hook"] = fmt.Errorf("hook failed")
-	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler()}
+	wrappedMock := &orderTrackingExecutor{inner: mock, order: &order}
+	runner := &Runner{CmdExec: wrappedMock, EnvHandler: envHandler, Out: io.Discard}
 
-	err := runner.RunSetup(cfg, "", targetDir, "main")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "running on_create hooks")
+	err := runner.RunSetup(mainDir, targetDir, Options{EnvStrategy: "copy"})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"env", "pnpm install"}, order)
 }
 
 func TestRunHooks(t *testing.T) {
@@ -249,64 +254,6 @@ func TestRunHooks_Failure(t *testing.T) {
 	assert.Len(t, mock.commands, 2)
 }
 
-func TestRunSetup_InstallFailure(t *testing.T) {
-	targetDir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "yarn.lock"), []byte(""), 0o644))
-
-	cfg := &config.ProjectConfig{}
-
-	mock := newMockCmdExecutor()
-	mock.failOn["yarn install"] = fmt.Errorf("yarn not found")
-	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler()}
-
-	err := runner.RunSetup(cfg, "", targetDir, "main")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "auto setup")
-}
-
-func TestRunSetup_Ordering(t *testing.T) {
-	mainDir := t.TempDir()
-	targetDir := t.TempDir()
-
-	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".env"), []byte("x"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "pnpm-lock.yaml"), []byte(""), 0o644))
-
-	var order []string
-
-	cfg := &config.ProjectConfig{
-		Env: config.EnvConfig{
-			Strategy: "copy",
-			Files:    []string{".env"},
-		},
-		Setup: []config.SetupStep{
-			{Name: "step1", Run: "step1 cmd"},
-		},
-		Hooks: config.HooksConfig{
-			OnCreate: []string{"hook cmd"},
-		},
-	}
-
-	mock := newMockCmdExecutor()
-	envHandler := &EnvFileHandler{
-		CopyFile: func(_, _ string) error {
-			order = append(order, "env")
-			return nil
-		},
-	}
-
-	origRunShell := mock.RunShell
-	_ = origRunShell
-	// Wrap to track ordering
-	wrappedMock := &orderTrackingExecutor{inner: mock, order: &order}
-
-	runner := &Runner{CmdExec: wrappedMock, EnvHandler: envHandler}
-
-	err := runner.RunSetup(cfg, mainDir, targetDir, "main")
-	require.NoError(t, err)
-
-	assert.Equal(t, []string{"env", "pnpm install", "step1 cmd", "hook cmd"}, order)
-}
-
 type orderTrackingExecutor struct {
 	inner *mockCmdExecutor
 	order *[]string
@@ -320,4 +267,112 @@ func (o *orderTrackingExecutor) RunShell(dir, command string) error {
 func (o *orderTrackingExecutor) RunInteractive(dir, command string) error {
 	*o.order = append(*o.order, command)
 	return o.inner.RunInteractive(dir, command)
+}
+
+func TestRunSetup_SymlinksVenv(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create .venv directory in main worktree
+	require.NoError(t, os.Mkdir(filepath.Join(mainDir, ".venv"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".venv", "pyvenv.cfg"), []byte("home = /usr/bin"), 0o644))
+
+	mock := newMockCmdExecutor()
+	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler(), Out: io.Discard}
+
+	err := runner.RunSetup(mainDir, targetDir, Options{})
+	require.NoError(t, err)
+
+	link := filepath.Join(targetDir, ".venv")
+	info, err := os.Lstat(link)
+	require.NoError(t, err)
+	assert.True(t, info.Mode()&os.ModeSymlink != 0, ".venv should be a symlink")
+}
+
+func TestRunSetup_SkipsVenvWhenMissing(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+	// No .venv in mainDir
+
+	mock := newMockCmdExecutor()
+	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler(), Out: io.Discard}
+
+	err := runner.RunSetup(mainDir, targetDir, Options{})
+	require.NoError(t, err)
+
+	_, err = os.Lstat(filepath.Join(targetDir, ".venv"))
+	assert.True(t, os.IsNotExist(err))
+}
+
+func TestRunSetup_SkipsVenvWhenAlreadyExists(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	require.NoError(t, os.Mkdir(filepath.Join(mainDir, ".venv"), 0o755))
+	require.NoError(t, os.Mkdir(filepath.Join(targetDir, ".venv"), 0o755))
+
+	mock := newMockCmdExecutor()
+	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler(), Out: io.Discard}
+
+	err := runner.RunSetup(mainDir, targetDir, Options{})
+	require.NoError(t, err)
+
+	// Should still be a real directory, not a symlink
+	info, err := os.Lstat(filepath.Join(targetDir, ".venv"))
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+	assert.False(t, info.Mode()&os.ModeSymlink != 0)
+}
+
+func TestRunSetup_OutputsEnvAndInstall(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".env"), []byte("x"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(mainDir, "app"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, "app", ".env.local"), []byte("x"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(targetDir, "app"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(targetDir, "uv.lock"), []byte(""), 0o644))
+
+	mock := newMockCmdExecutor()
+	var buf bytes.Buffer
+	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler(), Out: &buf}
+
+	err := runner.RunSetup(mainDir, targetDir, Options{})
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, ".env")
+	assert.Contains(t, output, filepath.Join("app", ".env.local"))
+	assert.Contains(t, output, "uv sync")
+}
+
+func TestRunSetup_DiscoversSubdirEnvFiles(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Root env file
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".env"), []byte("ROOT=1"), 0o644))
+	// Subdir env file
+	require.NoError(t, os.MkdirAll(filepath.Join(mainDir, "app"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, "app", ".env"), []byte("APP=1"), 0o644))
+	// Target app dir exists (as in a real worktree checkout)
+	require.NoError(t, os.MkdirAll(filepath.Join(targetDir, "app"), 0o755))
+
+	mock := newMockCmdExecutor()
+	runner := &Runner{CmdExec: mock, EnvHandler: NewEnvFileHandler(), Out: io.Discard}
+
+	err := runner.RunSetup(mainDir, targetDir, Options{})
+	require.NoError(t, err)
+
+	// Both root and subdir env files should be symlinked
+	rootLink := filepath.Join(targetDir, ".env")
+	data, err := os.ReadFile(rootLink)
+	require.NoError(t, err)
+	assert.Equal(t, "ROOT=1", string(data))
+
+	appLink := filepath.Join(targetDir, "app", ".env")
+	data, err = os.ReadFile(appLink)
+	require.NoError(t, err)
+	assert.Equal(t, "APP=1", string(data))
 }

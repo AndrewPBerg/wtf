@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -128,40 +127,6 @@ func TestPrintBanner_Desktop(t *testing.T) {
 	if strings.Contains(n.Name(), "desktop") {
 		assert.Contains(t, output, "Desktop + terminal")
 	}
-}
-
-func TestResolveInterval_FromConfig(t *testing.T) {
-	watchInterval = 0
-	defer func() { watchInterval = 0 }()
-
-	dir := t.TempDir()
-	// Create a .wt-forge.toml with watch interval
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".wt-forge.toml"), []byte("[watch]\ninterval = 120\n"), 0o644))
-
-	d := resolveInterval(dir)
-	assert.Equal(t, 120*time.Second, d)
-}
-
-func TestResolveInterval_ConfigClampedToMin(t *testing.T) {
-	watchInterval = 0
-	defer func() { watchInterval = 0 }()
-
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".wt-forge.toml"), []byte("[watch]\ninterval = 3\n"), 0o644))
-
-	d := resolveInterval(dir)
-	assert.Equal(t, minInterval, d)
-}
-
-func TestResolveNotifier_FromConfig(t *testing.T) {
-	watchNoDesktop = false
-	defer func() { watchNoDesktop = false }()
-
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".wt-forge.toml"), []byte("[watch]\ndesktop = false\n"), 0o644))
-
-	n := resolveNotifier(dir)
-	assert.Equal(t, "terminal", n.Name())
 }
 
 func TestWatchCmd_Flags(t *testing.T) {
