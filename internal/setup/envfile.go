@@ -3,8 +3,10 @@ package setup
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // DefaultEnvFiles is the default list of env files to handle.
@@ -22,6 +24,46 @@ func NewEnvFileHandler() *EnvFileHandler {
 		Symlink:  os.Symlink,
 		CopyFile: copyFile,
 	}
+}
+
+// skipDirs are directories that should not be searched for env files.
+var skipDirs = map[string]bool{
+	".git":         true,
+	"node_modules": true,
+	".venv":        true,
+	"vendor":       true,
+	"__pycache__":  true,
+	".next":        true,
+	".nuxt":        true,
+	"dist":         true,
+	"build":        true,
+}
+
+// DiscoverEnvFiles walks rootDir and returns relative paths to all .env* files,
+// including those in subdirectories (e.g. app/.env). Directories like
+// node_modules, .git, and vendor are skipped.
+func DiscoverEnvFiles(rootDir string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // skip dirs we can't read
+		}
+		if d.IsDir() {
+			if skipDirs[d.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasPrefix(d.Name(), ".env") {
+			rel, relErr := filepath.Rel(rootDir, path)
+			if relErr != nil {
+				return nil
+			}
+			files = append(files, rel)
+		}
+		return nil
+	})
+	return files, err
 }
 
 // HandleEnvFiles processes env files according to the strategy.
@@ -42,9 +84,32 @@ func (h *EnvFileHandler) HandleEnvFiles(mainDir, targetDir, strategy string, fil
 
 		dst := filepath.Join(targetDir, f)
 
+		// Ensure parent directory exists (for subdirectory env files like app/.env)
+		if dir := filepath.Dir(dst); dir != targetDir {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return fmt.Errorf("creating directory for %s: %w", f, err)
+			}
+		}
+
+		// Handle existing file at target
+		if info, lErr := os.Lstat(dst); lErr == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				// Already a symlink — check if it points to the right place
+				rel, _ := filepath.Rel(filepath.Dir(dst), src)
+				existing, _ := os.Readlink(dst)
+				if existing == rel {
+					continue // already correct
+				}
+			}
+			// Remove existing file/symlink before creating new one
+			if err := os.Remove(dst); err != nil {
+				return fmt.Errorf("removing existing %s: %w", f, err)
+			}
+		}
+
 		switch strategy {
 		case "symlink":
-			rel, err := filepath.Rel(targetDir, src)
+			rel, err := filepath.Rel(filepath.Dir(dst), src)
 			if err != nil {
 				return fmt.Errorf("computing relative path for %s: %w", f, err)
 			}

@@ -2,6 +2,7 @@ package setup
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,6 +61,7 @@ func (r *RealCmdExecutor) RunInteractive(dir, command string) error {
 type Runner struct {
 	CmdExec    CmdExecutor
 	EnvHandler *EnvFileHandler
+	Out        io.Writer // progress output (stderr in CLI context)
 }
 
 // NewRunner creates a Runner with real implementations.
@@ -67,6 +69,7 @@ func NewRunner() *Runner {
 	return &Runner{
 		CmdExec:    &RealCmdExecutor{},
 		EnvHandler: NewEnvFileHandler(),
+		Out:        io.Discard,
 	}
 }
 
@@ -82,18 +85,30 @@ type Options struct {
 var DefaultSymlinkDirs = []string{".venv"}
 
 // RunSetup runs the setup flow for a new worktree.
-//  1. Symlink env files (.env, .env.local, …) from mainDir → targetDir
+//  1. Discover and symlink env files (.env, .env.local, …) from mainDir → targetDir
 //  2. Symlink shared directories (.venv) from mainDir → targetDir
 //  3. Auto-detect package manager and run install
 func (r *Runner) RunSetup(mainDir, targetDir string, opts Options) error {
-	// 1. Handle env files
+	// 1. Discover and handle env files
 	if !opts.SkipEnv {
 		strategy := opts.EnvStrategy
 		if strategy == "" {
 			strategy = "symlink"
 		}
-		if err := r.EnvHandler.HandleEnvFiles(mainDir, targetDir, strategy, nil); err != nil {
-			return fmt.Errorf("handling env files: %w", err)
+
+		// Discover env files in mainDir (including subdirectories like app/.env)
+		envFiles, err := DiscoverEnvFiles(mainDir)
+		if err != nil {
+			return fmt.Errorf("discovering env files: %w", err)
+		}
+
+		if len(envFiles) > 0 {
+			if err := r.EnvHandler.HandleEnvFiles(mainDir, targetDir, strategy, envFiles); err != nil {
+				return fmt.Errorf("handling env files: %w", err)
+			}
+			for _, f := range envFiles {
+				_, _ = fmt.Fprintf(r.Out, "  env: %s %s\n", f, strategy+"d")
+			}
 		}
 	}
 
@@ -164,6 +179,8 @@ func (r *Runner) runAutoSetup(dir string) error {
 	if pm == nil {
 		return nil
 	}
+
+	_, _ = fmt.Fprintf(r.Out, "  install: %s\n", pm.InstallCmd)
 
 	if err := r.CmdExec.RunShell(dir, pm.InstallCmd); err != nil {
 		return fmt.Errorf("running %s: %w", pm.InstallCmd, err)

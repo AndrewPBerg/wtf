@@ -323,6 +323,8 @@ func runPostCreateSetup(cmd *cobra.Command, wm *git.WorktreeManager, runner *set
 		return
 	}
 
+	runner.Out = cmd.ErrOrStderr()
+
 	opts := setupOptsFromFlags()
 	if setupErr := runner.RunSetup(mainWt.Path, wtPath, opts); setupErr != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s setup failed: %v\n", yellow("⚠"), setupErr)

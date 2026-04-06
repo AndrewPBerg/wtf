@@ -90,6 +90,8 @@ func runProjectSetup(cmd *cobra.Command, runner *setup.Runner) error {
 		return nil
 	}
 
+	runner.Out = out
+
 	opts := setup.Options{}
 	if err := runner.RunSetup(mainPath, dir, opts); err != nil {
 		return fmt.Errorf("running setup: %w", err)

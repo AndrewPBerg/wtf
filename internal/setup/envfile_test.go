@@ -188,3 +188,126 @@ func TestHandleEnvFiles_RealSymlink(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "REAL=yes", string(data))
 }
+
+func TestHandleEnvFiles_OverwritesExistingFile(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".env"), []byte("FROM_MAIN=1"), 0o644))
+	// Pre-existing file at target (e.g. checked out from git)
+	require.NoError(t, os.WriteFile(filepath.Join(targetDir, ".env"), []byte("OLD=1"), 0o644))
+
+	h := NewEnvFileHandler()
+	err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env"})
+	require.NoError(t, err)
+
+	link := filepath.Join(targetDir, ".env")
+	info, err := os.Lstat(link)
+	require.NoError(t, err)
+	assert.True(t, info.Mode()&os.ModeSymlink != 0, ".env should be a symlink")
+
+	data, err := os.ReadFile(link)
+	require.NoError(t, err)
+	assert.Equal(t, "FROM_MAIN=1", string(data))
+}
+
+func TestHandleEnvFiles_SkipsCorrectSymlink(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, ".env"), []byte("VAL=1"), 0o644))
+
+	h := NewEnvFileHandler()
+	// Create the symlink first
+	err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env"})
+	require.NoError(t, err)
+
+	// Run again — should skip without error
+	callCount := 0
+	h2 := &EnvFileHandler{
+		Symlink: func(old, new string) error {
+			callCount++
+			return os.Symlink(old, new)
+		},
+	}
+	err = h2.HandleEnvFiles(mainDir, targetDir, "symlink", []string{".env"})
+	require.NoError(t, err)
+	assert.Equal(t, 0, callCount, "should not re-symlink when already correct")
+}
+
+func TestHandleEnvFiles_SubdirectoryFiles(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create env file in a subdirectory
+	require.NoError(t, os.MkdirAll(filepath.Join(mainDir, "app"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, "app", ".env"), []byte("APP=1"), 0o644))
+	// Target subdirectory exists (as it would in a worktree checkout)
+	require.NoError(t, os.MkdirAll(filepath.Join(targetDir, "app"), 0o755))
+
+	h := NewEnvFileHandler()
+	err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{filepath.Join("app", ".env")})
+	require.NoError(t, err)
+
+	link := filepath.Join(targetDir, "app", ".env")
+	data, err := os.ReadFile(link)
+	require.NoError(t, err)
+	assert.Equal(t, "APP=1", string(data))
+}
+
+func TestHandleEnvFiles_CreatesParentDir(t *testing.T) {
+	mainDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(mainDir, "packages", "api"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, "packages", "api", ".env"), []byte("X=1"), 0o644))
+
+	h := NewEnvFileHandler()
+	err := h.HandleEnvFiles(mainDir, targetDir, "symlink", []string{filepath.Join("packages", "api", ".env")})
+	require.NoError(t, err)
+
+	link := filepath.Join(targetDir, "packages", "api", ".env")
+	data, err := os.ReadFile(link)
+	require.NoError(t, err)
+	assert.Equal(t, "X=1", string(data))
+}
+
+func TestDiscoverEnvFiles_RootAndSubdir(t *testing.T) {
+	dir := t.TempDir()
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env.local"), []byte("x"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "app"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "app", ".env"), []byte("x"), 0o644))
+	// Non-env file should be ignored
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "app", "main.go"), []byte("x"), 0o644))
+
+	files, err := DiscoverEnvFiles(dir)
+	require.NoError(t, err)
+
+	assert.Contains(t, files, ".env")
+	assert.Contains(t, files, ".env.local")
+	assert.Contains(t, files, filepath.Join("app", ".env"))
+	assert.NotContains(t, files, filepath.Join("app", "main.go"))
+}
+
+func TestDiscoverEnvFiles_SkipsNodeModules(t *testing.T) {
+	dir := t.TempDir()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "node_modules", "pkg"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "node_modules", "pkg", ".env"), []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("x"), 0o644))
+
+	files, err := DiscoverEnvFiles(dir)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{".env"}, files)
+}
+
+func TestDiscoverEnvFiles_Empty(t *testing.T) {
+	dir := t.TempDir()
+
+	files, err := DiscoverEnvFiles(dir)
+	require.NoError(t, err)
+	assert.Empty(t, files)
+}
