@@ -23,6 +23,7 @@ All notable changes to WorkTreeForge (wtf) will be documented in this file.
 
 ### Added
 
+- **Agent-safe env copying** — `wtf new`, `wtf news`, and `wtf setup` now support `--copy-env` to copy discovered `.env*` files (including nested files like `app/.env`) instead of symlinking them.
 - **Automatic tab completions via `wtf init`** — `eval "$(wtf init)"` now includes both the shell wrapper and tab completions. No separate completion script needed.
 - **Dynamic completions** for `wtf sw`, `wtf rm`, `wtf new`, and `wtf clean` (active worktrees, remote branches, merged/prunable worktrees, open PRs)
 - **`wtf completion --install`** — Write completion file to standard user-local path as an alternative to inline completions
