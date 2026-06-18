@@ -45,7 +45,7 @@ var rmgCmd = &cobra.Command{
 
 var rmCmd = &cobra.Command{
 	Use:               "rm [branch...]",
-	Short:             "Remove worktrees and their branches",
+	Short:             "Remove worktrees without deleting branches",
 	ValidArgsFunction: completeWorktrees,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		wm := git.NewWorktreeManager(&git.RealExecutor{})

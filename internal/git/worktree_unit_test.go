@@ -123,15 +123,14 @@ func TestWorktreeManager_Remove_RemoveError(t *testing.T) {
 	assert.ErrorContains(t, err, "removing worktree")
 }
 
-func TestWorktreeManager_Remove_BranchDeleteError(t *testing.T) {
+func TestWorktreeManager_Remove_DoesNotDeleteBranch(t *testing.T) {
 	mock := newMockExecutor()
 	mock.on("worktree list --porcelain", "worktree /repo\nHEAD abc\nbranch refs/heads/main\n\nworktree /feat--repo\nHEAD def\nbranch refs/heads/feat\n", nil)
 	mock.on("worktree remove /feat--repo", "", nil)
-	mock.on("branch -d feat", "", fmt.Errorf("not merged"))
 
 	wm := NewWorktreeManager(mock)
 	err := wm.Remove("/repo", "feat", "/somewhere-else", false)
-	assert.ErrorContains(t, err, "deleting branch")
+	assert.NoError(t, err)
 }
 
 func TestWorktreeManager_Remove_BlocksCurrentDir(t *testing.T) {

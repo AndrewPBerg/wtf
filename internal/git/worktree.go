@@ -136,7 +136,7 @@ func (wm *WorktreeManager) Find(dir, query string) (Worktree, error) {
 	}
 }
 
-// Remove removes a worktree and optionally deletes the branch.
+// Remove removes a worktree without deleting its branch.
 // cwd is the caller's current working directory; removal is blocked if
 // cwd falls inside the target worktree.
 func (wm *WorktreeManager) Remove(dir, branch, cwd string, force bool) error {
@@ -163,15 +163,6 @@ func (wm *WorktreeManager) Remove(dir, branch, cwd string, force bool) error {
 			return fmt.Errorf("%w: use --force to remove anyway", ErrWorktreeHasChanges)
 		}
 		return fmt.Errorf("removing worktree: %w", err)
-	}
-
-	// Delete the branch
-	deleteFlag := "-d"
-	if force {
-		deleteFlag = "-D"
-	}
-	if _, err := wm.executor.Run(dir, "branch", deleteFlag, wt.Branch); err != nil {
-		return fmt.Errorf("deleting branch %s: %w", wt.Branch, err)
 	}
 
 	return nil

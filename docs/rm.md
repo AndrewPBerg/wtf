@@ -1,6 +1,6 @@
 # wtf rm
 
-Remove one or more worktrees and delete their branches. With no arguments, launches an interactive multi-select picker.
+Remove one or more worktrees without deleting their branches. With no arguments, launches an interactive multi-select picker.
 
 ## Usage
 
@@ -77,7 +77,7 @@ $ wtf rmg feature/auth feature/wip
 
 1. Finds each worktree by substring match on branch name
 2. Runs `git worktree remove <path>` (with `--force` if specified)
-3. Deletes the branch with `git branch -d` (or `-D` with `--force`)
+3. Leaves the local branch intact
 4. Refuses to remove the main worktree
 5. When removing multiple branches, continues on failure and reports a summary (e.g. "failed to remove 1 of 3 worktrees")
 

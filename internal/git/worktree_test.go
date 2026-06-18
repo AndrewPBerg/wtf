@@ -228,6 +228,11 @@ func TestWorktreeManager_Remove_Integration(t *testing.T) {
 	wts, err := wm.List(dir)
 	require.NoError(t, err)
 	assert.Len(t, wts, 1)
+
+	bm := NewBranchManager(&RealExecutor{})
+	exists, err := bm.Exists(dir, "to-remove")
+	require.NoError(t, err)
+	assert.True(t, exists)
 }
 
 func TestWorktreeManager_Remove_DirtyWorktree(t *testing.T) {
