@@ -19,7 +19,8 @@ wtf new --pr <number|branch|title>
 | `--branch`        | `-b`  |         | Fetch and track an existing remote branch            |
 | `--pr`            | `-P`  |         | Checkout a pull request (number, branch, or title)   |
 | `--no-setup`      |       |         | Skip all post-create setup (env files and install)   |
-| `--no-env`        |       |         | Skip env file symlinking                             |
+| `--no-env`        |       |         | Skip env file handling                               |
+| `--copy-env`      |       |         | Copy env files instead of symlinking (agent-safe)    |
 | `--no-install`    |       |         | Skip package manager install                         |
 
 The positional branch, `--branch`, and `--pr` modes are mutually exclusive.
@@ -61,6 +62,9 @@ $ wtf new -P "fix login"
 # Create worktree without running setup
 $ wtf new feature/auth --no-setup
 
+# Create agent-safe worktree with copied env files
+$ wtf new feature/auth --copy-env
+
 # Create worktree but skip package install
 $ wtf new feature/auth --no-install
 ```
@@ -77,10 +81,10 @@ Slashes in branch names are replaced with dashes.
 
 After creating the worktree, `wtf new` automatically:
 
-1. **Symlinks env files** from the main worktree (`.env`, `.env.local`, `.env.development`, `.env.development.local` -- only files that exist)
+1. **Handles env files** from the main worktree (`.env`, `.env.local`, `.env.development`, `.env.development.local` -- only files that exist), symlinking by default or copying with `--copy-env`
 2. **Auto-detects the package manager** from lockfiles and runs install
 
-No config file needed. Use `--no-setup`, `--no-env`, or `--no-install` to skip.
+No config file needed. Use `--copy-env` for isolated agent worktrees, or `--no-setup`, `--no-env`, or `--no-install` to skip.
 
 Setup failures are reported as warnings -- the worktree is still created successfully. See [setup](setup.md) for details.
 

@@ -13,11 +13,14 @@ import (
 var (
 	setupEnvOnly     bool
 	setupInstallOnly bool
+	setupCopyEnv     bool
 )
 
 func init() {
 	setupCmd.Flags().BoolVar(&setupEnvOnly, "env", false, "Only handle env files")
 	setupCmd.Flags().BoolVar(&setupInstallOnly, "install", false, "Only run package install")
+	setupCmd.Flags().BoolVar(&setupCopyEnv, "copy-env", false, "Copy env files instead of symlinking (safer for agent worktrees)")
+	setupCmd.MarkFlagsMutuallyExclusive("install", "copy-env")
 	setupCmd.AddCommand(setupShellCmd)
 	rootCmd.AddCommand(setupCmd)
 }
@@ -27,8 +30,9 @@ var setupCmd = &cobra.Command{
 	Short: "Run project setup in current worktree",
 	Long: `Runs project setup steps for the current worktree.
 
-Symlinks env files from the main worktree and auto-detects the package
-manager to run install.
+Handles env files from the main worktree and auto-detects the package
+manager to run install. By default env files are symlinked; use --copy-env
+to copy them for isolated agent worktrees.
 
 Use 'wtf setup shell' for shell integration setup.`,
 	Args: cobra.NoArgs,
@@ -66,12 +70,17 @@ func runProjectSetup(cmd *cobra.Command, runner *setup.Runner) error {
 	}
 	mainPath := parseMainWorktreePath(mainDir)
 
+	envStrategy := "symlink"
+	if setupCopyEnv {
+		envStrategy = "copy"
+	}
+
 	if setupEnvOnly {
 		envFiles, dErr := setup.DiscoverEnvFiles(mainPath)
 		if dErr != nil {
 			return fmt.Errorf("discovering env files: %w", dErr)
 		}
-		handled, hErr := runner.EnvHandler.HandleEnvFiles(mainPath, dir, "symlink", envFiles)
+		handled, hErr := runner.EnvHandler.HandleEnvFiles(mainPath, dir, envStrategy, envFiles)
 		if hErr != nil {
 			return fmt.Errorf("handling env files: %w", hErr)
 		}
@@ -79,7 +88,7 @@ func runProjectSetup(cmd *cobra.Command, runner *setup.Runner) error {
 			_, _ = fmt.Fprintf(out, "%s No env files found\n", yellow("⚠"))
 		} else {
 			for _, f := range handled {
-				_, _ = fmt.Fprintf(out, "%s %s symlinked\n", greenBold("✔"), f)
+				_, _ = fmt.Fprintf(out, "%s %s %s\n", greenBold("✔"), f, envStrategyPastTense(envStrategy))
 			}
 		}
 		return nil
@@ -103,13 +112,20 @@ func runProjectSetup(cmd *cobra.Command, runner *setup.Runner) error {
 
 	runner.Out = out
 
-	opts := setup.Options{}
+	opts := setup.Options{EnvStrategy: envStrategy}
 	if err := runner.RunSetup(mainPath, dir, opts); err != nil {
 		return fmt.Errorf("running setup: %w", err)
 	}
 
 	_, _ = fmt.Fprintf(out, "%s Setup complete\n", greenBold("✔"))
 	return nil
+}
+
+func envStrategyPastTense(strategy string) string {
+	if strategy == "copy" {
+		return "copied"
+	}
+	return "symlinked"
 }
 
 func runSetupShell(cmd *cobra.Command, detector *setup.ShellDetector, rcm *setup.RCFileManager) error {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -260,6 +261,42 @@ func TestProjectSetup_EnvOnly(t *testing.T) {
 	require.NoError(t, err)
 	// Test repo has no .env files in mainDir
 	assert.Contains(t, buf.String(), "No env files found")
+}
+
+func TestProjectSetup_EnvOnly_CopyEnv(t *testing.T) {
+	dir := initCLITestRepo(t)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("SECRET=1"), 0o600))
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	wtPath, err := wm.Add(dir, "setup-copy-env", "main")
+	require.NoError(t, err)
+	t.Chdir(wtPath)
+
+	setupEnvOnly = true
+	setupCopyEnv = true
+	defer func() { setupEnvOnly = false; setupCopyEnv = false }()
+
+	mock := &mockSetupExecutor{}
+	runner := &setup.Runner{
+		CmdExec:    mock,
+		EnvHandler: setup.NewEnvFileHandler(),
+	}
+
+	buf := new(bytes.Buffer)
+	cmd := setupCmd
+	cmd.SetOut(buf)
+
+	err = runProjectSetup(cmd, runner)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), ".env copied")
+
+	target := filepath.Join(wtPath, ".env")
+	info, err := os.Lstat(target)
+	require.NoError(t, err)
+	assert.False(t, info.Mode()&os.ModeSymlink != 0)
+	data, err := os.ReadFile(target)
+	require.NoError(t, err)
+	assert.Equal(t, "SECRET=1", string(data))
 }
 
 func TestProjectSetup_EnvOnly_WithFiles(t *testing.T) {

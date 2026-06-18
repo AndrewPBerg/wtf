@@ -60,14 +60,15 @@ wtf setup
 
 When you create a worktree with `wtf new` or `wtf news`, WTF automatically:
 
-1. **Symlinks env files** (`.env`, `.env.local`, `.env.development`, `.env.development.local`) from the main worktree
+1. **Handles env files** (`.env`, `.env.local`, `.env.development`, `.env.development.local`) from the main worktree (symlink by default, copy with `--copy-env`)
 2. **Detects your package manager** and runs install (pnpm, bun, yarn, npm, uv, poetry, go, cargo, and more)
 
 No config file needed. Override with flags:
 
 ```bash
+wtf new feature/auth --copy-env     # copy env files for isolated agent worktrees
 wtf new feature/auth --no-setup     # skip everything
-wtf new feature/auth --no-env       # skip env file symlinking
+wtf new feature/auth --no-env       # skip env file handling
 wtf new feature/auth --no-install   # skip package install
 ```
 

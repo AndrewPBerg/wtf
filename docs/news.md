@@ -19,7 +19,8 @@ wtf news --pr <number|branch|title>
 | `--branch`        | `-b`  |         | Fetch and track an existing remote branch            |
 | `--pr`            | `-P`  |         | Checkout a pull request (number, branch, or title)   |
 | `--no-setup`      |       |         | Skip all post-create setup (env files and install)   |
-| `--no-env`        |       |         | Skip env file symlinking                             |
+| `--no-env`        |       |         | Skip env file handling                               |
+| `--copy-env`      |       |         | Copy env files instead of symlinking (agent-safe)    |
 | `--no-install`    |       |         | Skip package manager install                         |
 
 The three modes (positional branch, `--branch`, `--pr`) are mutually exclusive.
@@ -30,7 +31,7 @@ Numeric positional arguments (e.g. `42` or `#42`) are automatically detected as 
 
 1. Creates a new worktree for `<branch>` (same as `wtf new`)
 2. Prints the worktree path to stdout (for the shell wrapper to `cd`)
-3. Symlinks env files from the main worktree and runs package install
+3. Handles env files from the main worktree (symlink by default, copy with `--copy-env`) and runs package install
 4. Setup failures are warnings -- the worktree is still created
 
 ## Examples
@@ -60,6 +61,9 @@ $ wtf news 42
 $ wtf news -P "fix login bug"
 /code/myrepo--pr-43
 ✔ Checked out #43 → /code/myrepo--pr-43
+
+# Create an agent-safe worktree with copied env files
+$ wtf news feature/agent --copy-env
 
 # Skip setup
 $ wtf news feature/quick --no-setup

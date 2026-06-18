@@ -108,6 +108,45 @@ func TestNewCommand_WithRunner(t *testing.T) {
 	assert.Contains(t, buf.String(), "Created worktree at")
 }
 
+func TestNewCommand_CopyEnvFlagCopiesEnvFiles(t *testing.T) {
+	dir := initCLITestRepo(t)
+	t.Chdir(dir)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("SECRET=1\n"), 0o600))
+
+	buf := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := newCmd
+	cmd.SetOut(buf)
+	cmd.SetErr(stderr)
+	newBase = "main"
+	newCopyEnv = true
+	newNoSetup = false
+	newNoEnv = false
+	newNoInstall = false
+	defer func() { newCopyEnv = false; newNoSetup = false; newNoEnv = false; newNoInstall = false }()
+
+	runner := &setup.Runner{
+		CmdExec:    &mockSetupExecutor{},
+		EnvHandler: setup.NewEnvFileHandler(),
+	}
+
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	err := runNew(cmd, "copy-env-test", newBase, wm, runner, false)
+	require.NoError(t, err)
+
+	wtPath := git.WorktreePath(dir, "copy-env-test")
+	target := filepath.Join(wtPath, ".env")
+	info, err := os.Lstat(target)
+	require.NoError(t, err)
+	assert.False(t, info.Mode()&os.ModeSymlink != 0, ".env should be a copied file, not a symlink")
+
+	data, err := os.ReadFile(target)
+	require.NoError(t, err)
+	assert.Equal(t, "SECRET=1\n", string(data))
+	assert.Contains(t, stderr.String(), "env: .env → copy")
+}
+
 func TestNewCommand_SetupFailureIsWarning(t *testing.T) {
 	dir := initCLITestRepo(t)
 	t.Chdir(dir)
@@ -603,27 +642,32 @@ func TestSetupOptsFromFlags(t *testing.T) {
 		name        string
 		noSetup     bool
 		noEnv       bool
+		copyEnv     bool
 		noInstall   bool
 		wantSkipEnv bool
 		wantSkipPM  bool
+		wantEnvMode string
 	}{
-		{"defaults", false, false, false, false, false},
-		{"no-setup skips all", true, false, false, true, true},
-		{"no-env only", false, true, false, true, false},
-		{"no-install only", false, false, true, false, true},
-		{"no-env and no-install", false, true, true, true, true},
-		{"no-setup overrides individual", true, true, true, true, true},
+		{"defaults", false, false, false, false, false, false, ""},
+		{"copy-env", false, false, true, false, false, false, "copy"},
+		{"no-setup skips all", true, false, false, false, true, true, ""},
+		{"no-env only", false, true, false, false, true, false, ""},
+		{"no-install only", false, false, false, true, false, true, ""},
+		{"no-env and no-install", false, true, false, true, true, true, ""},
+		{"no-setup overrides individual", true, true, false, true, true, true, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			newNoSetup = tt.noSetup
 			newNoEnv = tt.noEnv
+			newCopyEnv = tt.copyEnv
 			newNoInstall = tt.noInstall
-			defer func() { newNoSetup = false; newNoEnv = false; newNoInstall = false }()
+			defer func() { newNoSetup = false; newNoEnv = false; newCopyEnv = false; newNoInstall = false }()
 
 			opts := setupOptsFromFlags()
 			assert.Equal(t, tt.wantSkipEnv, opts.SkipEnv)
 			assert.Equal(t, tt.wantSkipPM, opts.SkipInstall)
+			assert.Equal(t, tt.wantEnvMode, opts.EnvStrategy)
 		})
 	}
 }

@@ -85,7 +85,7 @@ type Options struct {
 var DefaultSymlinkDirs = []string{".venv"}
 
 // RunSetup runs the setup flow for a new worktree.
-//  1. Discover and symlink env files (.env, .env.local, …) from mainDir → targetDir
+//  1. Discover and handle env files (.env, .env.local, …) from mainDir → targetDir
 //  2. Symlink shared directories (.venv) from mainDir → targetDir
 //  3. Auto-detect package manager and run install
 func (r *Runner) RunSetup(mainDir, targetDir string, opts Options) error {

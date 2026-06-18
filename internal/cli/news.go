@@ -17,10 +17,12 @@ func init() {
 	newsCmd.Flags().StringVarP(&newsBranchFlag, "branch", "b", "", "Fetch and track an existing remote branch")
 	newsCmd.Flags().StringVarP(&newsPRFlag, "pr", "P", "", "Checkout a pull request (number, branch, or title)")
 	newsCmd.Flags().BoolVar(&newNoSetup, "no-setup", false, "Skip all post-create setup (env files and install)")
-	newsCmd.Flags().BoolVar(&newNoEnv, "no-env", false, "Skip env file symlinking")
+	newsCmd.Flags().BoolVar(&newNoEnv, "no-env", false, "Skip env file handling")
+	newsCmd.Flags().BoolVar(&newCopyEnv, "copy-env", false, "Copy env files instead of symlinking (safer for agent worktrees)")
 	newsCmd.Flags().BoolVar(&newNoInstall, "no-install", false, "Skip package manager install")
 	newsCmd.Flags().BoolVar(&newNoServe, "no-serve", false, "Skip starting dev server")
 	newsCmd.MarkFlagsMutuallyExclusive("branch", "pr")
+	newsCmd.MarkFlagsMutuallyExclusive("no-env", "copy-env")
 
 	_ = newsCmd.RegisterFlagCompletionFunc("branch", completeRemoteBranchValues)
 	_ = newsCmd.RegisterFlagCompletionFunc("pr", completePRValues)

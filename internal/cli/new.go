@@ -21,6 +21,7 @@ var (
 	newPRFlag     string
 	newNoSetup    bool
 	newNoEnv      bool
+	newCopyEnv    bool
 	newNoInstall  bool
 	newNoServe    bool
 )
@@ -30,10 +31,12 @@ func init() {
 	newCmd.Flags().StringVarP(&newBranchFlag, "branch", "b", "", "Fetch and track an existing remote branch")
 	newCmd.Flags().StringVarP(&newPRFlag, "pr", "P", "", "Checkout a pull request (number, branch, or title)")
 	newCmd.Flags().BoolVar(&newNoSetup, "no-setup", false, "Skip all post-create setup (env files and install)")
-	newCmd.Flags().BoolVar(&newNoEnv, "no-env", false, "Skip env file symlinking")
+	newCmd.Flags().BoolVar(&newNoEnv, "no-env", false, "Skip env file handling")
+	newCmd.Flags().BoolVar(&newCopyEnv, "copy-env", false, "Copy env files instead of symlinking (safer for agent worktrees)")
 	newCmd.Flags().BoolVar(&newNoInstall, "no-install", false, "Skip package manager install")
 	newCmd.Flags().BoolVar(&newNoServe, "no-serve", false, "Skip starting dev server")
 	newCmd.MarkFlagsMutuallyExclusive("branch", "pr")
+	newCmd.MarkFlagsMutuallyExclusive("no-env", "copy-env")
 
 	_ = newCmd.RegisterFlagCompletionFunc("branch", completeRemoteBranchValues)
 	_ = newCmd.RegisterFlagCompletionFunc("pr", completePRValues)
@@ -52,8 +55,8 @@ var newCmd = &cobra.Command{
 		"  " + cyan("wtf new --pr <id>") + "          Checkout a pull request by number, branch, or title\n\n" +
 		bold("Setup:") + "\n" +
 		"  By default, env files are symlinked from the main worktree and the\n" +
-		"  detected package manager runs install. Use --no-setup, --no-env, or\n" +
-		"  --no-install to skip.",
+		"  detected package manager runs install. Use --copy-env for isolated\n" +
+		"  agent worktrees, or --no-setup, --no-env, or --no-install to skip.",
 	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: completeRemoteBranches,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -70,6 +73,9 @@ func setupOptsFromFlags() setup.Options {
 	}
 	if newNoEnv {
 		opts.SkipEnv = true
+	}
+	if newCopyEnv {
+		opts.EnvStrategy = "copy"
 	}
 	if newNoInstall {
 		opts.SkipInstall = true
@@ -311,7 +317,7 @@ func newOutputWriters(cmd *cobra.Command, switchMode bool) (msgW io.Writer, path
 }
 
 // runPostCreateSetup runs project setup after worktree creation.
-// By default, symlinks env files and auto-detects + runs package install.
+// By default, handles env files and auto-detects + runs package install.
 func runPostCreateSetup(cmd *cobra.Command, wm *git.WorktreeManager, runner *setup.Runner, dir, wtPath string) {
 	if runner == nil {
 		return
