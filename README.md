@@ -72,6 +72,25 @@ wtf new feature/auth --no-env       # skip env file handling
 wtf new feature/auth --no-install   # skip package install
 ```
 
+## Profile Workspaces (spike)
+
+This branch adds the configuration and planning foundation for multi-repo local
+environments. A workspace is a parent directory containing `.wtf/workspace.yaml`
+and one or more service directories. It provides native-process `up`/`down` orchestration for the declared
+profile:
+
+```bash
+# Run from the workspace root or any descendant service directory.
+wtf plan fullstack feature/auth
+wtf up fullstack feature/auth
+wtf down feature/auth
+
+# While developing this branch without installing the binary:
+go run ./cmd/wtf up fullstack feature/auth
+```
+
+See [docs/plan.md](docs/plan.md) for the manifest and setup steps.
+
 ## Shell Integration
 
 `wtf sw` prints the worktree path to stdout (a subprocess can't `cd` your shell). The shell wrapper intercepts `wtf sw` to `cd` automatically. Tab completions are also included — one line handles everything.
@@ -132,6 +151,12 @@ Worktrees are created as sibling directories to the main repo. Slashes in branch
 | `wtf repos`      | List all registered repos                               |
 | `wtf unregister` | Remove a repo from the registry                         |
 | `wtf watch`      | Watch PRs for changes and send notifications (`-g`, `-i`) |
+
+### Workspace Profiles (spike)
+
+| Command    | Description                                              |
+|------------|----------------------------------------------------------|
+| `wtf plan` | Validate and render a profile instance without side effects |
 
 ### Tooling
 
