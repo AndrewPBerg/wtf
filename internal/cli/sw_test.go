@@ -242,7 +242,7 @@ func TestSwGlobal_FindsWorktreeAcrossRepos(t *testing.T) {
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 
-	err = runSwGlobal(cmd, "global", wm)
+	err = runSwGlobal(cmd, "global")
 	require.NoError(t, err)
 
 	assert.Contains(t, stdout.String(), "feature-global")
@@ -253,15 +253,13 @@ func TestSwGlobal_NoMatch(t *testing.T) {
 	repo := initCLITestRepo(t)
 	setupGlobalRegistry(t, []string{repo})
 
-	wm := git.NewWorktreeManager(&git.RealExecutor{})
-
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
 	cmd := swCmd
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 
-	err := runSwGlobal(cmd, "nonexistent", wm)
+	err := runSwGlobal(cmd, "nonexistent")
 	assert.Error(t, err)
 	assert.Contains(t, stderr.String(), "error:")
 	assert.Contains(t, stderr.String(), "nonexistent")
@@ -285,7 +283,7 @@ func TestSwGlobal_MultipleMatches(t *testing.T) {
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 
-	err = runSwGlobal(cmd, "dup", wm)
+	err = runSwGlobal(cmd, "dup")
 	assert.Error(t, err)
 	assert.Contains(t, stderr.String(), "multiple")
 }
@@ -293,15 +291,13 @@ func TestSwGlobal_MultipleMatches(t *testing.T) {
 func TestSwGlobal_NoRepos(t *testing.T) {
 	setupGlobalRegistry(t, []string{})
 
-	wm := git.NewWorktreeManager(&git.RealExecutor{})
-
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
 	cmd := swCmd
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 
-	err := runSwGlobal(cmd, "anything", wm)
+	err := runSwGlobal(cmd, "anything")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no registered repos")
 }
@@ -376,7 +372,7 @@ func TestSwGlobal_FuzzySuggestions(t *testing.T) {
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 
-	err = runSwGlobal(cmd, "feath", wm)
+	err = runSwGlobal(cmd, "feath")
 	assert.Error(t, err)
 	stderrStr := stderr.String()
 	assert.Contains(t, stderrStr, "error:")

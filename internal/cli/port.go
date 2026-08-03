@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/spf13/cobra"
 )
 
@@ -34,18 +33,23 @@ dev server config to avoid conflicts across worktrees.`,
 }
 
 func runPort(cmd *cobra.Command) error {
-	dir, err := getRepoDir()
+	mgr, err := resolveManager(cmd)
 	if err != nil {
 		return err
 	}
 
-	exec := &git.RealExecutor{}
-	branch, err := exec.Run(dir, "rev-parse", "--abbrev-ref", "HEAD")
+	dir, err := repoDirFor(mgr)
 	if err != nil {
-		return fmt.Errorf("detecting current branch: %w", err)
+		return err
 	}
 
-	alloc, err := portAllocator(dir)
+	// git reports the current branch; jj reports the workspace name.
+	branch, err := mgr.CurrentRef(dir)
+	if err != nil {
+		return err
+	}
+
+	alloc, err := portAllocator(mgr, dir)
 	if err != nil {
 		return err
 	}

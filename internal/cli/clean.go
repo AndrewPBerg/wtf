@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 	"github.com/spf13/cobra"
 )
 
@@ -24,12 +25,16 @@ var cleanCmd = &cobra.Command{
 	Short:             "Remove worktrees for merged or prunable branches",
 	ValidArgsFunction: completeCleanTargets,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		return runClean(cmd, git.NewWorktreeManager(&git.RealExecutor{}), &git.RealExecutor{})
+		wm, err := resolveManager(cmd)
+		if err != nil {
+			return err
+		}
+		return runClean(cmd, wm, &git.RealExecutor{})
 	},
 }
 
-func runClean(cmd *cobra.Command, wm *git.WorktreeManager, exec git.Executor) error {
-	dir, err := getRepoDir()
+func runClean(cmd *cobra.Command, wm vcs.Manager, _ git.Executor) error {
+	dir, err := repoDirFor(wm)
 	if err != nil {
 		return err
 	}
@@ -39,38 +44,11 @@ func runClean(cmd *cobra.Command, wm *git.WorktreeManager, exec git.Executor) er
 		return fmt.Errorf("getting working directory: %w", err)
 	}
 
-	wts, err := wm.List(dir)
+	// What counts as spent work is backend-specific: git looks for merged
+	// branches, jj for changes already contained in trunk.
+	toRemove, err := wm.Cleanable(dir)
 	if err != nil {
 		return err
-	}
-
-	bm := git.NewBranchManager(exec)
-	mainBranch := "main"
-	for _, wt := range wts {
-		if wt.IsMain {
-			mainBranch = wt.Branch
-			break
-		}
-	}
-
-	merged, err := bm.MergedBranches(dir, mainBranch)
-	if err != nil {
-		return err
-	}
-
-	mergedSet := make(map[string]bool)
-	for _, b := range merged {
-		mergedSet[b] = true
-	}
-
-	var toRemove []git.Worktree
-	for _, wt := range wts {
-		if wt.IsMain {
-			continue
-		}
-		if wt.Prunable || mergedSet[wt.Branch] {
-			toRemove = append(toRemove, wt)
-		}
 	}
 
 	if len(toRemove) == 0 {

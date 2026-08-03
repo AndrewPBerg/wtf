@@ -88,3 +88,9 @@ $ wtf setup shell
 ✔ Shell integration already configured in /home/user/.zshrc
 ✔ Tab completions included automatically via wtf init
 ```
+
+## Jujutsu (jj)
+
+Setup is identical for jj workspaces, and is the main reason to pair wtf with jj:
+because jj honors `.gitignore`, a new workspace has no `.env` and no installed
+dependencies until wtf links and installs them. See [jj.md](jj.md).

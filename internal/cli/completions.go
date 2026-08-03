@@ -31,10 +31,12 @@ func filterPrefix(items []string, prefix string) []string {
 // completeWorktrees provides tab-completion with active worktree branch names.
 // Used by sw, swg, rm, and rmg commands.
 func completeWorktrees(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-	exec := &git.RealExecutor{}
-	wm := git.NewWorktreeManager(exec)
+	wm, err := resolveManagerQuiet()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
 
-	dir, err := getRepoDir()
+	dir, err := repoDirFor(wm)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -61,6 +63,7 @@ func completeRemoteBranches(_ *cobra.Command, _ []string, toComplete string) ([]
 	wm := git.NewWorktreeManager(exec)
 	bm := git.NewBranchManager(exec)
 
+	// Clean is git-only for now, so completion stays on the git backend.
 	dir, err := getRepoDir()
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
@@ -101,6 +104,7 @@ func completeCleanTargets(_ *cobra.Command, _ []string, _ string) ([]string, cob
 	wm := git.NewWorktreeManager(exec)
 	bm := git.NewBranchManager(exec)
 
+	// Clean is git-only for now, so completion stays on the git backend.
 	dir, err := getRepoDir()
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
@@ -170,10 +174,12 @@ func completeRegisteredRepos(_ *cobra.Command, _ []string, toComplete string) ([
 
 // completePRValues provides tab-completion for --pr flag values.
 func completePRValues(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	exec := &git.RealExecutor{}
-	wm := git.NewWorktreeManager(exec)
+	wm, err := resolveManagerQuiet()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
 
-	dir, err := getRepoDir()
+	dir, err := repoDirFor(wm)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -189,9 +195,8 @@ func completePRValues(_ *cobra.Command, _ []string, toComplete string) ([]string
 	}
 
 	// Try to use cache for fast completions
-	gitCommonDir, gcErr := exec.Run(dir, "rev-parse", "--git-common-dir")
-	if gcErr == nil {
-		f = forge.NewCachedForge(f, gitCommonDir)
+	if stateDir, gcErr := wm.StateDir(dir); gcErr == nil {
+		f = forge.NewCachedForge(f, stateDir)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

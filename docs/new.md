@@ -22,10 +22,29 @@ wtf new --pr <number|branch|title>
 | `--no-env`        |       |         | Skip env file handling                               |
 | `--copy-env`      |       |         | Copy env files instead of symlinking (agent-safe)    |
 | `--no-install`    |       |         | Skip package manager install                         |
+| `--vcs`           |       |         | Force a backend in a colocated repo: `git` or `jj`   |
 
 The positional branch, `--branch`, and `--pr` modes are mutually exclusive.
 
 Numeric positional arguments (e.g. `42` or `#42`) are automatically detected as PR numbers -- no `--pr` flag needed.
+
+## Jujutsu (jj)
+
+In a jj repo this creates a **workspace** rather than a worktree, and the branch
+argument names the workspace. `--base` accepts any jj revset (a bookmark, `trunk()`,
+or a change id); with no `--base`, wtf uses `trunk()` when it resolves to real work.
+No bookmark is created — that stays yours via `jj bookmark create` or `jj git push -c`.
+
+```bash
+$ wtf new feat/auth
+✔ Created workspace at /code/feat-auth--myrepo
+  env: .env → symlink
+  install: pnpm install
+```
+
+Env linking and install matter more here than under git: jj honors `.gitignore`, so
+`.env` and `node_modules/` are not carried into a new workspace at all. See
+[jj.md](jj.md).
 
 ## Examples
 

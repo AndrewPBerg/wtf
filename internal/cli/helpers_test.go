@@ -30,7 +30,7 @@ func TestGetRepoDir_NotARepo(t *testing.T) {
 
 func TestFormatError_NotARepo(t *testing.T) {
 	msg := FormatError(ErrNotARepo)
-	assert.Contains(t, msg, "not in a git repo")
+	assert.Contains(t, msg, "not in a git or jj repo")
 	assert.Contains(t, msg, "git init")
 }
 
@@ -63,7 +63,7 @@ func TestFormatError_InvalidBranchName(t *testing.T) {
 func TestFormatError_MainWorktree(t *testing.T) {
 	msg := FormatError(git.ErrMainWorktree)
 	assert.Contains(t, msg, "cannot remove main worktree")
-	assert.Contains(t, msg, "managed by git")
+	assert.Contains(t, msg, "holds the repo itself")
 }
 
 func TestFormatError_MissingArgs(t *testing.T) {

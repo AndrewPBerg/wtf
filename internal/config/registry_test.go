@@ -1,12 +1,15 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 )
 
 func setupTestHome(t *testing.T) string {
@@ -260,7 +263,7 @@ func TestRemove_LoadError(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestIsGitRepo(t *testing.T) {
+func TestIsRepo(t *testing.T) {
 	tests := []struct {
 		name  string
 		setup func(t *testing.T) string
@@ -303,7 +306,106 @@ func TestIsGitRepo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := tt.setup(t)
-			assert.Equal(t, tt.want, isGitRepo(path))
+			assert.Equal(t, tt.want, IsRepo(path))
 		})
 	}
+}
+
+func TestReadLegacyRegistryFormat(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WTF_HOME", dir)
+
+	// v1 on-disk format: a bare array of paths.
+	require.NoError(t, os.WriteFile(RegistryPath(),
+		[]byte(`["/code/a", "/code/b"]`), 0o644))
+
+	paths, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/code/a", "/code/b"}, paths)
+}
+
+func TestLegacyRegistryUpgradesOnSave(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WTF_HOME", dir)
+
+	require.NoError(t, os.WriteFile(RegistryPath(), []byte(`["/code/a"]`), 0o644))
+	require.NoError(t, Add("/code/b"))
+
+	data, err := os.ReadFile(RegistryPath())
+	require.NoError(t, err)
+
+	var reg struct {
+		Version int `json:"version"`
+		Repos   []struct {
+			Path string `json:"path"`
+		} `json:"repos"`
+	}
+	require.NoError(t, json.Unmarshal(data, &reg))
+	assert.Equal(t, 2, reg.Version)
+	require.Len(t, reg.Repos, 2)
+	assert.Equal(t, "/code/a", reg.Repos[0].Path)
+	assert.Equal(t, "/code/b", reg.Repos[1].Path)
+}
+
+func TestVCSPrefRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WTF_HOME", dir)
+
+	_, ok := VCSPref("/code/a")
+	assert.False(t, ok, "no preference recorded yet")
+
+	require.NoError(t, SetVCSPref("/code/a", vcs.KindJJ))
+
+	got, ok := VCSPref("/code/a")
+	require.True(t, ok)
+	assert.Equal(t, vcs.KindJJ, got)
+
+	// SetVCSPref registers a previously unknown repo.
+	paths, err := Load()
+	require.NoError(t, err)
+	assert.Contains(t, paths, "/code/a")
+
+	// Overwrite.
+	require.NoError(t, SetVCSPref("/code/a", vcs.KindGit))
+	got, ok = VCSPref("/code/a")
+	require.True(t, ok)
+	assert.Equal(t, vcs.KindGit, got)
+
+	require.NoError(t, ClearVCSPref("/code/a"))
+	_, ok = VCSPref("/code/a")
+	assert.False(t, ok)
+}
+
+func TestSavePreservesVCSPrefsAndDropsRemoved(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WTF_HOME", dir)
+
+	require.NoError(t, SetVCSPref("/code/keep", vcs.KindJJ))
+	require.NoError(t, SetVCSPref("/code/drop", vcs.KindGit))
+
+	// Saving a narrower list must keep the surviving repo's preference and
+	// discard the removed one's.
+	require.NoError(t, Save([]string{"/code/keep"}))
+
+	got, ok := VCSPref("/code/keep")
+	require.True(t, ok)
+	assert.Equal(t, vcs.KindJJ, got)
+
+	_, ok = VCSPref("/code/drop")
+	assert.False(t, ok)
+}
+
+func TestIsRepoAcceptsJJRepo(t *testing.T) {
+	// A primary jj workspace: .jj/repo is a directory.
+	main := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(main, ".jj", "repo"), 0o755))
+	assert.True(t, IsRepo(main))
+
+	// A secondary jj workspace: .jj/repo is a file pointer, so it must be
+	// rejected just as a git worktree's .git file is.
+	ws := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(ws, ".jj"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(ws, ".jj", "repo"),
+		[]byte("../../main/.jj/repo"), 0o644))
+	assert.False(t, IsRepo(ws))
 }

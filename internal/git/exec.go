@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 )
 
 // Executor abstracts git CLI calls for testability.
@@ -20,6 +22,9 @@ type RealExecutor struct{}
 func (r *RealExecutor) Run(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	// dir names the repo to operate on, so inherited GIT_DIR/GIT_INDEX_FILE and
+	// friends must not override it. git sets those for every hook it runs.
+	cmd.Env = vcs.SanitizedEnv()
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

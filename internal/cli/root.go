@@ -21,6 +21,12 @@ func init() {
 	cobra.AddTemplateFunc("bold", func(s string) string { return bold(s) })
 
 	rootCmd.PersistentFlags().BoolVarP(&jsonOutput, "json", "j", false, "Output in machine-readable JSON")
+	rootCmd.PersistentFlags().StringVar(&vcsFlag, "vcs", "",
+		"Force a backend in a repo that is both git and jj: git|jj")
+	_ = rootCmd.RegisterFlagCompletionFunc("vcs",
+		func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+			return []string{"git", "jj"}, cobra.ShellCompDirectiveNoFileComp
+		})
 
 	rootCmd.SetUsageTemplate(usageTemplate)
 	rootCmd.SetHelpTemplate(helpTemplate)

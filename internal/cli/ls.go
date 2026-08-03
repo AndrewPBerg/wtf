@@ -9,11 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/forge"
 	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/AndrewPBerg/wtf/internal/ui"
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
@@ -34,6 +36,9 @@ type lsRow struct {
 	commitURL  string // web URL for the commit (empty if unavailable)
 	isMain     bool
 	isDetached bool
+	// jj-only columns. bookmark is display-only — wtf never creates bookmarks.
+	bookmark string
+	change   string
 	// PR fields (populated when --prs is used)
 	prNumber int
 	prTitle  string
@@ -43,12 +48,12 @@ type lsRow struct {
 	prDraft  bool
 }
 
-func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
+func runLs(cmd *cobra.Command, wm vcs.Manager) error {
 	if lsGlobal {
-		return runLsGlobal(cmd, wm)
+		return runLsGlobal(cmd)
 	}
 
-	dir, err := getRepoDir()
+	dir, err := repoDirFor(wm)
 	if err != nil {
 		return err
 	}
@@ -74,29 +79,33 @@ func runLs(cmd *cobra.Command, wm *git.WorktreeManager) error {
 	stdoutTTY := isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())
 
 	if canInteract && !lsPRs {
-		return runLsInteractive(cmd, wts, dir)
+		return runLsInteractive(cmd, wm, wts, dir)
 	}
 
 	// Async PR re-rendering needs stdout to be a real TTY (ANSI cursor control).
 	if lsPRs && stdoutTTY {
-		return runLsWithAsyncPRs(cmd, wts, remoteURL, dir)
+		return runLsWithAsyncPRs(cmd, wm, wts, remoteURL, dir)
 	}
 
 	// Synchronous path (no --prs, JSON, or piped output).
 	var prMap map[string]forge.PR
 	if lsPRs {
-		prMap = fetchPRMap(cmd, remoteURL, dir)
+		prMap = fetchPRMap(cmd, wm, remoteURL, dir)
 	}
 
 	rows := buildRows(wts, remoteURL, prMap)
-	printWorktreeTable(cmd, rows, "")
+	printWorktreeTable(cmd, rows, "", wm.Kind())
+
+	// Point out checkouts managed by the other backend rather than pretending
+	// they do not exist — a colocated repo can hold both at once.
+	warnOtherBackend(cmd, wm, dir)
 	return nil
 }
 
 // runLsInteractive launches an interactive worktree picker.
 // On selection, it prints the worktree path to stdout (like sw).
-func runLsInteractive(cmd *cobra.Command, wts []git.Worktree, dir string) error {
-	items := worktreesToPickerItems(wts, "")
+func runLsInteractive(cmd *cobra.Command, wm vcs.Manager, wts []vcs.Worktree, dir string) error {
+	items := worktreesToPickerItems(wts, "", pickerKindLabel(wm, dir))
 
 	result, err := runPickerFunc(items, false)
 	if err != nil {
@@ -121,7 +130,7 @@ func runLsInteractive(cmd *cobra.Command, wts []git.Worktree, dir string) error 
 
 // worktreesToPickerItems converts worktrees to picker items.
 // Bare and detached worktrees are excluded (no branch to switch to).
-func worktreesToPickerItems(wts []git.Worktree, repo string) []ui.PickerItem {
+func worktreesToPickerItems(wts []vcs.Worktree, repo string, kind vcs.Kind) []ui.PickerItem {
 	items := make([]ui.PickerItem, 0, len(wts))
 	for _, wt := range wts {
 		if wt.IsBare || wt.IsDetached || wt.Branch == "" {
@@ -133,6 +142,7 @@ func worktreesToPickerItems(wts []git.Worktree, repo string) []ui.PickerItem {
 			Head:   wt.Head,
 			IsMain: wt.IsMain,
 			Repo:   repo,
+			VCS:    kind.Label(),
 		})
 	}
 	return items
@@ -141,12 +151,12 @@ func worktreesToPickerItems(wts []git.Worktree, repo string) []ui.PickerItem {
 // runLsWithAsyncPRs renders the worktree table with lazy-loaded PR data.
 // It immediately displays cached data, then re-renders in-place if the
 // fresh API response differs.
-func runLsWithAsyncPRs(cmd *cobra.Command, wts []git.Worktree, remoteURL, dir string) error {
-	cf := createCachedForge(cmd, remoteURL, dir)
+func runLsWithAsyncPRs(cmd *cobra.Command, wm vcs.Manager, wts []vcs.Worktree, remoteURL, dir string) error {
+	cf := createCachedForge(cmd, wm, remoteURL, dir)
 	if cf == nil {
 		// No forge available — render without PRs.
 		rows := buildRows(wts, remoteURL, nil)
-		printWorktreeTable(cmd, rows, "")
+		printWorktreeTable(cmd, rows, "", wm.Kind())
 		return nil
 	}
 
@@ -172,22 +182,22 @@ func runLsWithAsyncPRs(cmd *cobra.Command, wts []git.Worktree, remoteURL, dir st
 		lastMap = prMap
 
 		rows := buildRows(wts, remoteURL, prMap)
-		w := calcWidths(rows)
-		content := renderWorktreeTable(rows, "", w, true)
+		w := calcWidths(rows, wm.Kind())
+		content := renderWorktreeTable(rows, "", w, true, wm.Kind())
 		rr.Render(content)
 	}
 
 	// If we never rendered (e.g. all results were errors), render without PRs.
 	if lastMap == nil {
 		rows := buildRows(wts, remoteURL, nil)
-		printWorktreeTable(cmd, rows, "")
+		printWorktreeTable(cmd, rows, "", wm.Kind())
 	}
 	return nil
 }
 
 // createCachedForge creates a CachedForge for the given remote URL and directory.
 // Returns nil if forge detection fails.
-func createCachedForge(cmd *cobra.Command, remoteURL, dir string) *forge.CachedForge {
+func createCachedForge(cmd *cobra.Command, mgr vcs.Manager, remoteURL, dir string) *forge.CachedForge {
 	if remoteURL == "" {
 		return nil
 	}
@@ -200,13 +210,12 @@ func createCachedForge(cmd *cobra.Command, remoteURL, dir string) *forge.CachedF
 		return nil
 	}
 
-	exec := &git.RealExecutor{}
-	gitCommonDir, gcErr := exec.Run(dir, "rev-parse", "--git-common-dir")
+	stateDir, gcErr := mgr.StateDir(dir)
 	if gcErr != nil {
 		return nil
 	}
 
-	return forge.NewCachedForge(f, gitCommonDir)
+	return forge.NewCachedForge(f, stateDir)
 }
 
 // prsToBranchMap converts a slice of PRs into a map keyed by branch name.
@@ -238,7 +247,7 @@ func prMapsEqual(a, b map[string]forge.PR) bool {
 
 // buildRows converts worktrees and optional PR data into display rows.
 // PRs that don't match any local worktree are appended as orphan rows.
-func buildRows(wts []git.Worktree, remoteURL string, prMap map[string]forge.PR) []lsRow {
+func buildRows(wts []vcs.Worktree, remoteURL string, prMap map[string]forge.PR) []lsRow {
 	rows := make([]lsRow, len(wts))
 	matched := make(map[string]bool, len(wts))
 	for i, wt := range wts {
@@ -256,6 +265,11 @@ func buildRows(wts []git.Worktree, remoteURL string, prMap map[string]forge.PR) 
 			commitURL:  git.CommitURL(remoteURL, wt.Head),
 			isMain:     wt.IsMain,
 			isDetached: wt.IsDetached,
+			bookmark:   strings.Join(wt.Bookmarks, ","),
+			change:     shortHead(wt.ChangeID),
+		}
+		if wt.Prunable && wt.Path == "" {
+			rows[i].path = dimPlaceholder
 		}
 		if pr, ok := prMap[wt.Branch]; ok {
 			rows[i].prNumber = pr.Number
@@ -289,7 +303,7 @@ func buildRows(wts []git.Worktree, remoteURL string, prMap map[string]forge.PR) 
 
 // fetchPRMap fetches open PRs and returns a map keyed by branch name.
 // Used by the synchronous path (piped output, global mode).
-func fetchPRMap(cmd *cobra.Command, remoteURL, dir string) map[string]forge.PR {
+func fetchPRMap(cmd *cobra.Command, mgr vcs.Manager, remoteURL, dir string) map[string]forge.PR {
 	if remoteURL == "" {
 		return nil
 	}
@@ -303,10 +317,8 @@ func fetchPRMap(cmd *cobra.Command, remoteURL, dir string) map[string]forge.PR {
 	}
 
 	// Try to use cache
-	exec := &git.RealExecutor{}
-	gitCommonDir, gcErr := exec.Run(dir, "rev-parse", "--git-common-dir")
-	if gcErr == nil {
-		f = forge.NewCachedForge(f, gitCommonDir)
+	if stateDir, gcErr := mgr.StateDir(dir); gcErr == nil {
+		f = forge.NewCachedForge(f, stateDir)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -349,28 +361,44 @@ func glabTokenSafe() (string, error) {
 
 // colWidths holds pre-calculated column widths for consistent alignment.
 type colWidths struct {
-	branch int
-	path   int
-	head   int
-	author int
-	pr     int
+	branch   int
+	path     int
+	head     int
+	author   int
+	pr       int
+	bookmark int
+	change   int
 }
 
 // calcWidths returns the column widths needed for a set of rows.
-func calcWidths(rows []lsRow) colWidths {
-	bw, pw, hw, aw, prw := len("BRANCH"), len("PATH"), len("HEAD"), len("AUTHOR"), len("PR")
+func calcWidths(rows []lsRow, kind vcs.Kind) colWidths {
+	bw, pw, hw, aw, prw := len(refHeader(kind)), len("PATH"), len("HEAD"), len("AUTHOR"), len("PR")
+
+	// The bookmark and change columns only exist for jj, so they contribute no
+	// width in a git table.
+	bkw, cw := 0, 0
+	if kind == vcs.KindJJ {
+		bkw, cw = len("BOOKMARK"), len("CHANGE")
+	}
+
 	for _, r := range rows {
-		if len(r.branch) > bw {
-			bw = len(r.branch)
+		if n := utf8.RuneCountInString(r.bookmark); n > bkw {
+			bkw = n
 		}
-		if len(r.path) > pw {
-			pw = len(r.path)
+		if n := utf8.RuneCountInString(r.change); n > cw {
+			cw = n
 		}
-		if len(r.head) > hw {
-			hw = len(r.head)
+		if n := utf8.RuneCountInString(r.branch); n > bw {
+			bw = n
 		}
-		if len(r.prAuthor) > aw {
-			aw = len(r.prAuthor)
+		if n := utf8.RuneCountInString(r.path); n > pw {
+			pw = n
+		}
+		if n := utf8.RuneCountInString(r.head); n > hw {
+			hw = n
+		}
+		if n := utf8.RuneCountInString(r.prAuthor); n > aw {
+			aw = n
 		}
 		if r.prNumber > 0 {
 			// PR cell: "#N title icon" — estimate visible width
@@ -380,7 +408,7 @@ func calcWidths(rows []lsRow) colWidths {
 			}
 		}
 	}
-	return colWidths{branch: bw, path: pw, head: hw, author: aw, pr: prw}
+	return colWidths{branch: bw, path: pw, head: hw, author: aw, pr: prw, bookmark: bkw, change: cw}
 }
 
 // mergeWidths returns the element-wise max of two colWidths.
@@ -400,31 +428,44 @@ func mergeWidths(a, b colWidths) colWidths {
 	if b.pr > a.pr {
 		a.pr = b.pr
 	}
+	if b.bookmark > a.bookmark {
+		a.bookmark = b.bookmark
+	}
+	if b.change > a.change {
+		a.change = b.change
+	}
 	return a
 }
 
 // printWorktreeTable renders a colored, aligned worktree table.
 // prefix is prepended to each line (e.g. "  " for indented global output).
-func printWorktreeTable(cmd *cobra.Command, rows []lsRow, prefix string) {
-	printWorktreeTableWithWidths(cmd, rows, prefix, calcWidths(rows))
+func printWorktreeTable(cmd *cobra.Command, rows []lsRow, prefix string, kind vcs.Kind) {
+	printWorktreeTableWithWidths(cmd, rows, prefix, calcWidths(rows, kind), kind)
 }
 
 // printWorktreeTableWithWidths renders with explicit column widths for cross-table alignment.
-func printWorktreeTableWithWidths(cmd *cobra.Command, rows []lsRow, prefix string, w colWidths) {
-	_, _ = fmt.Fprint(cmd.OutOrStdout(), renderWorktreeTable(rows, prefix, w, lsPRs))
+func printWorktreeTableWithWidths(cmd *cobra.Command, rows []lsRow, prefix string, w colWidths, kind vcs.Kind) {
+	_, _ = fmt.Fprint(cmd.OutOrStdout(), renderWorktreeTable(rows, prefix, w, lsPRs, kind))
 }
 
 // renderWorktreeTable builds the formatted worktree table as a string.
-func renderWorktreeTable(rows []lsRow, prefix string, w colWidths, hasPRs bool) string {
+func renderWorktreeTable(rows []lsRow, prefix string, w colWidths, hasPRs bool, kind vcs.Kind) string {
 	var sb strings.Builder
 
 	gap := 2
+
+	// jj has no branch-per-checkout: workspaces are named, and bookmarks are
+	// separate metadata. Naming the columns after what they actually hold is what
+	// keeps a jj listing from reading like a git one.
+	if kind == vcs.KindJJ && !hasPRs {
+		return renderJJTable(rows, prefix, w, gap)
+	}
 	// Header — when PRs are shown, column order: BRANCH HEAD AUTHOR PR PATH
 	// Without PRs: BRANCH PATH HEAD
 	if hasPRs {
 		header := fmt.Sprintf("%s%s%s%s%s%s",
 			prefix,
-			bold(pad("BRANCH", w.branch+gap)),
+			bold(pad(refHeader(kind), w.branch+gap)),
 			bold(pad("HEAD", w.head+gap)),
 			bold(pad("AUTHOR", w.author+gap)),
 			bold(pad("PR", w.pr+gap)),
@@ -434,7 +475,7 @@ func renderWorktreeTable(rows []lsRow, prefix string, w colWidths, hasPRs bool) 
 	} else {
 		header := fmt.Sprintf("%s%s%s%s",
 			prefix,
-			bold(pad("BRANCH", w.branch+gap)),
+			bold(pad(refHeader(kind), w.branch+gap)),
 			bold(pad("PATH", w.path+gap)),
 			bold("HEAD"),
 		)
@@ -529,21 +570,27 @@ func reviewStatusIcon(status forge.ReviewStatus) string {
 	}
 }
 
-// pad right-pads s with spaces to width w.
+// pad right-pads s with spaces to a display width of w.
+//
+// Width is counted in runes, not bytes: a multi-byte character such as the em
+// dash used for "no bookmark" would otherwise consume three columns worth of
+// padding and shift everything after it.
 func pad(s string, w int) string {
-	if len(s) >= w {
+	n := utf8.RuneCountInString(s)
+	if n >= w {
 		return s
 	}
-	return s + strings.Repeat(" ", w-len(s))
+	return s + strings.Repeat(" ", w-n)
 }
 
 // repoEntry represents a repo and its worktrees for JSON output.
 type repoEntry struct {
 	Repo      string         `json:"repo"`
-	Worktrees []git.Worktree `json:"worktrees"`
+	VCS       vcs.Kind       `json:"vcs"`
+	Worktrees []vcs.Worktree `json:"worktrees"`
 }
 
-func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
+func runLsGlobal(cmd *cobra.Command) error {
 	repos, err := config.LoadValid()
 	if err != nil {
 		return fmt.Errorf("loading registry: %w", err)
@@ -555,13 +602,13 @@ func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
 	}
 
 	if jsonOutput {
-		return runLsGlobalJSON(cmd, wm, repos)
+		return runLsGlobalJSON(cmd, repos)
 	}
 
 	// Interactive picker when stdin is a TTY (non-PR view).
 	// We check stdin (not stdout) because the shell wrapper captures stdout via $().
 	if stdinIsTTY() && !lsPRs {
-		return runLsGlobalInteractive(cmd, wm, repos)
+		return runLsGlobalInteractive(cmd, repos)
 	}
 
 	out := cmd.OutOrStdout()
@@ -569,47 +616,52 @@ func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
 	// Detect current repo so we can highlight it.
 	currentRepo, _ := getRepoDir()
 
-	// First pass: collect all rows per repo and compute global column widths.
-	type repoRows struct {
+	groups := collectGlobal(cmd, repos)
+
+	// First pass: build rows and compute column widths shared across every group,
+	// so a git table and a jj table still line up beside each other.
+	type renderGroup struct {
 		name      string
 		path      string
+		kind      vcs.Kind
 		rows      []lsRow
 		isCurrent bool
 	}
-	var groups []repoRows
+	var rendered []renderGroup
 	globalW := colWidths{}
 
-	for _, repo := range repos {
-		wts, err := wm.List(repo)
-		if err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s Could not list %s: %v\n", yellow("⚠"), cyan(repo), err)
-			continue
-		}
+	for _, g := range groups {
+		remoteURL, _ := g.mgr.RemoteURL(g.repo)
 
-		// Best-effort remote URL for commit hyperlinks.
-		remoteURL, _ := wm.RemoteURL(repo)
-
-		// Best-effort PR lookup when --prs is set.
 		var prMap map[string]forge.PR
 		if lsPRs {
-			prMap = fetchPRMap(cmd, remoteURL, repo)
+			prMap = fetchPRMap(cmd, g.mgr, remoteURL, g.repo)
 		}
 
-		rows := buildRows(wts, remoteURL, prMap)
-		globalW = mergeWidths(globalW, calcWidths(rows))
-		groups = append(groups, repoRows{name: filepath.Base(repo), path: repo, rows: rows, isCurrent: repo == currentRepo})
+		rows := buildRows(g.wts, remoteURL, prMap)
+		globalW = mergeWidths(globalW, calcWidths(rows, g.kind()))
+		rendered = append(rendered, renderGroup{
+			name:      filepath.Base(g.repo),
+			path:      g.repo,
+			kind:      g.kind(),
+			rows:      rows,
+			isCurrent: g.repo == currentRepo,
+		})
 	}
 
 	// Second pass: print with consistent widths.
-	for i, g := range groups {
+	for i, g := range rendered {
+		// The backend is always labeled here: one global listing can mix git
+		// repos, jj repos, and colocated repos contributing both.
+		badge := dim("(" + g.kind.Label() + ")")
 		if g.isCurrent {
-			_, _ = fmt.Fprintf(out, "%s %s %s\n", green("▸"), cyanBold(g.name), dim("("+g.path+")"))
+			_, _ = fmt.Fprintf(out, "%s %s %s %s\n", green("▸"), cyanBold(g.name), badge, dim("("+g.path+")"))
 		} else {
-			_, _ = fmt.Fprintf(out, "  %s %s\n", cyanBold(g.name), dim("("+g.path+")"))
+			_, _ = fmt.Fprintf(out, "  %s %s %s\n", cyanBold(g.name), badge, dim("("+g.path+")"))
 		}
-		printWorktreeTableWithWidths(cmd, g.rows, "  ", globalW)
+		printWorktreeTableWithWidths(cmd, g.rows, "  ", globalW, g.kind)
 
-		if i < len(groups)-1 {
+		if i < len(rendered)-1 {
 			_, _ = fmt.Fprintln(out)
 		}
 	}
@@ -617,22 +669,12 @@ func runLsGlobal(cmd *cobra.Command, wm *git.WorktreeManager) error {
 }
 
 // runLsGlobalInteractive launches an interactive picker for all registered repos.
-func runLsGlobalInteractive(cmd *cobra.Command, wm *git.WorktreeManager, repos []string) error {
-	// Map repo label back to full path for switch hooks.
-	repoByPath := make(map[string]string, len(repos))
-	var allItems []ui.PickerItem
-	for _, repo := range repos {
-		wts, err := wm.List(repo)
-		if err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s Could not list %s: %v\n", yellow("⚠"), cyan(repo), err)
-			continue
-		}
-		items := worktreesToPickerItems(wts, filepath.Base(repo))
-		for _, it := range items {
-			repoByPath[it.Path] = repo
-		}
-		allItems = append(allItems, items...)
-	}
+func runLsGlobalInteractive(cmd *cobra.Command, repos []string) error {
+	groups := collectGlobal(cmd, repos)
+
+	allItems, origin := globalPickerItems(groups, func(_ globalGroup, wt vcs.Worktree) bool {
+		return !wt.IsBare && !wt.IsDetached && wt.Branch != ""
+	})
 
 	if len(allItems) == 0 {
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), dim("No worktrees found across registered repos."))
@@ -656,21 +698,20 @@ func runLsGlobalInteractive(cmd *cobra.Command, wm *git.WorktreeManager, repos [
 		return nil
 	}
 	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Switched to %s\n", selected.Path)
-	if repo := repoByPath[selected.Path]; repo != "" {
-		runOnSwitchHooks(cmd, repo, selected.Branch)
+	if m, ok := origin[selected.Path]; ok {
+		runOnSwitchHooks(cmd, m.repo, selected.Branch)
 	}
 	return nil
 }
 
-func runLsGlobalJSON(cmd *cobra.Command, wm *git.WorktreeManager, repos []string) error {
+func runLsGlobalJSON(cmd *cobra.Command, repos []string) error {
 	var entries []repoEntry
-	for _, repo := range repos {
-		wts, err := wm.List(repo)
-		if err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s Could not list %s: %v\n", yellow("⚠"), repo, err)
-			continue
-		}
-		entries = append(entries, repoEntry{Repo: repo, Worktrees: wts})
+	for _, g := range collectGlobal(cmd, repos) {
+		entries = append(entries, repoEntry{
+			Repo:      g.repo,
+			VCS:       g.kind(),
+			Worktrees: g.wts,
+		})
 	}
 
 	enc := json.NewEncoder(cmd.OutOrStdout())
@@ -683,4 +724,104 @@ func shortHead(head string) string {
 		return head[:7]
 	}
 	return head
+}
+
+// dimPlaceholder stands in for a path that no longer exists on disk.
+const dimPlaceholder = "(missing)"
+
+// refHeader names the column holding a checkout's identity: git keys on the
+// branch, jj on the workspace name.
+func refHeader(kind vcs.Kind) string {
+	if kind == vcs.KindJJ {
+		return "WORKSPACE"
+	}
+	return "BRANCH"
+}
+
+// renderJJTable renders a jj listing: WORKSPACE, BOOKMARK, PATH, CHANGE.
+//
+// CHANGE carries jj's change id rather than a commit hash, because that is the
+// identifier that stays stable as a change is rewritten.
+func renderJJTable(rows []lsRow, prefix string, w colWidths, gap int) string {
+	var sb strings.Builder
+
+	_, _ = fmt.Fprintf(&sb, "%s%s%s%s%s",
+		prefix,
+		bold(pad("WORKSPACE", w.branch+gap)),
+		bold(pad("BOOKMARK", w.bookmark+gap)),
+		bold(pad("PATH", w.path+gap)),
+		bold("CHANGE"),
+	)
+	sb.WriteByte('\n')
+
+	for _, r := range rows {
+		branch := cyan(pad(r.branch, w.branch+gap))
+		if r.isMain {
+			branch = green(pad(r.branch, w.branch+gap))
+		}
+
+		// An em dash reads better than blank for "no bookmark here", which is the
+		// normal state — wtf never creates one.
+		bookmark := r.bookmark
+		if bookmark == "" {
+			bookmark = "—"
+		}
+
+		_, _ = fmt.Fprintf(&sb, "%s%s%s%s%s",
+			prefix,
+			branch,
+			dim(pad(bookmark, w.bookmark+gap)),
+			pad(r.path, w.path+gap),
+			dim(r.change),
+		)
+		sb.WriteByte('\n')
+	}
+
+	return sb.String()
+}
+
+// warnOtherBackend notes checkouts held by the backend that was not chosen, so a
+// colocated repo never silently hides half of its state.
+func warnOtherBackend(cmd *cobra.Command, mgr vcs.Manager, dir string) {
+	other := vcs.KindGit
+	if mgr.Kind() == vcs.KindGit {
+		other = vcs.KindJJ
+	}
+
+	det, err := vcs.Detect(dir)
+	if err != nil || !det.Has(other) || !vcs.Available(other) {
+		return
+	}
+
+	wts, err := newManager(other).List(dir)
+	if err != nil {
+		return
+	}
+
+	// The primary checkout is shared, so only additional ones are news.
+	extra := 0
+	for _, wt := range wts {
+		if !wt.IsMain {
+			extra++
+		}
+	}
+	if extra == 0 {
+		return
+	}
+
+	verb := "exists"
+	if extra != 1 {
+		verb = "exist"
+	}
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s %d %s %s also %s here — %s\n",
+		dim("note:"), extra, other.Label(), pluralize(other.Noun(), extra), verb,
+		cyan("wtf sw --vcs "+other.Label()))
+}
+
+// pluralize adds an "s" when n is not 1.
+func pluralize(word string, n int) string {
+	if n == 1 {
+		return word
+	}
+	return word + "s"
 }

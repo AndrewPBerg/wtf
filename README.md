@@ -3,7 +3,7 @@
 
 # WorkTreeForge (WTF)
 
-A fast git worktree workflow tool. Create, switch, and clean up worktrees with automated project setup — zero config required.
+A fast worktree workflow tool for **git and [Jujutsu](https://jj-vcs.github.io/jj/)**. Create, switch, and clean up git worktrees or jj workspaces with automated project setup — zero config required.
 
 ## Install
 
@@ -56,6 +56,36 @@ wtf clean
 wtf setup
 ```
 
+## Git and Jujutsu
+
+The same commands drive both. wtf uses git worktrees in a `.git` repo and jj
+workspaces in a `.jj` repo:
+
+```bash
+$ wtf new feat/auth          # in a jj repo
+✔ Created workspace at /code/feat-auth--myrepo
+  env: .env → symlink
+  install: pnpm install
+```
+
+This matters most for setup: jj honors `.gitignore`, so a fresh jj workspace has no
+`.env` and no installed dependencies until wtf links and installs them.
+
+A repo that is **both** (colocated — jj's default layout) is the only ambiguous case.
+wtf asks once and remembers your answer per-repo; `--vcs git|jj` and `WTF_VCS`
+override it. Non-interactive shells never prompt: wtf infers the backend from the
+checkouts the repo already has, so existing scripts are unaffected.
+
+```
+$ wtf new feat/auth
+? myrepo is both a git and a jj repo — which should wtf use?
+  [1] jj    workspace   (jj manages the working copy here)
+  [2] git   worktree
+Use which? [1-2] (saved for this repo)
+```
+
+See [docs/jj.md](docs/jj.md) for workspace naming, bookmarks, revsets, and listing.
+
 ## Automatic Setup
 
 When you create a worktree with `wtf new` or `wtf news`, WTF automatically:
@@ -96,7 +126,7 @@ After setup, `wtf sw auth` will `cd` into the matching worktree directly, and `w
 
 ## Worktree Path Convention
 
-Worktrees are created as sibling directories to the main repo. Slashes in branch names become dashes:
+Worktrees and jj workspaces are created as sibling directories to the main repo. Slashes in names become dashes:
 
 ```
 /code/myrepo                    (main)
@@ -115,6 +145,9 @@ Worktrees are created as sibling directories to the main repo. Slashes in branch
 | `wtf rm`    | Remove a worktree and branch (`--force`)             |
 | `wtf clean` | Remove merged/prunable worktrees (`--dry-run`)       |
 | `wtf news`  | Create a worktree and switch to it (`--base`)        |
+
+All of these work on jj workspaces too. `--vcs git|jj` forces a backend in a repo
+that is both.
 
 ### Setup
 
@@ -141,7 +174,7 @@ Worktrees are created as sibling directories to the main repo. Slashes in branch
 | `wtf update`     | Update to the latest version                     |
 | `wtf uninstall`  | Remove the wtf binary (`--force` to skip prompt) |
 
-See [docs/](docs/) for detailed command documentation.
+See [docs/](docs/) for detailed command documentation, and [docs/jj.md](docs/jj.md) for Jujutsu specifics.
 
 ## Development
 

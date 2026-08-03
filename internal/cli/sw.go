@@ -7,8 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/AndrewPBerg/wtf/internal/config"
-	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 	"github.com/spf13/cobra"
 )
 
@@ -30,13 +29,12 @@ var swgCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: completeWorktrees,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		wm := git.NewWorktreeManager(&git.RealExecutor{})
 		if len(args) == 0 {
 			lsGlobal = true
 			lsPRs = swPRs
-			return runLs(cmd, wm)
+			return runLsGlobal(cmd)
 		}
-		return runSwGlobal(cmd, args[0], wm)
+		return runSwGlobal(cmd, args[0])
 	},
 }
 
@@ -59,25 +57,28 @@ Or add this to your shell profile manually:
 See 'wtf init --help' and 'wtf setup --help' for details.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		wm := git.NewWorktreeManager(&git.RealExecutor{})
-		if len(args) == 0 {
-			lsPRs = swPRs
-			if swGlobal {
-				lsGlobal = true
-			} else {
-				lsGlobal = false
-			}
-			return runLs(cmd, wm)
-		}
+		lsPRs = swPRs
 		if swGlobal {
-			return runSwGlobal(cmd, args[0], wm)
+			lsGlobal = true
+			if len(args) == 0 {
+				return runLsGlobal(cmd)
+			}
+			return runSwGlobal(cmd, args[0])
+		}
+		lsGlobal = false
+		wm, err := resolveManager(cmd)
+		if err != nil {
+			return err
+		}
+		if len(args) == 0 {
+			return runLs(cmd, wm)
 		}
 		return runSw(cmd, args[0], wm)
 	},
 }
 
-func runSw(cmd *cobra.Command, query string, wm *git.WorktreeManager) error {
-	dir, err := getRepoDir()
+func runSw(cmd *cobra.Command, query string, wm vcs.Manager) error {
+	dir, err := repoDirFor(wm)
 	if err != nil {
 		return err
 	}
@@ -104,6 +105,10 @@ func runSw(cmd *cobra.Command, query string, wm *git.WorktreeManager) error {
 
 	// On error, show colored message with available branches
 	stderr := cmd.ErrOrStderr()
+
+	// A colocated repo can hold the target under the other backend; saying so
+	// beats a bare "not found".
+	hintOtherBackendMatch(cmd, wm, dir, query)
 
 	wts, listErr := wm.List(dir)
 	if listErr != nil || len(wts) == 0 {
@@ -140,69 +145,53 @@ func runSw(cmd *cobra.Command, query string, wm *git.WorktreeManager) error {
 	return err
 }
 
-func runSwGlobal(cmd *cobra.Command, query string, wm *git.WorktreeManager) error {
-	repos, err := config.LoadValid()
+func runSwGlobal(cmd *cobra.Command, query string) error {
+	repos, err := loadGlobalRepos()
 	if err != nil {
-		return fmt.Errorf("loading registry: %w", err)
+		return err
 	}
 
-	if len(repos) == 0 {
-		return fmt.Errorf("no registered repos — run a wtf command inside a repo to auto-register it")
-	}
-
-	// Search all registered repos for a matching worktree
-	type match struct {
-		wt   git.Worktree
-		repo string
-	}
-	var matches []match
-
-	for _, repo := range repos {
-		wt, findErr := wm.Find(repo, query)
-		if findErr == nil {
-			matches = append(matches, match{wt: wt, repo: repo})
-		}
-	}
+	matches := findGlobal(cmd, repos, query)
 
 	if len(matches) == 1 {
+		m := matches[0]
 		if jsonOutput {
 			return writeJSON(cmd.OutOrStdout(), map[string]string{
-				"path":   matches[0].wt.Path,
-				"branch": matches[0].wt.Branch,
-				"repo":   matches[0].repo,
+				"path":   m.wt.Path,
+				"branch": m.wt.Branch,
+				"repo":   m.repo,
+				"vcs":    m.mgr.Kind().Label(),
 			})
 		}
-		_, _ = fmt.Fprintln(cmd.OutOrStdout(), matches[0].wt.Path)
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), m.wt.Path)
 		cwd, _ := os.Getwd()
-		if cwd != "" && isCurrentWorktree(cwd, matches[0].wt.Path) {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "wtf? you are already on %s!\n", cyan(matches[0].wt.Branch))
+		if cwd != "" && isCurrentWorktree(cwd, m.wt.Path) {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "wtf? you are already on %s!\n", cyan(m.wt.Branch))
 			return nil
 		}
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Switched to %s\n", matches[0].wt.Path)
-		runOnSwitchHooks(cmd, matches[0].repo, matches[0].wt.Branch)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Switched to %s\n", m.wt.Path)
+		runOnSwitchHooks(cmd, m.repo, m.wt.Branch)
 		return nil
 	}
 
 	stderr := cmd.ErrOrStderr()
 
 	if len(matches) > 1 {
-		_, _ = fmt.Fprintf(stderr, "%s multiple worktrees match %s across repos:\n", redBold("error:"), cyan(query))
+		// Matches are labeled with their backend as well as their repo: the same
+		// name can exist as a git worktree and a jj workspace in one colocated repo.
+		_, _ = fmt.Fprintf(stderr, "%s multiple worktrees match %s:\n", redBold("error:"), cyan(query))
 		for _, m := range matches {
-			_, _ = fmt.Fprintf(stderr, "  %s %s %s\n", yellow("→"), cyan(m.wt.Branch), dim("("+m.repo+")"))
+			_, _ = fmt.Fprintf(stderr, "  %s %s %s\n", yellow("→"), cyan(m.wt.Branch), dim("("+m.label()+")"))
 		}
 		return fmt.Errorf("multiple global matches for %q", query)
 	}
 
-	// No matches — collect all branches across repos for suggestions
+	// No matches — collect every name across repos for suggestions.
 	_, _ = fmt.Fprintf(stderr, "%s no worktree found matching %s across registered repos\n", redBold("error:"), cyan(query))
 
 	var allBranches []string
-	for _, repo := range repos {
-		wts, listErr := wm.List(repo)
-		if listErr != nil {
-			continue
-		}
-		for _, w := range wts {
+	for _, g := range collectGlobal(cmd, repos) {
+		for _, w := range g.wts {
 			if w.Branch != "" && !w.IsBare {
 				allBranches = append(allBranches, w.Branch)
 			}

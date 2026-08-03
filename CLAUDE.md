@@ -45,12 +45,31 @@ task clean          # remove build artifacts
 ```
 cmd/              # CLI entry points, wiring only
 internal/
-  git/            # git/worktree operations
-  config/         # repo registry (~/.wtf/repos.json)
+  vcs/            # backend-agnostic Worktree model, Manager interface, detection
+  git/            # git worktree operations (implements vcs.Manager)
+  jj/             # jj workspace operations (implements vcs.Manager)
+  config/         # repo registry (~/.wtf/repos.json) + per-repo backend preference
   setup/          # project setup (env symlinking, PM detection, shell integration)
   forge/          # GitHub/GitLab integration
-docs/             # one markdown per command
+docs/             # one markdown per command, plus jj.md
 ```
+
+## Version Control Backends
+
+wtf drives both git worktrees and jj workspaces through `vcs.Manager`. `internal/cli`
+never talks to `git` or `jj` directly — it resolves a `vcs.Manager` once per command
+and calls through the interface.
+
+- A git worktree and a jj workspace are both a `vcs.Worktree`. For jj, the workspace
+  *name* fills the role of a branch name; jj enforces uniqueness, so it is a valid key.
+- **Never create jj bookmarks implicitly.** Bookmarks are a push-time concern the
+  user owns. wtf reads them for display only.
+- Repo discovery must go through the backend. A secondary jj workspace contains no
+  `.git`, so `git rev-parse --show-toplevel` fails there.
+- Colocated repos (`.git` + `.jj`) are jj's *default* layout, not an edge case, so
+  this path matters. They prompt once and persist the answer; non-TTY infers the
+  backend from existing checkouts rather than guessing.
+- Read-only jj commands pass `--ignore-working-copy` so listing has no side effects.
 
 ## Setup Model
 

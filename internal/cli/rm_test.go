@@ -132,7 +132,7 @@ func TestRmGlobal_RemovesWorktreeAcrossRepos(t *testing.T) {
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 
-	err = runRmGlobal(cmd, []string{"global-rm"}, wm)
+	err = runRmGlobal(cmd, []string{"global-rm"})
 	require.NoError(t, err)
 
 	output := stdout.String()
@@ -150,15 +150,13 @@ func TestRmGlobal_NoMatch(t *testing.T) {
 	t.Chdir(repo)
 	setupGlobalRegistry(t, []string{repo})
 
-	wm := git.NewWorktreeManager(&git.RealExecutor{})
-
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
 	cmd := rmCmd
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 
-	err := runRmGlobal(cmd, []string{"nonexistent"}, wm)
+	err := runRmGlobal(cmd, []string{"nonexistent"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no global worktree found")
 	assert.Contains(t, stderr.String(), "error:")
@@ -183,7 +181,7 @@ func TestRmGlobal_MultipleMatches(t *testing.T) {
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 
-	err = runRmGlobal(cmd, []string{"dup-rm"}, wm)
+	err = runRmGlobal(cmd, []string{"dup-rm"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "multiple global matches")
 	assert.Contains(t, stderr.String(), "multiple")
@@ -193,15 +191,13 @@ func TestRmGlobal_NoRepos(t *testing.T) {
 	resetRmFlags(t)
 	setupGlobalRegistry(t, []string{})
 
-	wm := git.NewWorktreeManager(&git.RealExecutor{})
-
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
 	cmd := rmCmd
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 
-	err := runRmGlobal(cmd, []string{"anything"}, wm)
+	err := runRmGlobal(cmd, []string{"anything"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no registered repos")
 }
@@ -225,7 +221,7 @@ func TestRmGlobal_MultipleBranches(t *testing.T) {
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 
-	err = runRmGlobal(cmd, []string{"feat-a", "feat-b"}, wm)
+	err = runRmGlobal(cmd, []string{"feat-a", "feat-b"})
 	require.NoError(t, err)
 
 	output := stdout.String()
@@ -257,7 +253,7 @@ func TestRmGlobal_MultipleBranches_PartialFailure(t *testing.T) {
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 
-	err = runRmGlobal(cmd, []string{"feat-ok", "nonexistent"}, wm)
+	err = runRmGlobal(cmd, []string{"feat-ok", "nonexistent"})
 	assert.Error(t, err)
 
 	// The successful one should still have been removed
@@ -272,15 +268,13 @@ func TestRmGlobal_MainWorktreeProtection(t *testing.T) {
 	t.Chdir(repo)
 	setupGlobalRegistry(t, []string{repo})
 
-	wm := git.NewWorktreeManager(&git.RealExecutor{})
-
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
 	cmd := rmCmd
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 
-	err := runRmGlobal(cmd, []string{"main"}, wm)
+	err := runRmGlobal(cmd, []string{"main"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "main worktree")
 }
@@ -314,7 +308,7 @@ func TestRmGlobal_MultipleMatches_PromptAll(t *testing.T) {
 	cmd.SetErr(stderr)
 	cmd.SetIn(strings.NewReader("all\n"))
 
-	err = runRmGlobal(cmd, []string{"dup-rm"}, wm)
+	err = runRmGlobal(cmd, []string{"dup-rm"})
 	require.NoError(t, err)
 
 	output := stdout.String()
@@ -351,7 +345,7 @@ func TestRmGlobal_MultipleMatches_PromptSelectOne(t *testing.T) {
 	cmd.SetErr(stderr)
 	cmd.SetIn(strings.NewReader("1\n"))
 
-	err = runRmGlobal(cmd, []string{"dup-rm"}, wm)
+	err = runRmGlobal(cmd, []string{"dup-rm"})
 	require.NoError(t, err)
 
 	assert.Contains(t, stdout.String(), "Removed worktree for feature-dup-rm")
@@ -387,7 +381,7 @@ func TestRmGlobal_MultipleMatches_PromptNone(t *testing.T) {
 	cmd.SetErr(stderr)
 	cmd.SetIn(strings.NewReader("\n"))
 
-	err = runRmGlobal(cmd, []string{"dup-rm"}, wm)
+	err = runRmGlobal(cmd, []string{"dup-rm"})
 	require.NoError(t, err)
 
 	// Nothing removed
@@ -424,7 +418,7 @@ func TestRmGlobal_MultipleMatches_PromptCommaSelect(t *testing.T) {
 	cmd.SetErr(stderr)
 	cmd.SetIn(strings.NewReader("1,2\n"))
 
-	err = runRmGlobal(cmd, []string{"dup-rm"}, wm)
+	err = runRmGlobal(cmd, []string{"dup-rm"})
 	require.NoError(t, err)
 
 	// Both should be removed
@@ -458,7 +452,7 @@ func TestRmGlobal_MultipleMatches_InvalidSelection(t *testing.T) {
 	cmd.SetErr(stderr)
 	cmd.SetIn(strings.NewReader("5\n"))
 
-	err = runRmGlobal(cmd, []string{"dup-rm"}, wm)
+	err = runRmGlobal(cmd, []string{"dup-rm"})
 	require.NoError(t, err)
 
 	// Nothing removed on invalid input
@@ -470,7 +464,7 @@ func TestRunOnRemoveHooks_NoOp(t *testing.T) {
 	cmd := rmCmd
 	cmd.SetErr(new(bytes.Buffer))
 	// Should be a no-op — no config file system anymore
-	runOnRemoveHooks(cmd, t.TempDir(), "feature")
+	runOnRemoveHooks(cmd, git.NewWorktreeManager(&git.RealExecutor{}), t.TempDir(), "feature")
 }
 
 func TestFriendlyError(t *testing.T) {

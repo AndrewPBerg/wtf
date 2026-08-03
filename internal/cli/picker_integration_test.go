@@ -10,6 +10,8 @@ import (
 	"github.com/AndrewPBerg/wtf/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 )
 
 // --- helpers ---
@@ -259,7 +261,7 @@ func TestWorktreesToPickerItems_FiltersDetachedAndBare(t *testing.T) {
 		{Branch: "", Path: "/repo--empty-branch", Head: "222"}, // empty branch name
 	}
 
-	items := worktreesToPickerItems(wts, "")
+	items := worktreesToPickerItems(wts, "", vcs.KindGit)
 	assert.Len(t, items, 2) // only main and feature
 	assert.Equal(t, "main", items[0].Branch)
 	assert.Equal(t, "feature", items[1].Branch)
@@ -270,13 +272,13 @@ func TestWorktreesToPickerItems_GlobalSetsRepo(t *testing.T) {
 		{Branch: "main", Path: "/repo", Head: "abc1234", IsMain: true},
 	}
 
-	items := worktreesToPickerItems(wts, "my-repo")
+	items := worktreesToPickerItems(wts, "my-repo", vcs.KindGit)
 	require.Len(t, items, 1)
 	assert.Equal(t, "my-repo", items[0].Repo)
 }
 
 func TestWorktreesToPickerItems_EmptyInput(t *testing.T) {
-	items := worktreesToPickerItems(nil, "")
+	items := worktreesToPickerItems(nil, "", vcs.KindGit)
 	assert.Empty(t, items)
 }
 
@@ -397,7 +399,7 @@ func TestRemovablePickerItems_ExcludesMainAndCurrent(t *testing.T) {
 	require.NoError(t, err)
 
 	// Pretend we're inside feature-removable (should be excluded as current).
-	items := removablePickerItems(wts, wtPath, "")
+	items := removablePickerItems(wts, wtPath, "", vcs.KindGit)
 
 	for _, item := range items {
 		assert.NotEqual(t, "main", item.Branch, "main worktree must not appear in rm picker")

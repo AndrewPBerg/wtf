@@ -16,7 +16,7 @@ func TestFormatError_Integration(t *testing.T) {
 		err      error
 		contains string
 	}{
-		{"not a repo", cli.ErrNotARepo, "not in a git repo"},
+		{"not a repo", cli.ErrNotARepo, "not in a git or jj repo"},
 		{"worktree not found", fmt.Errorf("%w: %q", git.ErrWorktreeNotFound, "x"), "couldn't find that worktree"},
 		{"main worktree", git.ErrMainWorktree, "cannot remove main worktree"},
 		{"invalid branch", fmt.Errorf("%w: %q", git.ErrInvalidBranchName, "x"), "invalid branch name"},

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/spf13/cobra"
 )
@@ -55,20 +54,25 @@ This is a one-time setup that adds shell integration so commands like
 }
 
 func runProjectSetup(cmd *cobra.Command, runner *setup.Runner) error {
-	dir, err := getRepoDir()
+	mgr, err := resolveManager(cmd)
+	if err != nil {
+		return err
+	}
+
+	dir, err := repoDirFor(mgr)
 	if err != nil {
 		return err
 	}
 
 	out := cmd.OutOrStdout()
 
-	// Get the main worktree dir for env file resolution
-	exec := &git.RealExecutor{}
-	mainDir, err := exec.Run(dir, "worktree", "list", "--porcelain")
+	// Env files are resolved against the primary checkout, which the backend
+	// locates — a jj workspace has no .git to fall back on.
+	mainWt, err := mgr.MainWorktree(dir)
 	if err != nil {
-		return fmt.Errorf("finding main worktree: %w", err)
+		return fmt.Errorf("finding main %s: %w", mgr.Kind().Noun(), err)
 	}
-	mainPath := parseMainWorktreePath(mainDir)
+	mainPath := mainWt.Path
 
 	envStrategy := "symlink"
 	if setupCopyEnv {

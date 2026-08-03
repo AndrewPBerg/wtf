@@ -16,6 +16,9 @@ type PickerItem struct {
 	Head   string
 	IsMain bool
 	Repo   string // populated in global mode
+	// VCS labels which backend the entry came from ("git"/"jj"). A global
+	// listing can span both at once, so the label is what tells rows apart.
+	VCS string
 }
 
 // PickerResult holds the outcome of an interactive picker session.
@@ -188,10 +191,16 @@ func (m pickerModel) View() string {
 			head = dimStyle.Render(short)
 		}
 
-		// Repo label for global mode
+		// Repo label for global mode, carrying the backend so a listing that
+		// spans a git repo and a jj repo is unambiguous.
 		repoLabel := ""
-		if item.Repo != "" {
+		switch {
+		case item.Repo != "" && item.VCS != "":
+			repoLabel = repoLabelStyle.Render(" (" + item.Repo + " · " + item.VCS + ")")
+		case item.Repo != "":
 			repoLabel = repoLabelStyle.Render(" (" + item.Repo + ")")
+		case item.VCS != "":
+			repoLabel = repoLabelStyle.Render(" (" + item.VCS + ")")
 		}
 
 		line := fmt.Sprintf("%s%s%s  %s  %s%s", pointer, checkbox, styledBranch, path, head, repoLabel)

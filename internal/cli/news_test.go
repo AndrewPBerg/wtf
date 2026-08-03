@@ -129,10 +129,9 @@ func TestNewsBranch(t *testing.T) {
 	_, err = realExec.Run(dir, "branch", "-D", "remote-feature")
 	require.NoError(t, err)
 
-	exec := &stubFetchExecutor{real: realExec}
-	wm := git.NewWorktreeManager(exec)
+	wmStub := &stubFetchManager{Manager: git.NewWorktreeManager(realExec)}
 
-	// Re-create the branch since stubFetchExecutor won't actually fetch
+	// Re-create the branch since stubFetchManager won't actually fetch
 	_, err = realExec.Run(dir, "branch", "remote-feature")
 	require.NoError(t, err)
 
@@ -142,7 +141,7 @@ func TestNewsBranch(t *testing.T) {
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 
-	err = runNewBranch(cmd, "remote-feature", wm, exec, nil, true)
+	err = runNewBranch(cmd, "remote-feature", wmStub, nil, true)
 	require.NoError(t, err)
 
 	outPath := strings.TrimSpace(stdout.String())
@@ -154,14 +153,13 @@ func TestNewsBranch_InvalidName(t *testing.T) {
 	dir := initCLITestRepo(t)
 	t.Chdir(dir)
 
-	exec := &stubFetchExecutor{real: &git.RealExecutor{}}
-	wm := git.NewWorktreeManager(exec)
+	wmStub := &stubFetchManager{Manager: git.NewWorktreeManager(&git.RealExecutor{})}
 
 	stdout := new(bytes.Buffer)
 	cmd := newsCmd
 	cmd.SetOut(stdout)
 
-	err := runNewBranch(cmd, "bad..name", wm, exec, nil, true)
+	err := runNewBranch(cmd, "bad..name", wmStub, nil, true)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, git.ErrInvalidBranchName)
 }
@@ -179,8 +177,7 @@ func TestNewsPR_Integration(t *testing.T) {
 	_, err = realExec.Run(dir, "checkout", "main")
 	require.NoError(t, err)
 
-	exec := &stubFetchExecutor{real: realExec}
-	wm := git.NewWorktreeManager(exec)
+	wmStub := &stubFetchManager{Manager: git.NewWorktreeManager(realExec)}
 	cmd := newsCmd
 
 	var stdout, stderr bytes.Buffer
@@ -210,7 +207,7 @@ func TestNewsPR_Integration(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer func() { _ = os.Chdir(origDir) }()
 
-	err = runNewPR(cmd, "1", wm, exec, nil, ff, true)
+	err = runNewPR(cmd, "1", wmStub, nil, ff, true)
 	require.NoError(t, err)
 
 	// In switch mode, path goes to stdout, messages to stderr
@@ -226,8 +223,7 @@ func TestNewsPR_ForgeError(t *testing.T) {
 	_, err := realExec.Run(dir, "remote", "add", "origin", "https://bitbucket.org/test/repo.git")
 	require.NoError(t, err)
 
-	exec := &stubFetchExecutor{real: realExec}
-	wm := git.NewWorktreeManager(exec)
+	wmStub := &stubFetchManager{Manager: git.NewWorktreeManager(realExec)}
 	cmd := newsCmd
 
 	var stdout, stderr bytes.Buffer
@@ -243,7 +239,7 @@ func TestNewsPR_ForgeError(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer func() { _ = os.Chdir(origDir) }()
 
-	err = runNewPR(cmd, "1", wm, exec, nil, ff, true)
+	err = runNewPR(cmd, "1", wmStub, nil, ff, true)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "detecting forge")
 }

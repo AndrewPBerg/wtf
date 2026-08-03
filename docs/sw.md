@@ -126,3 +126,10 @@ In global mode, the current repo is highlighted with a green `▸` indicator. Co
 Repos are automatically registered in `~/.wtf/repos.json` whenever you run any `wtf` command inside a git repo. There is no manual registration step — just use `wtf` in your repos and `wtf sw --global` will find them.
 
 Stale entries (deleted repos or non-git directories) are automatically pruned when `--global` is used.
+
+## Jujutsu (jj)
+
+In a jj repo the query matches a **workspace name** (or any bookmark pointing at its
+working-copy commit), and the listing shows `WORKSPACE`, `BOOKMARK`, and `CHANGE`
+columns. In a colocated repo, a miss under one backend reports a match under the
+other. See [jj.md](jj.md).

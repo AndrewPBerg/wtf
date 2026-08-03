@@ -61,8 +61,6 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 - [x] `wtf setup` — Re-run setup in current worktree (`--env`, `--install`)
 - [x] `wtf setup shell` — Shell integration (moved from `wtf setup`)
----
-
 ## v0.3.0 — Platform Integration (GitHub & GitLab)
 
 **Status:** planned
@@ -100,3 +98,31 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 --
 - Changelog updated with every PR
 - `docs/` has one markdown per command, updated as commands ship
+
+## v0.6.0 — Jujutsu (jj) Support
+
+### Backends
+
+- [x] `internal/vcs` — backend-agnostic `Worktree` model, `Manager` interface, and repo detection
+- [x] `internal/jj` — jj workspace backend driving `jj workspace add/list/forget`
+- [x] Repo discovery through the backend, so wtf works from inside a jj workspace (which has no `.git`)
+- [x] Per-repo state under `.jj/repo/wtf/` mirroring `.git/wtf/`
+
+### Dispatch
+
+- [x] `.git` only → git, `.jj` only → jj, no configuration needed
+- [x] Colocated repos prompt once and persist the choice in `~/.wtf/repos.json`
+- [x] `--vcs git|jj` and `WTF_VCS` for scripting
+- [x] Non-TTY colocated fallback to git, preserving pre-jj script behavior
+
+### Telling them apart
+
+- [x] `WORKSPACE` / `BOOKMARK` / `CHANGE` columns for jj instead of `BRANCH` / `HEAD`
+- [x] Backend badge on every row of a global listing
+- [x] Colocated repos surface checkouts held by the other backend instead of hiding them
+- [x] `sw` misses under one backend report a match under the other
+
+### Not doing
+
+- [ ] ~~Creating jj bookmarks on workspace creation~~ — bookmarks are a push-time
+      concern the user owns; the workspace name is the identity wtf keys on

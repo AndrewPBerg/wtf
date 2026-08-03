@@ -1,33 +1,29 @@
 package git
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 )
 
-// Sentinel errors for worktree operations.
+// Sentinel errors for worktree operations. These alias the shared vcs errors so
+// that errors.Is works against either package's name — the jj backend wraps the
+// same values, letting internal/cli render one set of messages for both.
 var (
-	ErrWorktreeNotFound     = errors.New("no matching worktree found")
-	ErrMultipleMatches      = errors.New("multiple worktrees match query")
-	ErrMainWorktree         = errors.New("cannot remove main worktree")
-	ErrWorktreeIsCurrentDir = errors.New("cannot remove worktree for the currently checked out branch")
-	ErrBranchAlreadyInUse   = errors.New("branch is already checked out")
-	ErrPathAlreadyExists    = errors.New("worktree path already exists")
-	ErrWorktreeHasChanges   = errors.New("worktree has uncommitted changes")
+	ErrWorktreeNotFound     = vcs.ErrWorktreeNotFound
+	ErrMultipleMatches      = vcs.ErrMultipleMatches
+	ErrMainWorktree         = vcs.ErrMainWorktree
+	ErrWorktreeIsCurrentDir = vcs.ErrWorktreeIsCurrentDir
+	ErrBranchAlreadyInUse   = vcs.ErrBranchAlreadyInUse
+	ErrPathAlreadyExists    = vcs.ErrPathAlreadyExists
+	ErrWorktreeHasChanges   = vcs.ErrWorktreeHasChanges
 )
 
-// Worktree represents a single git worktree entry.
-type Worktree struct {
-	Path       string `json:"path"`
-	Branch     string `json:"branch"`
-	Head       string `json:"head"`
-	IsMain     bool   `json:"is_main"`
-	IsBare     bool   `json:"is_bare"`
-	IsDetached bool   `json:"is_detached"`
-	Prunable   bool   `json:"prunable"`
-}
+// Worktree represents a single git worktree entry. It is an alias of the shared
+// vcs model so git and jj listings are the same type end to end.
+type Worktree = vcs.Worktree
 
 // WorktreeManager handles worktree operations.
 type WorktreeManager struct {
@@ -46,6 +42,33 @@ func (wm *WorktreeManager) List(dir string) ([]Worktree, error) {
 		return nil, fmt.Errorf("listing worktrees: %w", err)
 	}
 	return parseWorktreeList(out)
+}
+
+// Kind reports that this manager drives git. Part of the vcs.Manager interface.
+func (wm *WorktreeManager) Kind() vcs.Kind { return vcs.KindGit }
+
+// StateDir returns the shared .git/wtf directory used for wtf's repo-local
+// state. It resolves via --git-common-dir so every worktree of a repo agrees on
+// one location.
+func (wm *WorktreeManager) StateDir(dir string) (string, error) {
+	commonDir, err := wm.executor.Run(dir, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", fmt.Errorf("getting git common dir: %w", err)
+	}
+	// git may return a path relative to the worktree.
+	if !filepath.IsAbs(commonDir) {
+		commonDir = filepath.Join(dir, commonDir)
+	}
+	return filepath.Join(commonDir, "wtf"), nil
+}
+
+// CurrentRef returns the branch checked out at dir.
+func (wm *WorktreeManager) CurrentRef(dir string) (string, error) {
+	out, err := wm.executor.Run(dir, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", fmt.Errorf("detecting current branch: %w", err)
+	}
+	return out, nil
 }
 
 // MainWorktree returns the main (first) worktree.
@@ -168,6 +191,53 @@ func (wm *WorktreeManager) Remove(dir, branch, cwd string, force bool) error {
 	return nil
 }
 
+// FetchRefspec fetches a "src:dst" refspec from a remote.
+func (wm *WorktreeManager) FetchRefspec(dir, remote, refspec string) error {
+	if _, err := wm.executor.Run(dir, "fetch", remote, refspec); err != nil {
+		return fmt.Errorf("fetching %s from %s: %w", refspec, remote, err)
+	}
+	return nil
+}
+
+// Cleanable returns worktrees whose branch has been merged into the main
+// worktree's branch, plus worktrees git reports as prunable.
+func (wm *WorktreeManager) Cleanable(dir string) ([]Worktree, error) {
+	wts, err := wm.List(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	mainBranch := "main"
+	for _, wt := range wts {
+		if wt.IsMain {
+			mainBranch = wt.Branch
+			break
+		}
+	}
+
+	bm := NewBranchManager(wm.executor)
+	merged, err := bm.MergedBranches(dir, mainBranch)
+	if err != nil {
+		return nil, err
+	}
+
+	mergedSet := make(map[string]bool, len(merged))
+	for _, b := range merged {
+		mergedSet[b] = true
+	}
+
+	var out []Worktree
+	for _, wt := range wts {
+		if wt.IsMain {
+			continue
+		}
+		if wt.Prunable || mergedSet[wt.Branch] {
+			out = append(out, wt)
+		}
+	}
+	return out, nil
+}
+
 // parseWorktreeList parses `git worktree list --porcelain` output.
 func parseWorktreeList(output string) ([]Worktree, error) {
 	if strings.TrimSpace(output) == "" {
@@ -186,7 +256,7 @@ func parseWorktreeList(output string) ([]Worktree, error) {
 				worktrees = append(worktrees, current)
 				isFirst = false
 			}
-			current = Worktree{Path: strings.TrimPrefix(line, "worktree ")}
+			current = Worktree{Path: strings.TrimPrefix(line, "worktree "), VCS: vcs.KindGit}
 		case strings.HasPrefix(line, "HEAD "):
 			current.Head = strings.TrimPrefix(line, "HEAD ")
 		case strings.HasPrefix(line, "branch "):
@@ -214,24 +284,9 @@ func parseWorktreeList(output string) ([]Worktree, error) {
 
 // isInsideWorktree reports whether cwd is equal to or a subdirectory of wtPath.
 func isInsideWorktree(cwd, wtPath string) bool {
-	// Clean both paths so trailing slashes, ".." etc. are normalised.
-	cwd = filepath.Clean(cwd)
-	wtPath = filepath.Clean(wtPath)
-
-	if cwd == wtPath {
-		return true
-	}
-	return strings.HasPrefix(cwd, wtPath+string(filepath.Separator))
+	return vcs.IsInside(cwd, wtPath)
 }
 
-// WorktreePath computes the sibling worktree directory path.
-// The branch name is the prefix so worktrees sort by purpose:
-//
-//	/code/myrepo + feature/auth → /code/feature-auth--myrepo
-//	/code/myrepo + pr-711       → /code/pr-711--myrepo
-func WorktreePath(mainPath, branch string) string {
-	sanitized := strings.ReplaceAll(branch, "/", "-")
-	parent := filepath.Dir(mainPath)
-	base := filepath.Base(mainPath)
-	return filepath.Join(parent, sanitized+"--"+base)
-}
+// WorktreePath computes the sibling worktree directory path. Aliased from vcs so
+// git and jj lay out their checkouts identically.
+var WorktreePath = vcs.WorktreePath

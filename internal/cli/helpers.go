@@ -3,14 +3,13 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
-	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/AndrewPBerg/wtf/internal/port"
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 )
 
 var (
@@ -18,26 +17,19 @@ var (
 	reCobraUnknown = regexp.MustCompile(`^unknown command "([^"]+)" for "([^"]+)"$`)
 )
 
-// ErrNotARepo is returned when the current directory is not inside a git repository.
-var ErrNotARepo = errors.New("not a git repository")
+// ErrNotARepo is returned when the current directory is not inside a repository
+// wtf can manage.
+var ErrNotARepo = vcs.ErrNotARepo
 
-// getRepoDir returns the top-level directory of the current git repo.
+// getRepoDir returns the root of the current checkout, whichever backend it
+// belongs to. It never prompts; commands that need to disambiguate a colocated
+// repo do so via resolveManager before calling into this.
 func getRepoDir() (string, error) {
-	cwd, err := os.Getwd()
+	mgr, err := resolveManagerQuiet()
 	if err != nil {
-		return "", fmt.Errorf("getting working directory: %w", err)
+		return "", err
 	}
-
-	exec := &git.RealExecutor{}
-	dir, err := exec.Run(cwd, "rev-parse", "--show-toplevel")
-	if err != nil {
-		return "", ErrNotARepo
-	}
-
-	// Auto-register repo — fire-and-forget, never block commands
-	_ = config.Add(dir)
-
-	return dir, nil
+	return repoDirFor(mgr)
 }
 
 // suggestCommands returns command names similar to the given unknown command.
@@ -81,19 +73,16 @@ func levenshtein(a, b string) int {
 	return prev[lb]
 }
 
-// portAllocator creates a port.Allocator for the given repo directory.
-// It resolves the .git/wtf/ports.json path and auto-detects the base port.
-func portAllocator(repoDir string) (*port.Allocator, error) {
-	exec := &git.RealExecutor{}
-	gitCommonDir, err := exec.Run(repoDir, "rev-parse", "--git-common-dir")
+// portAllocator creates a port.Allocator for the given repo directory. The store
+// path comes from the backend so git and jj each keep it somewhere every checkout
+// of the repo agrees on (.git/wtf vs .jj/repo/wtf).
+func portAllocator(mgr vcs.Manager, repoDir string) (*port.Allocator, error) {
+	stateDir, err := mgr.StateDir(repoDir)
 	if err != nil {
-		return nil, fmt.Errorf("getting git common dir: %w", err)
-	}
-	if !filepath.IsAbs(gitCommonDir) {
-		gitCommonDir = filepath.Join(repoDir, gitCommonDir)
+		return nil, err
 	}
 
-	storePath := filepath.Join(gitCommonDir, "wtf", "ports.json")
+	storePath := filepath.Join(stateDir, "ports.json")
 	base := port.DetectBasePort(repoDir)
 	return port.New(base, port.NewFileStore(storePath)), nil
 }
@@ -103,10 +92,11 @@ func FormatError(err error) string {
 	switch {
 	case errors.Is(err, ErrNotARepo):
 		return fmt.Sprintf(
-			"%s you're not in a git repo\n  %s cd into a repo or run %s to get started",
+			"%s you're not in a git or jj repo\n  %s cd into a repo, or run %s or %s to get started",
 			redBold("wtf?"),
 			dim("hint:"),
 			cyan("git init"),
+			cyan("jj git init --colocate"),
 		)
 
 	case errors.Is(err, git.ErrWorktreeNotFound):
@@ -150,7 +140,7 @@ func FormatError(err error) string {
 
 	case errors.Is(err, git.ErrMainWorktree):
 		return fmt.Sprintf(
-			"%s %s\n  %s the main worktree is managed by git directly",
+			"%s %s\n  %s the main checkout holds the repo itself — remove a secondary one instead",
 			redBold("wtf?"),
 			err.Error(),
 			dim("hint:"),

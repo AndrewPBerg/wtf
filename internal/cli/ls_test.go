@@ -9,6 +9,8 @@ import (
 	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 )
 
 func TestLsCommand_Table(t *testing.T) {
@@ -163,14 +165,14 @@ func TestCalcWidths(t *testing.T) {
 		{branch: "main", path: "/short", head: "abc1234"},
 		{branch: "feature-very-long-branch", path: "/a/very/long/path/here", head: "def5678"},
 	}
-	w := calcWidths(rows)
+	w := calcWidths(rows, vcs.KindGit)
 	assert.Equal(t, len("feature-very-long-branch"), w.branch)
 	assert.Equal(t, len("/a/very/long/path/here"), w.path)
 	assert.Equal(t, len("abc1234"), w.head) // all heads same length, matches max
 }
 
 func TestCalcWidths_EmptyRows(t *testing.T) {
-	w := calcWidths(nil)
+	w := calcWidths(nil, vcs.KindGit)
 	// Should default to header widths
 	assert.Equal(t, len("BRANCH"), w.branch)
 	assert.Equal(t, len("PATH"), w.path)
@@ -239,8 +241,8 @@ func TestPrintWorktreeTableWithWidths_CommitURL(t *testing.T) {
 			isMain:    false,
 		},
 	}
-	w := calcWidths(rows)
-	printWorktreeTableWithWidths(cmd, rows, "", w)
+	w := calcWidths(rows, vcs.KindGit)
+	printWorktreeTableWithWidths(cmd, rows, "", w, vcs.KindGit)
 
 	output := buf.String()
 	assert.Contains(t, output, "BRANCH")
@@ -303,6 +305,7 @@ func TestLsCommand_Global_Table_NonCurrentRepo(t *testing.T) {
 func TestLsCommand_WithRemoteURL(t *testing.T) {
 	dir := initCLITestRepo(t)
 	t.Chdir(dir)
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
 
 	// Add a fake remote to trigger the commitURL path
 	exec := &git.RealExecutor{}
@@ -315,7 +318,6 @@ func TestLsCommand_WithRemoteURL(t *testing.T) {
 	jsonOutput = false
 	lsGlobal = false
 
-	wm := git.NewWorktreeManager(exec)
 	err = runLs(cmd, wm)
 	require.NoError(t, err)
 
@@ -523,16 +525,16 @@ func TestRenderWorktreeTable(t *testing.T) {
 		{branch: "feat-1", path: "/repo--feat-1", head: "def5678",
 			prNumber: 42, prTitle: "Add feature", prURL: "https://example.com/42"},
 	}
-	w := calcWidths(rows)
+	w := calcWidths(rows, vcs.KindGit)
 
 	// Without PRs
-	out := renderWorktreeTable(rows, "", w, false)
+	out := renderWorktreeTable(rows, "", w, false, vcs.KindGit)
 	assert.Contains(t, out, "BRANCH")
 	assert.Contains(t, out, "main *")
 	assert.NotContains(t, out, "#42")
 
 	// With PRs
-	out = renderWorktreeTable(rows, "", w, true)
+	out = renderWorktreeTable(rows, "", w, true, vcs.KindGit)
 	assert.Contains(t, out, "PR")
 	assert.Contains(t, out, "#42")
 	assert.Contains(t, out, "Add feature")
@@ -598,8 +600,8 @@ func TestPrintWorktreeTable_WithPRs(t *testing.T) {
 			prURL:    "https://github.com/user/repo/pull/42",
 		},
 	}
-	w := calcWidths(rows)
-	printWorktreeTableWithWidths(cmd, rows, "", w)
+	w := calcWidths(rows, vcs.KindGit)
+	printWorktreeTableWithWidths(cmd, rows, "", w, vcs.KindGit)
 
 	output := buf.String()
 	assert.Contains(t, output, "PR")

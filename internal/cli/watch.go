@@ -13,7 +13,6 @@ import (
 
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/forge"
-	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/AndrewPBerg/wtf/internal/notify"
 	"github.com/AndrewPBerg/wtf/internal/watch"
 	"github.com/spf13/cobra"
@@ -57,13 +56,17 @@ Examples:
 }
 
 func runWatchSingle(cmd *cobra.Command) error {
-	dir, err := getRepoDir()
+	mgr, err := resolveManager(cmd)
 	if err != nil {
 		return err
 	}
 
-	exec := &git.RealExecutor{}
-	remoteURL, err := git.NewWorktreeManager(exec).RemoteURL(dir)
+	dir, err := repoDirFor(mgr)
+	if err != nil {
+		return err
+	}
+
+	remoteURL, err := mgr.RemoteURL(dir)
 	if err != nil {
 		return fmt.Errorf("getting remote URL: %w", err)
 	}
@@ -75,7 +78,7 @@ func runWatchSingle(cmd *cobra.Command) error {
 		return fmt.Errorf("detecting forge: %w", err)
 	}
 
-	stateDir, err := resolveStateDir(exec, dir)
+	stateDir, err := mgr.StateDir(dir)
 	if err != nil {
 		return err
 	}
@@ -139,8 +142,13 @@ func runWatchGlobal(cmd *cobra.Command) error {
 }
 
 func watchRepo(ctx context.Context, cmd *cobra.Command, dir string, notifier notify.Notifier) error {
-	exec := &git.RealExecutor{}
-	wm := git.NewWorktreeManager(exec)
+	mgrs := managersForRepo(dir)
+	if len(mgrs) == 0 {
+		return fmt.Errorf("could not determine the version control system for %s", dir)
+	}
+	// Watching tracks the forge, which is repo-wide, so either backend of a
+	// colocated repo resolves the same remote.
+	wm := mgrs[0]
 
 	remoteURL, err := wm.RemoteURL(dir)
 	if err != nil {
@@ -154,7 +162,7 @@ func watchRepo(ctx context.Context, cmd *cobra.Command, dir string, notifier not
 		return fmt.Errorf("detecting forge: %w", err)
 	}
 
-	stateDir, err := resolveStateDir(exec, dir)
+	stateDir, err := wm.StateDir(dir)
 	if err != nil {
 		return err
 	}
@@ -175,21 +183,6 @@ func watchRepo(ctx context.Context, cmd *cobra.Command, dir string, notifier not
 
 // minInterval is the minimum allowed polling interval to avoid API rate limits.
 const minInterval = 10 * time.Second
-
-func resolveStateDir(exec *git.RealExecutor, dir string) (string, error) {
-	gitCommonDir, err := exec.Run(dir, "rev-parse", "--git-common-dir")
-	if err != nil {
-		return "", fmt.Errorf("getting git common dir: %w", err)
-	}
-
-	// git rev-parse --git-common-dir can return a relative path;
-	// resolve it relative to the repo directory.
-	if !filepath.IsAbs(gitCommonDir) {
-		gitCommonDir = filepath.Join(dir, gitCommonDir)
-	}
-
-	return filepath.Join(gitCommonDir, "wtf"), nil
-}
 
 func resolveInterval(_ string) time.Duration {
 	// CLI flag takes precedence.

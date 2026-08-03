@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 )
 
 func TestParseWorktreeList(t *testing.T) {
@@ -29,7 +31,7 @@ branch refs/heads/main
 
 `,
 			want: []Worktree{
-				{Path: "/home/user/repo", Head: "abc123", Branch: "main", IsMain: true},
+				{Path: "/home/user/repo", VCS: vcs.KindGit, Head: "abc123", Branch: "main", IsMain: true},
 			},
 		},
 		{
@@ -44,8 +46,8 @@ branch refs/heads/feature/auth
 
 `,
 			want: []Worktree{
-				{Path: "/home/user/repo", Head: "abc123", Branch: "main", IsMain: true},
-				{Path: "/home/user/repo--feature-auth", Head: "def456", Branch: "feature/auth"},
+				{Path: "/home/user/repo", VCS: vcs.KindGit, Head: "abc123", Branch: "main", IsMain: true},
+				{Path: "/home/user/repo--feature-auth", VCS: vcs.KindGit, Head: "def456", Branch: "feature/auth"},
 			},
 		},
 		{
@@ -60,8 +62,8 @@ detached
 
 `,
 			want: []Worktree{
-				{Path: "/home/user/repo", Head: "abc123", Branch: "main", IsMain: true},
-				{Path: "/home/user/repo--detached", Head: "def456", IsDetached: true},
+				{Path: "/home/user/repo", VCS: vcs.KindGit, Head: "abc123", Branch: "main", IsMain: true},
+				{Path: "/home/user/repo--detached", VCS: vcs.KindGit, Head: "def456", IsDetached: true},
 			},
 		},
 		{
@@ -72,7 +74,7 @@ bare
 
 `,
 			want: []Worktree{
-				{Path: "/home/user/repo.git", Head: "abc123", IsBare: true, IsMain: true},
+				{Path: "/home/user/repo.git", VCS: vcs.KindGit, Head: "abc123", IsBare: true, IsMain: true},
 			},
 		},
 		{
@@ -88,8 +90,8 @@ prunable gitdir file points to non-existent location
 
 `,
 			want: []Worktree{
-				{Path: "/home/user/repo", Head: "abc123", Branch: "main", IsMain: true},
-				{Path: "/home/user/repo--gone", Head: "def456", Branch: "gone", Prunable: true},
+				{Path: "/home/user/repo", VCS: vcs.KindGit, Head: "abc123", Branch: "main", IsMain: true},
+				{Path: "/home/user/repo--gone", VCS: vcs.KindGit, Head: "def456", Branch: "gone", Prunable: true},
 			},
 		},
 	}
@@ -270,4 +272,90 @@ func TestWorktreeManager_MainWorktree(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, main.IsMain)
 	assert.Equal(t, "main", main.Branch)
+}
+
+func TestManagerKind(t *testing.T) {
+	wm := NewWorktreeManager(&RealExecutor{})
+	assert.Equal(t, vcs.KindGit, wm.Kind())
+}
+
+func TestStateDir(t *testing.T) {
+	dir := initTestRepo(t)
+	wm := NewWorktreeManager(&RealExecutor{})
+
+	stateDir, err := wm.StateDir(dir)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(dir, ".git", "wtf"), stateDir)
+
+	// Every worktree of a repo must agree on one state dir, since wtf keeps
+	// allocated ports and forge caches there.
+	wtPath, err := wm.Add(dir, "feat", "main")
+	require.NoError(t, err)
+
+	fromWt, err := wm.StateDir(wtPath)
+	require.NoError(t, err)
+	assert.Equal(t, stateDir, fromWt)
+}
+
+func TestStateDirError(t *testing.T) {
+	wm := NewWorktreeManager(&RealExecutor{})
+	_, err := wm.StateDir(t.TempDir())
+	assert.Error(t, err)
+}
+
+func TestCurrentRef(t *testing.T) {
+	dir := initTestRepo(t)
+	wm := NewWorktreeManager(&RealExecutor{})
+
+	ref, err := wm.CurrentRef(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "main", ref)
+
+	wtPath, err := wm.Add(dir, "feat/auth", "main")
+	require.NoError(t, err)
+
+	ref, err = wm.CurrentRef(wtPath)
+	require.NoError(t, err)
+	assert.Equal(t, "feat/auth", ref)
+}
+
+func TestCurrentRefError(t *testing.T) {
+	wm := NewWorktreeManager(&RealExecutor{})
+	_, err := wm.CurrentRef(t.TempDir())
+	assert.Error(t, err)
+}
+
+func TestCleanable(t *testing.T) {
+	dir := initTestRepo(t)
+	exec := &RealExecutor{}
+	wm := NewWorktreeManager(exec)
+
+	// An unmerged worktree is not cleanable.
+	wtPath, err := wm.Add(dir, "feat", "main")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(wtPath, "f.txt"), []byte("x"), 0o644))
+	_, err = exec.Run(wtPath, "add", ".")
+	require.NoError(t, err)
+	_, err = exec.Run(wtPath, "commit", "-m", "work")
+	require.NoError(t, err)
+
+	got, err := wm.Cleanable(dir)
+	require.NoError(t, err)
+	assert.Empty(t, got, "unmerged work must never be reported as cleanable")
+
+	// Once merged into main, it is.
+	_, err = exec.Run(dir, "merge", "--no-ff", "-m", "merge", "feat")
+	require.NoError(t, err)
+
+	got, err = wm.Cleanable(dir)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "feat", got[0].Branch)
+	assert.False(t, got[0].IsMain, "the main worktree is never cleanable")
+}
+
+func TestCleanableError(t *testing.T) {
+	wm := NewWorktreeManager(&RealExecutor{})
+	_, err := wm.Cleanable(t.TempDir())
+	assert.Error(t, err)
 }

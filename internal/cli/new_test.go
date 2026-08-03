@@ -195,10 +195,9 @@ func TestNewBranch(t *testing.T) {
 	_, err = realExec.Run(dir, "branch", "-D", "remote-feature")
 	require.NoError(t, err)
 
-	exec := &stubFetchExecutor{real: realExec}
-	wm := git.NewWorktreeManager(exec)
+	wmStub := &stubFetchManager{Manager: git.NewWorktreeManager(realExec)}
 
-	// Re-create the branch since stubFetchExecutor won't actually fetch
+	// Re-create the branch since stubFetchManager won't actually fetch
 	_, err = realExec.Run(dir, "branch", "remote-feature")
 	require.NoError(t, err)
 
@@ -208,7 +207,7 @@ func TestNewBranch(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetErr(stderr)
 
-	err = runNewBranch(cmd, "remote-feature", wm, exec, nil, false)
+	err = runNewBranch(cmd, "remote-feature", wmStub, nil, false)
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Created worktree at")
 }
@@ -217,14 +216,13 @@ func TestNewBranch_InvalidName(t *testing.T) {
 	dir := initCLITestRepo(t)
 	t.Chdir(dir)
 
-	exec := &stubFetchExecutor{real: &git.RealExecutor{}}
-	wm := git.NewWorktreeManager(exec)
+	wmStub := &stubFetchManager{Manager: git.NewWorktreeManager(&git.RealExecutor{})}
 
 	buf := new(bytes.Buffer)
 	cmd := newCmd
 	cmd.SetOut(buf)
 
-	err := runNewBranch(cmd, "bad..name", wm, exec, nil, false)
+	err := runNewBranch(cmd, "bad..name", wmStub, nil, false)
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, git.ErrInvalidBranchName)
 }
@@ -419,8 +417,7 @@ func TestRunNewPR_Integration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Use stubbed executor that skips real fetch
-	exec := &stubFetchExecutor{real: realExec}
-	wm := git.NewWorktreeManager(exec)
+	wmStub := &stubFetchManager{Manager: git.NewWorktreeManager(realExec)}
 	cmd := newCmd
 
 	var stdout, stderr bytes.Buffer
@@ -450,7 +447,7 @@ func TestRunNewPR_Integration(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer func() { _ = os.Chdir(origDir) }()
 
-	err = runNewPR(cmd, "1", wm, exec, nil, ff, false)
+	err = runNewPR(cmd, "1", wmStub, nil, ff, false)
 	require.NoError(t, err)
 	assert.Contains(t, stdout.String(), "Checked out")
 }
@@ -462,8 +459,7 @@ func TestRunNewPR_ForgeDetectionError(t *testing.T) {
 	_, err := realExec.Run(dir, "remote", "add", "origin", "https://bitbucket.org/test/repo.git")
 	require.NoError(t, err)
 
-	exec := &stubFetchExecutor{real: realExec}
-	wm := git.NewWorktreeManager(exec)
+	wmStub := &stubFetchManager{Manager: git.NewWorktreeManager(realExec)}
 	cmd := newCmd
 
 	var stdout, stderr bytes.Buffer
@@ -479,7 +475,7 @@ func TestRunNewPR_ForgeDetectionError(t *testing.T) {
 	require.NoError(t, os.Chdir(dir))
 	defer func() { _ = os.Chdir(origDir) }()
 
-	err = runNewPR(cmd, "1", wm, exec, nil, ff, false)
+	err = runNewPR(cmd, "1", wmStub, nil, ff, false)
 	require.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "detecting forge") || strings.Contains(err.Error(), "unsupported"))
 }
@@ -737,8 +733,7 @@ func TestNewBranch_JSON(t *testing.T) {
 	_, err = realExec.Run(dir, "branch", "-D", "json-branch")
 	require.NoError(t, err)
 
-	exec := &stubFetchExecutor{real: realExec}
-	wm := git.NewWorktreeManager(exec)
+	wmStub := &stubFetchManager{Manager: git.NewWorktreeManager(realExec)}
 
 	_, err = realExec.Run(dir, "branch", "json-branch")
 	require.NoError(t, err)
@@ -751,7 +746,7 @@ func TestNewBranch_JSON(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetErr(new(bytes.Buffer))
 
-	err = runNewBranch(cmd, "json-branch", wm, exec, nil, false)
+	err = runNewBranch(cmd, "json-branch", wmStub, nil, false)
 	require.NoError(t, err)
 
 	out := buf.String()
@@ -771,8 +766,7 @@ func TestRunNewPR_JSON(t *testing.T) {
 	_, err = realExec.Run(dir, "checkout", "main")
 	require.NoError(t, err)
 
-	exec := &stubFetchExecutor{real: realExec}
-	wm := git.NewWorktreeManager(exec)
+	wmStub := &stubFetchManager{Manager: git.NewWorktreeManager(realExec)}
 
 	jsonOutput = true
 	defer func() { jsonOutput = false }()
@@ -792,7 +786,7 @@ func TestRunNewPR_JSON(t *testing.T) {
 
 	t.Chdir(dir)
 
-	err = runNewPR(cmd, "5", wm, exec, nil, ff, false)
+	err = runNewPR(cmd, "5", wmStub, nil, ff, false)
 	require.NoError(t, err)
 
 	out := stdout.String()
@@ -807,8 +801,7 @@ func TestRunNewPR_NoRemote(t *testing.T) {
 	dir := initCLITestRepo(t)
 	t.Chdir(dir)
 
-	exec := &stubFetchExecutor{real: &git.RealExecutor{}}
-	wm := git.NewWorktreeManager(exec)
+	wmStub := &stubFetchManager{Manager: git.NewWorktreeManager(&git.RealExecutor{})}
 
 	cmd := newCmd
 	cmd.SetOut(new(bytes.Buffer))
@@ -816,7 +809,7 @@ func TestRunNewPR_NoRemote(t *testing.T) {
 
 	ff := func(_ string) (forge.Forge, error) { return &testForge{name: "github"}, nil }
 
-	err := runNewPR(cmd, "1", wm, exec, nil, ff, false)
+	err := runNewPR(cmd, "1", wmStub, nil, ff, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "remote URL")
 }
@@ -894,15 +887,14 @@ func TestNewBranch_FetchError(t *testing.T) {
 	dir := initCLITestRepo(t)
 	t.Chdir(dir)
 
-	failExec := &stubFailFetchExecutor{real: &git.RealExecutor{}}
-	wm := git.NewWorktreeManager(failExec)
+	wmStub := &stubFailFetchManager{Manager: git.NewWorktreeManager(&git.RealExecutor{})}
 
 	buf := new(bytes.Buffer)
 	cmd := newCmd
 	cmd.SetOut(buf)
 	cmd.SetErr(new(bytes.Buffer))
 
-	err := runNewBranch(cmd, "some-branch", wm, failExec, nil, false)
+	err := runNewBranch(cmd, "some-branch", wmStub, nil, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "fetching remote branch")
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/AndrewPBerg/wtf/internal/forge"
 	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -65,26 +66,19 @@ func (f *testForge) GetPR(_ context.Context, number int) (*forge.PR, error) {
 	return nil, fmt.Errorf("not found")
 }
 
-// stubFetchExecutor wraps a real executor but stubs out fetch commands.
-type stubFetchExecutor struct {
-	real git.Executor
+// stubFetchManager wraps a real manager but makes FetchRefspec a no-op, so tests
+// exercise worktree creation without contacting a remote.
+type stubFetchManager struct {
+	vcs.Manager
 }
 
-func (s *stubFetchExecutor) Run(dir string, args ...string) (string, error) {
-	if len(args) > 0 && args[0] == "fetch" {
-		return "", nil // stub fetch
-	}
-	return s.real.Run(dir, args...)
+func (s *stubFetchManager) FetchRefspec(_, _, _ string) error { return nil }
+
+// stubFailFetchManager wraps a real manager but fails every fetch.
+type stubFailFetchManager struct {
+	vcs.Manager
 }
 
-// stubFailFetchExecutor wraps a real executor but fails on fetch commands.
-type stubFailFetchExecutor struct {
-	real git.Executor
-}
-
-func (s *stubFailFetchExecutor) Run(dir string, args ...string) (string, error) {
-	if len(args) > 0 && args[0] == "fetch" {
-		return "", fmt.Errorf("fetch failed: remote not found")
-	}
-	return s.real.Run(dir, args...)
+func (s *stubFailFetchManager) FetchRefspec(_, _, _ string) error {
+	return fmt.Errorf("fetch failed: remote not found")
 }

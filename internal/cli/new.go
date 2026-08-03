@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/AndrewPBerg/wtf/internal/forge"
-	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/AndrewPBerg/wtf/internal/port"
 	"github.com/AndrewPBerg/wtf/internal/setup"
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 	"github.com/spf13/cobra"
 )
 
@@ -87,8 +87,10 @@ func setupOptsFromFlags() setup.Options {
 // switchMode controls output: when true, path goes to stdout (for shell cd),
 // messages to stderr. When false, everything goes to stdout.
 func dispatchNew(cmd *cobra.Command, args []string, base, branchFlag, prFlag string, switchMode bool) error {
-	exec := &git.RealExecutor{}
-	wm := git.NewWorktreeManager(exec)
+	wm, err := resolveManager(cmd)
+	if err != nil {
+		return err
+	}
 	runner := setup.NewRunner()
 
 	modes := 0
@@ -102,6 +104,13 @@ func dispatchNew(cmd *cobra.Command, args []string, base, branchFlag, prFlag str
 		modes++
 	}
 
+	// An unset --base means "the main line". git names it literally; jj resolves
+	// it from trunk(), so hand the jj backend an empty base and let it decide
+	// rather than assuming a bookmark called "main" exists.
+	if !cmd.Flags().Changed("base") && wm.Kind() == vcs.KindJJ {
+		base = ""
+	}
+
 	switch {
 	case modes == 0:
 		return fmt.Errorf("requires a branch name, --branch, or --pr flag")
@@ -111,12 +120,12 @@ func dispatchNew(cmd *cobra.Command, args []string, base, branchFlag, prFlag str
 		if cmd.Flags().Changed("base") {
 			return fmt.Errorf("--base cannot be used with --branch")
 		}
-		return runNewBranch(cmd, branchFlag, wm, exec, runner, switchMode)
+		return runNewBranch(cmd, branchFlag, wm, runner, switchMode)
 	case prFlag != "":
 		if cmd.Flags().Changed("base") {
 			return fmt.Errorf("--base cannot be used with --pr")
 		}
-		return runNewPR(cmd, prFlag, wm, exec, runner, nil, switchMode)
+		return runNewPR(cmd, prFlag, wm, runner, nil, switchMode)
 	default:
 		arg := args[0]
 		// Auto-detect PR numbers: bare "42" or "#42" routes to PR checkout.
@@ -126,19 +135,18 @@ func dispatchNew(cmd *cobra.Command, args []string, base, branchFlag, prFlag str
 				return fmt.Errorf("--base cannot be used with a PR number")
 			}
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s Detected PR number, checking out PR #%d…\n", dim("→"), n)
-			return runNewPR(cmd, arg, wm, exec, runner, nil, switchMode)
+			return runNewPR(cmd, arg, wm, runner, nil, switchMode)
 		}
 		return runNew(cmd, args[0], base, wm, runner, switchMode)
 	}
 }
 
-func runNew(cmd *cobra.Command, branch, base string, wm *git.WorktreeManager, runner *setup.Runner, switchMode bool) error {
-	bm := git.NewBranchManager(&git.RealExecutor{})
-	if err := bm.ValidateBranchName(branch); err != nil {
+func runNew(cmd *cobra.Command, branch, base string, wm vcs.Manager, runner *setup.Runner, switchMode bool) error {
+	if err := validateRef(wm, branch); err != nil {
 		return err
 	}
 
-	dir, err := getRepoDir()
+	dir, err := repoDirFor(wm)
 	if err != nil {
 		return err
 	}
@@ -159,27 +167,29 @@ func runNew(cmd *cobra.Command, branch, base string, wm *git.WorktreeManager, ru
 	if pathW != nil {
 		_, _ = fmt.Fprintln(pathW, wtPath)
 	}
-	_, _ = fmt.Fprintf(msgW, "%s Created worktree at %s\n", greenBold("✔"), cyan(wtPath))
+	_, _ = fmt.Fprintf(msgW, "%s Created %s at %s\n",
+		greenBold("✔"), wm.Kind().Noun(), cyan(wtPath))
 
 	runPostCreateSetup(cmd, wm, runner, dir, wtPath)
 
 	return nil
 }
 
-func runNewBranch(cmd *cobra.Command, branch string, wm *git.WorktreeManager, exec git.Executor, runner *setup.Runner, switchMode bool) error {
-	bm := git.NewBranchManager(&git.RealExecutor{})
-	if err := bm.ValidateBranchName(branch); err != nil {
+func runNewBranch(cmd *cobra.Command, branch string, wm vcs.Manager, runner *setup.Runner, switchMode bool) error {
+	if err := validateRef(wm, branch); err != nil {
 		return err
 	}
 
-	dir, err := getRepoDir()
+	dir, err := repoDirFor(wm)
 	if err != nil {
 		return err
 	}
 
-	// Fetch the remote branch, creating a local tracking branch
+	// Fetch the remote branch, creating a local tracking ref. This goes through the
+	// backend because a jj repo may keep its git repo inside .jj, out of reach of a
+	// plain `git fetch`.
 	fetchRef := fmt.Sprintf("%s:%s", branch, branch)
-	if _, err := exec.Run(dir, "fetch", "origin", fetchRef); err != nil {
+	if err := wm.FetchRefspec(dir, "origin", fetchRef); err != nil {
 		return fmt.Errorf("fetching remote branch %q: %w", branch, err)
 	}
 
@@ -199,7 +209,8 @@ func runNewBranch(cmd *cobra.Command, branch string, wm *git.WorktreeManager, ex
 	if pathW != nil {
 		_, _ = fmt.Fprintln(pathW, wtPath)
 	}
-	_, _ = fmt.Fprintf(msgW, "%s Created worktree at %s\n", greenBold("✔"), cyan(wtPath))
+	_, _ = fmt.Fprintf(msgW, "%s Created %s at %s\n",
+		greenBold("✔"), wm.Kind().Noun(), cyan(wtPath))
 
 	runPostCreateSetup(cmd, wm, runner, dir, wtPath)
 
@@ -209,8 +220,8 @@ func runNewBranch(cmd *cobra.Command, branch string, wm *git.WorktreeManager, ex
 // forgeFactory creates a Forge from a remote URL. Abstracted for testability.
 type forgeFactory func(remoteURL string) (forge.Forge, error)
 
-func runNewPR(cmd *cobra.Command, arg string, wm *git.WorktreeManager, exec git.Executor, runner *setup.Runner, ff forgeFactory, switchMode bool) error {
-	dir, err := getRepoDir()
+func runNewPR(cmd *cobra.Command, arg string, wm vcs.Manager, runner *setup.Runner, ff forgeFactory, switchMode bool) error {
+	dir, err := repoDirFor(wm)
 	if err != nil {
 		return err
 	}
@@ -226,11 +237,11 @@ func runNewPR(cmd *cobra.Command, arg string, wm *git.WorktreeManager, exec git.
 			if fErr != nil {
 				return nil, fErr
 			}
-			gitCommonDir, gcErr := exec.Run(dir, "rev-parse", "--git-common-dir")
+			stateDir, gcErr := wm.StateDir(dir)
 			if gcErr != nil {
 				return f, nil
 			}
-			return forge.NewCachedForge(f, gitCommonDir), nil
+			return forge.NewCachedForge(f, stateDir), nil
 		}
 	}
 
@@ -256,7 +267,7 @@ func runNewPR(cmd *cobra.Command, arg string, wm *git.WorktreeManager, exec git.
 	_, _ = fmt.Fprintf(stderr, "Fetching %s %s…\n", prLink, dim(pr.Title))
 
 	fetchRef := f.FetchRef(pr.Number)
-	if _, err := exec.Run(dir, "fetch", "origin", fetchRef); err != nil {
+	if err := wm.FetchRefspec(dir, "origin", fetchRef); err != nil {
 		return fmt.Errorf("fetching PR ref: %w", err)
 	}
 
@@ -318,7 +329,7 @@ func newOutputWriters(cmd *cobra.Command, switchMode bool) (msgW io.Writer, path
 
 // runPostCreateSetup runs project setup after worktree creation.
 // By default, handles env files and auto-detects + runs package install.
-func runPostCreateSetup(cmd *cobra.Command, wm *git.WorktreeManager, runner *setup.Runner, dir, wtPath string) {
+func runPostCreateSetup(cmd *cobra.Command, wm vcs.Manager, runner *setup.Runner, dir, wtPath string) {
 	if runner == nil {
 		return
 	}
@@ -336,20 +347,19 @@ func runPostCreateSetup(cmd *cobra.Command, wm *git.WorktreeManager, runner *set
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s setup failed: %v\n", yellow("⚠"), setupErr)
 	}
 
-	allocatePortForWorktree(cmd, dir, wtPath)
+	allocatePortForWorktree(cmd, wm, dir, wtPath)
 }
 
 // allocatePortForWorktree allocates a unique dev-server port for the worktree
 // branch, starts the dev server (unless --no-serve), and prints status to stderr.
 // Failures are non-fatal warnings.
-func allocatePortForWorktree(cmd *cobra.Command, repoDir, wtPath string) {
-	exec := &git.RealExecutor{}
-	branch, err := exec.Run(wtPath, "rev-parse", "--abbrev-ref", "HEAD")
+func allocatePortForWorktree(cmd *cobra.Command, mgr vcs.Manager, repoDir, wtPath string) {
+	branch, err := mgr.CurrentRef(wtPath)
 	if err != nil {
 		return
 	}
 
-	alloc, err := portAllocator(repoDir)
+	alloc, err := portAllocator(mgr, repoDir)
 	if err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s port allocation failed: %v\n", yellow("⚠"), err)
 		return

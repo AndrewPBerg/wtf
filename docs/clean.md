@@ -36,3 +36,10 @@ Removed old-experiment (prunable)
 3. Gets branches merged into main (`git branch --merged <main>`)
 4. Identifies prunable worktrees (broken gitdir references)
 5. Removes matching worktrees (or lists them with `--dry-run`)
+
+## Jujutsu (jj)
+
+jj has no merged branch to test, so the equivalent of "merged" is a workspace whose
+working-copy commit is empty *and* whose parent is already contained in `trunk()`.
+Workspaces whose directory was deleted outside wtf are reported as `prunable`.
+Anything holding real changes is left alone. See [jj.md](jj.md).

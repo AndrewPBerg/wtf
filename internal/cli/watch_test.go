@@ -91,8 +91,9 @@ func TestWatchCmd_Registered(t *testing.T) {
 func TestResolveStateDir(t *testing.T) {
 	dir := initCLITestRepo(t)
 
-	exec := &git.RealExecutor{}
-	stateDir, err := resolveStateDir(exec, dir)
+	// State-dir resolution moved onto the backend so jj can point somewhere
+	// other than .git; the git backend must still land under .git/wtf.
+	stateDir, err := git.NewWorktreeManager(&git.RealExecutor{}).StateDir(dir)
 	require.NoError(t, err)
 	assert.True(t, strings.HasSuffix(stateDir, "/wtf") || strings.HasSuffix(stateDir, string(os.PathSeparator)+"wtf"))
 	assert.Contains(t, stateDir, ".git")

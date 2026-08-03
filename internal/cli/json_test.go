@@ -48,13 +48,12 @@ func TestVersionCommand_JSON(t *testing.T) {
 func TestSwCommand_JSON(t *testing.T) {
 	dir := initCLITestRepo(t)
 	t.Chdir(dir)
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
 
 	saved := jsonOutput
 	defer func() { jsonOutput = saved }()
 	jsonOutput = true
 
-	exec := &git.RealExecutor{}
-	wm := git.NewWorktreeManager(exec)
 	_, err := wm.Add(dir, "feat-json", "main")
 	require.NoError(t, err)
 

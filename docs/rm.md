@@ -88,3 +88,11 @@ $ wtf rmg feature/auth feature/wip
 3. If multiple matches are found for a branch, prints them and asks you to disambiguate
 4. If no match is found, reports an error
 5. Processes each branch independently — partial failures don't stop the rest
+
+## Jujutsu (jj)
+
+In a jj repo this removes a **workspace**: wtf runs `jj workspace forget` and then
+deletes the directory, which jj deliberately leaves behind. Removal is refused when
+the workspace holds uncommitted changes (use `--force`) or when you are standing
+inside it. `rmg` spans git and jj repos at once, and each row carries its own
+backend, so selecting a row selects the backend. See [jj.md](jj.md).
