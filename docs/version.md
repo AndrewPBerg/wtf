@@ -12,9 +12,9 @@ wtf version
 
 ```bash
 $ wtf version
-wtf version 0.6.0
+wtf version 0.7.0
 ```
 
 ## Build-time Version
 
-The version string is set at build time via Go linker flags (`-ldflags`). When installed from source without flags, the version displays as `dev`.
+The source carries the current release version. Release builds may override it with Go linker flags (`-ldflags`).

@@ -44,6 +44,8 @@ func TestJJ_NewCreatesWorkspaceAndSymlinksEnv(t *testing.T) {
 
 	// The output names a workspace, not a worktree, so the backend is obvious.
 	assert.Contains(t, stdout.String()+stderr.String(), "Created workspace at")
+	assert.FileExists(t, filepath.Join(wsPath, ".git", vcs.JJGitDiffMarker),
+		"jj workspaces should expose editor Git diffs by default")
 
 	// The project files came across...
 	assert.FileExists(t, filepath.Join(wsPath, "a.txt"))
@@ -58,6 +60,29 @@ func TestJJ_NewCreatesWorkspaceAndSymlinksEnv(t *testing.T) {
 	info, err := os.Lstat(linked)
 	require.NoError(t, err)
 	assert.NotZero(t, info.Mode()&os.ModeSymlink, ".env should be symlinked by default")
+}
+
+func TestJJ_NewCanOptOutOfGitDiffMetadata(t *testing.T) {
+	mgr, root := jjTestManager(t)
+	newNoGitDiff = true
+	t.Cleanup(func() { newNoGitDiff = false })
+
+	cmd, _, _ := newTestCmd("")
+	require.NoError(t, runNew(cmd, "plain", "main", mgr, nil, false))
+
+	wsPath := filepath.Join(filepath.Dir(root), "plain--myrepo")
+	assert.NoDirExists(t, filepath.Join(wsPath, ".git"))
+}
+
+func TestJJ_NewHonorsGitDiffEnvironmentOptOut(t *testing.T) {
+	mgr, root := jjTestManager(t)
+	t.Setenv("WTF_JJ_GIT_DIFF", "0")
+
+	cmd, _, _ := newTestCmd("")
+	require.NoError(t, runNew(cmd, "env-plain", "main", mgr, nil, false))
+
+	wsPath := filepath.Join(filepath.Dir(root), "env-plain--myrepo")
+	assert.NoDirExists(t, filepath.Join(wsPath, ".git"))
 }
 
 func TestJJ_NewCopyEnvWritesRealFile(t *testing.T) {

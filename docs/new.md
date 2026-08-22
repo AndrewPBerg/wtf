@@ -22,6 +22,7 @@ wtf new --pr <number|branch|title>
 | `--no-env`        |       |         | Skip env file handling                               |
 | `--copy-env`      |       |         | Copy env files instead of symlinking (agent-safe)    |
 | `--no-install`    |       |         | Skip package manager install                         |
+| `--no-git-diff`   |       |         | Skip default Git metadata for jj editor diffs        |
 | `--vcs`           |       |         | Force a backend in a colocated repo: `git` or `jj`   |
 
 The positional branch, `--branch`, and `--pr` modes are mutually exclusive.
@@ -31,7 +32,9 @@ Numeric positional arguments (e.g. `42` or `#42`) are automatically detected as 
 ## Jujutsu (jj)
 
 In a jj repo this creates a **workspace** rather than a worktree, and the branch
-argument names the workspace. `--base` accepts any jj revset (a bookmark, `trunk()`,
+argument names the workspace. Git-aware editor metadata is created by default;
+use `--no-git-diff` or `WTF_JJ_GIT_DIFF=0` to opt out. `--base` accepts any jj
+revset (a bookmark, `trunk()`,
 or a change id); with no `--base`, wtf uses `trunk()` when it resolves to real work.
 No bookmark is created — that stays yours via `jj bookmark create` or `jj git push -c`.
 

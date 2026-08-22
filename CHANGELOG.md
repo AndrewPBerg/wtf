@@ -4,6 +4,44 @@ All notable changes to WorkTreeForge (wtf) will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-08-22
+
+Makes JJ workspaces first-class in Zed while keeping JJ authoritative, and lays the
+repository boundary for future workspace/resource primitives consumed by Agent Bridge.
+
+### Added
+
+- **Default-on Git shadows for secondary JJ workspaces** — `wtf new` and `wtf news`
+  create private Git metadata so Git-first editors such as Zed can display the JJ
+  working-copy diff. The shadow borrows JJ's object database, has no publishing
+  remote, and is excluded from WTF repository detection and registration.
+- **`wtf git-diff`** — Create or refresh a workspace's editor baseline after a JJ
+  operation changes its working-copy parent.
+- **Explicit shadow opt-outs** — `--no-git-diff` and `WTF_JJ_GIT_DIFF=0`; project
+  manifest configuration remains intentionally deferred.
+- **Canonical Pi extension source** — WTF's thin Pi policy adapter, tests, and local
+  installer now live under `packages/pi-extension/`.
+- **JJ-native lifecycle and simplification plans** — Documents the Zed-first,
+  Agent-Bridge-consumed substrate direction and evidence-driven removal of UI bloat.
+
+### Changed
+
+- Updated the active Go dependency graph.
+- The WTF repository itself is now dogfooded as a colocated JJ/Git repository.
+
+### Fixed
+
+- **JJ 0.44 prunable workspace detection** — Deleted workspace directories may be
+  rendered with an empty `self.root()` rather than an error string; both forms are
+  now treated conservatively as prunable registrations.
+
+### Notes
+
+- Git shadows are presentation-only. Continue to use JJ for all VCS mutations.
+- Multi-parent JJ working copies do not yet have a single Git-shadow baseline.
+- `.wtf.toml`, canonical workspace IDs, strict active-name uniqueness, and richer
+  resource configuration remain future substrate work.
+
 ## [0.6.0] — 2026-08-03
 
 Adds Jujutsu (jj) support: the same commands drive git worktrees and jj workspaces,

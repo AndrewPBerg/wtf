@@ -170,6 +170,7 @@ that is both.
 
 | Command          | Description                                      |
 |------------------|--------------------------------------------------|
+| `wtf git-diff`   | Create or refresh Zed/Git diff metadata for a JJ workspace |
 | `wtf version`    | Print version                                    |
 | `wtf update`     | Update to the latest version                     |
 | `wtf uninstall`  | Remove the wtf binary (`--force` to skip prompt) |

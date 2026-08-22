@@ -119,9 +119,9 @@ directory. The extension should stay thin:
 - consume structured `--json` results
 - avoid reimplementing JJ or workspace policy in TypeScript
 
-Agent Bridge remains a separate product and coordination service. WTF may consult it
-through adapters before integration or cleanup, but WTF's local safety must not
-depend on the daemon being available.
+Agent Bridge remains a separate product and coordination service. The dependency is
+one-way: Agent Bridge and thin adapters call WTF before integration or cleanup; WTF
+never calls Agent Bridge and keeps its local safety independent of the daemon.
 
 ## Removal order
 

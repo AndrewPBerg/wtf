@@ -22,6 +22,7 @@ wtf news --pr <number|branch|title>
 | `--no-env`        |       |         | Skip env file handling                               |
 | `--copy-env`      |       |         | Copy env files instead of symlinking (agent-safe)    |
 | `--no-install`    |       |         | Skip package manager install                         |
+| `--no-git-diff`   |       |         | Skip default Git metadata for JJ editor diffs        |
 
 The three modes (positional branch, `--branch`, `--pr`) are mutually exclusive.
 
@@ -32,7 +33,8 @@ Numeric positional arguments (e.g. `42` or `#42`) are automatically detected as 
 1. Creates a new worktree for `<branch>` (same as `wtf new`)
 2. Prints the worktree path to stdout (for the shell wrapper to `cd`)
 3. Handles env files from the main worktree (symlink by default, copy with `--copy-env`) and runs package install
-4. Setup failures are warnings -- the worktree is still created
+4. Creates Git diff metadata by default for secondary JJ workspaces
+5. Setup failures are warnings -- the worktree is still created
 
 ## Examples
 

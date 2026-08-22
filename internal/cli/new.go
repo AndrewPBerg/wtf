@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +25,7 @@ var (
 	newCopyEnv    bool
 	newNoInstall  bool
 	newNoServe    bool
+	newNoGitDiff  bool
 )
 
 func init() {
@@ -35,6 +37,7 @@ func init() {
 	newCmd.Flags().BoolVar(&newCopyEnv, "copy-env", false, "Copy env files instead of symlinking (safer for agent worktrees)")
 	newCmd.Flags().BoolVar(&newNoInstall, "no-install", false, "Skip package manager install")
 	newCmd.Flags().BoolVar(&newNoServe, "no-serve", false, "Skip starting dev server")
+	newCmd.Flags().BoolVar(&newNoGitDiff, "no-git-diff", false, "Skip Git metadata for editor diff views in jj workspaces")
 	newCmd.MarkFlagsMutuallyExclusive("branch", "pr")
 	newCmd.MarkFlagsMutuallyExclusive("no-env", "copy-env")
 
@@ -110,7 +113,6 @@ func dispatchNew(cmd *cobra.Command, args []string, base, branchFlag, prFlag str
 	if !cmd.Flags().Changed("base") && wm.Kind() == vcs.KindJJ {
 		base = ""
 	}
-
 	switch {
 	case modes == 0:
 		return fmt.Errorf("requires a branch name, --branch, or --pr flag")
@@ -155,6 +157,9 @@ func runNew(cmd *cobra.Command, branch, base string, wm vcs.Manager, runner *set
 	if err != nil {
 		return err
 	}
+	if err := initWorkspaceGitDiff(wm, wtPath); err != nil {
+		return err
+	}
 
 	if jsonOutput {
 		return writeJSON(cmd.OutOrStdout(), map[string]string{
@@ -196,6 +201,9 @@ func runNewBranch(cmd *cobra.Command, branch string, wm vcs.Manager, runner *set
 	wtPath, err := wm.Add(dir, branch, branch)
 	if err != nil {
 		return fmt.Errorf("creating worktree: %w", err)
+	}
+	if err := initWorkspaceGitDiff(wm, wtPath); err != nil {
+		return err
 	}
 
 	if jsonOutput {
@@ -277,6 +285,9 @@ func runNewPR(cmd *cobra.Command, arg string, wm vcs.Manager, runner *setup.Runn
 	if err != nil {
 		return fmt.Errorf("creating worktree: %w", err)
 	}
+	if err := initWorkspaceGitDiff(wm, wtPath); err != nil {
+		return err
+	}
 
 	if jsonOutput {
 		return writeJSON(cmd.OutOrStdout(), map[string]any{
@@ -315,6 +326,29 @@ func runNewPR(cmd *cobra.Command, arg string, wm vcs.Manager, runner *setup.Runn
 	runPostCreateSetup(cmd, wm, runner, dir, wtPath)
 
 	return nil
+}
+
+func initWorkspaceGitDiff(wm vcs.Manager, wtPath string) error {
+	if wm.Kind() != vcs.KindJJ || newNoGitDiff || envDisabled("WTF_JJ_GIT_DIFF") {
+		return nil
+	}
+	manager, ok := wm.(vcs.GitDiffManager)
+	if !ok {
+		return fmt.Errorf("git diff metadata is not supported by the active backend")
+	}
+	if err := manager.InitGitDiff(wtPath); err != nil {
+		return fmt.Errorf("workspace created at %s, but Git diff setup failed: %w", wtPath, err)
+	}
+	return nil
+}
+
+func envDisabled(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "0", "false", "no", "off":
+		return true
+	default:
+		return false
+	}
 }
 
 // newOutputWriters returns writers for messages and path output.

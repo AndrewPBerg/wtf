@@ -142,7 +142,7 @@ current milestones at the end of this document and is promoted only after real
 
 ## v0.7.0 — Smaller Core and Zed Baseline
 
-**Status:** active
+**Status:** released 2026-08-22; unchecked simplification work remains active
 
 **Goal:** establish the smallest reliable product boundary before adding new
 workspace-lifecycle operations.
@@ -153,7 +153,9 @@ workspace-lifecycle operations.
 - [x] Move the canonical Pi extension source and tests into WTF
 - [x] Upgrade the active Go dependency graph
 - [ ] Restore the full quality gate under the configured Go and JJ versions
-- [ ] Fix JJ 0.44 prunable-workspace compatibility
+- [x] Fix JJ 0.44 prunable-workspace compatibility
+- [ ] Introduce canonical repository/workspace UUIDs that are never reused
+- [ ] Enforce globally unique names for all active WTF-managed workspaces
 
 ### Simplification
 
@@ -166,11 +168,11 @@ workspace-lifecycle operations.
 
 ### Zed
 
-- [ ] Finish and land the experimental JJ Git-diff shadow, enabled by default for
+- [x] Finish and land the experimental JJ Git-diff shadow, enabled by default for
       secondary JJ workspaces
-- [ ] Keep explicit CLI/environment opt-outs narrow; defer `.wtf.toml` control for
+- [x] Keep explicit CLI/environment opt-outs narrow; defer `.wtf.toml` control for
       disabling the shadow until the manifest milestone
-- [ ] Dogfood the shadow as a read-only Zed source-control projection
+- [x] Dogfood the shadow as a read-only Zed source-control projection
 - [ ] Detect or clearly explain stale editor baselines
 - [ ] Add an explicit `wtf open` only if opening workspaces remains repeated friction
 
@@ -187,57 +189,50 @@ series of environment and service decisions.
 - [ ] Preserve useful zero-config behavior
 - [ ] Add default-workspace policy: `allow`, `warn`, or agent-enforced denial
 - [ ] Separate source env-file policy from generated workspace values
-- [ ] Support multiple stable named ports per workspace
+- [ ] Support multiple stable named ports per workspace ID
+- [ ] Store resources against canonical workspace IDs rather than mutable names
 - [ ] Harden shared per-repository state with locking and atomic writes
 - [ ] Add project-defined create/drop hooks for isolated databases
 - [ ] Keep failed cleanup as visible, repairable debt
 - [ ] Reconsider SQLite only after JSON concurrency or recovery fails in practice
 
-## v0.9.0 — JJ Change-Line Operations
+## v0.9.0 — Deterministic JJ Graph Substrate
 
 **Status:** planned
 
-**Goal:** package common JJ graph operations without hiding their plans, identities,
-conflicts, or recovery boundaries.
+**Goal:** expose safe physical workspace and JJ graph primitives without owning
+WorkUnits, participants, integration policy, verification order, or orchestration.
+Agent Bridge remains the integration specialist and supplies the exact canonical
+workspace IDs and requested operation.
 
-### `sync`
+- [ ] Resolve canonical workspace IDs to current JJ workspace/change identities
+- [ ] Expose read-only graph planning with complete source/target preconditions
+- [ ] Apply a previously returned plan only when those identities remain unchanged
+- [ ] Support rebase, multi-parent integration, and publication as explicit physical
+      operations rather than semantic WorkUnit decisions
+- [ ] Keep fetch, graph mutation, bookmark creation, push, verification, and cleanup
+      as separate boundaries
+- [ ] Return conflicts, resulting change IDs, recovery evidence, and bounded output
+      through stable `--json`
+- [ ] Resolve the Git-shadow limitation for multi-parent working copies explicitly
 
-- [ ] Define workspace-owned change-line discovery
-- [ ] Implement read-only sync planning against the configured trunk
-- [ ] Preserve stacks while rebasing onto current trunk
-- [ ] Keep fetch, rebase, push, and publish semantics distinct
+Every mutating operation starts with a deterministic plan and fails if graph
+assumptions change before apply.
 
-### `gather`
-
-- [ ] Resolve multiple source workspaces to stable JJ change heads
-- [ ] Plan a multi-parent integration change without mutating sources
-- [ ] Create a dedicated integration workspace and surface conflicts there
-- [ ] Resolve the Zed shadow limitation for multi-parent changes explicitly
-- [ ] Run configured verification before cleanup becomes available
-
-### `publish`
-
-- [ ] Create or move a JJ bookmark only at explicit publication time
-- [ ] Push the corresponding Git forge branch
-- [ ] Keep publication separate from workspace removal
-
-Every mutating operation starts with a deterministic `--dry-run --json` plan and
-fails if graph assumptions change before apply.
-
-## v0.10.0 — Pi and Agent Bridge Workflow
+## v0.10.0 — Stable Integration API
 
 **Status:** planned
 
-**Goal:** let agents use proven WTF lifecycle operations without bypassing the human
-CLI's plans and safety checks.
+**Goal:** make WTF a boring substrate that Agent Bridge and thin harness adapters can
+consume without introducing a reverse dependency on those systems.
 
-- [ ] Add typed Pi tools for stable WTF JSON operations
+- [ ] Return canonical repository/workspace IDs from every structured workspace result
+- [ ] Accept IDs for automation while retaining unambiguous names for human convenience
+- [ ] Provide idempotent non-interactive create, inspect, plan, apply, and cleanup APIs
 - [ ] Keep the Pi extension thin and installable from this repository
-- [ ] Warn or block agent work in protected default workspaces
-- [ ] Query Agent Bridge activity before gather, discard, and cleanup
-- [ ] Record durable checkpoints around graph and resource mutations
-- [ ] Default to one agent per JJ workspace
-- [ ] Test shared-workspace collision behavior as a separate advanced mode
+- [ ] Document the one-way dependency: Agent Bridge calls WTF; WTF never calls Agent Bridge
+- [ ] Keep WorkUnits, actors, collisions, checkpoints, Linear, Herdr, Zed observation,
+      Watchman, verification policy, and orchestration outside WTF
 
 ## Dogfood gate
 

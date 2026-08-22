@@ -87,6 +87,18 @@ func TestDetect(t *testing.T) {
 		assert.True(t, det.Colocated())
 	})
 
+	t.Run("WTF Git diff metadata remains a jj-only workspace", func(t *testing.T) {
+		dir := t.TempDir()
+		mkGit(t, dir, false)
+		mkJJ(t, dir, false)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, ".git", JJGitDiffMarker), []byte("shadow\n"), 0o644))
+
+		det, err := Detect(dir)
+		require.NoError(t, err)
+		assert.Equal(t, []Kind{KindJJ}, det.Kinds)
+		assert.False(t, det.Colocated())
+	})
+
 	t.Run("git worktree with .git as a file still counts", func(t *testing.T) {
 		dir := t.TempDir()
 		mkGit(t, dir, true)

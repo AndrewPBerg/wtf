@@ -72,6 +72,14 @@ func TestParseWorkspaceList(t *testing.T) {
 			},
 		},
 		{
+			name:     "jj 0.44 empty root is prunable",
+			output:   "gone" + sep + sep + "abc" + sep + "chg" + sep + "",
+			mainRoot: "/code/repo",
+			want: []vcs.Worktree{
+				{Branch: "gone", Path: "", Head: "abc", ChangeID: "chg", Prunable: true, VCS: vcs.KindJJ},
+			},
+		},
+		{
 			name:     "workspace name containing a slash survives round trip",
 			output:   "feat/auth" + sep + "/code/feat-auth--repo" + sep + "abc" + sep + "chg" + sep + "",
 			mainRoot: "/code/repo",

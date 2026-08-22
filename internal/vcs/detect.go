@@ -6,6 +6,10 @@ import (
 	"path/filepath"
 )
 
+// JJGitDiffMarker identifies private Git metadata created only to let Git-aware
+// editors render a jj workspace diff. It is not a second VCS backend.
+const JJGitDiffMarker = "wtf-jj-git-diff"
+
 // Detection holds what was found by walking up from a starting directory.
 type Detection struct {
 	// Root is the directory holding the marker(s) — the current checkout's root.
@@ -46,11 +50,18 @@ func Detect(start string) (Detection, error) {
 	for {
 		var kinds []Kind
 		// .git is a directory in a primary checkout and a file in a git
-		// worktree; both are valid markers.
-		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+		// worktree; both are valid markers. A WTF Git-diff shadow is deliberately
+		// ignored: it exists only for editor compatibility and jj still owns the
+		// workspace.
+		gitMarker := filepath.Join(dir, ".git")
+		_, gitErr := os.Lstat(gitMarker)
+		jjInfo, jjErr := os.Lstat(filepath.Join(dir, ".jj"))
+		hasJJ := jjErr == nil && jjInfo.IsDir()
+		isShadow := hasJJ && gitErr == nil && IsJJGitDiffShadow(dir)
+		if gitErr == nil && !isShadow {
 			kinds = append(kinds, KindGit)
 		}
-		if info, err := os.Lstat(filepath.Join(dir, ".jj")); err == nil && info.IsDir() {
+		if hasJJ {
 			kinds = append(kinds, KindJJ)
 		}
 		if len(kinds) > 0 {
@@ -63,6 +74,18 @@ func Detect(start string) (Detection, error) {
 		}
 		dir = parent
 	}
+}
+
+// IsJJGitDiffShadow reports whether root contains WTF's private Git metadata
+// for a jj editor diff. Callers must not treat such metadata as a real Git repo.
+func IsJJGitDiffShadow(root string) bool {
+	gitMarker := filepath.Join(root, ".git")
+	info, err := os.Stat(gitMarker)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(gitMarker, JJGitDiffMarker))
+	return err == nil
 }
 
 // binaryAvailable reports whether a backend's CLI is on PATH. Declared as a var

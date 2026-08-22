@@ -292,76 +292,53 @@ Database deletion must be explicit and must verify that the target identifier is
 owned by the workspace being removed. A failed drop leaves a visible cleanup debt;
 it must not silently release the registry entry and orphan the database.
 
-## Gather: keep useful workspace work
+## Deterministic JJ graph substrate
 
-`gather` is the proposed high-level operation for incorporating useful work from a
-temporary workspace. It describes intent better than "merge workspaces," because a
-jj implementation may squash, rebase, or preserve a stack rather than create a
-merge commit.
+WTF should not own semantic gathering or WorkUnit orchestration. Agent Bridge decides
+which canonical workspace IDs belong together, coordinates participants and
+checkpoints, chooses integration policy, and orders verification and cleanup.
 
-Possible interactive shape:
-
-```bash
-wtf gather spike/cache --into default
-```
-
-Possible explicit/agent shape:
+WTF exposes deterministic physical graph primitives that remain manually usable:
 
 ```bash
-wtf gather spike/cache --into default --strategy squash --dry-run --json
-wtf gather spike/cache --into default --strategy squash --yes --json
+wtf integrate plan --source <workspace-id> --source <workspace-id> --target <workspace-id> --json
+wtf integrate apply --plan <plan-id> --json
 ```
 
-Initial strategies:
+Names may remain an unambiguous human convenience, but automation uses canonical
+workspace IDs. Rebase, squash, multi-parent integration, bookmark creation, push,
+verification, and cleanup remain explicit separate boundaries.
 
-- **squash** — collect the source work into one focused change; likely default for
-  a spike or small feature
-- **preserve** — retain the source's logical change stack while integrating it with
-  the destination line of work
+### Graph planning
 
-Do not add a generic `merge` strategy until a real workflow needs a multi-parent jj
-change and its Zed shadow limitation is understood.
-
-### Gather planning
-
-The first implementation should be read-only. It resolves workspace names to stable
-jj change IDs and reports:
+The first implementation should be read-only. Given exact canonical workspace IDs,
+it resolves current JJ identities and reports:
 
 - source and destination workspace/change identities
-- source change range or stack
-- proposed graph transformation
-- whether either workspace has additional descendants or conflicts
-- whether either workspace appears active
+- source change ranges or stacks
+- proposed physical graph transformation
+- additional descendants or conflicts
 - expected Zed Git-diff refresh
-- verification commands that would run
 - resources that would remain or become eligible for cleanup
 
 The plan must be machine-readable and usable as the input to a later apply step.
 Apply should fail if relevant identities or graph assumptions changed after planning.
 
-### Gather apply
+### Graph apply
 
-A mutating gather should:
+A mutating graph operation should:
 
 1. resolve and validate the saved plan;
-2. refuse or require confirmation when source/destination agents are active;
-3. record the current jj operation ID and a WTF checkpoint;
-4. perform one documented jj graph transformation;
+2. reject changed workspace/change identities;
+3. record the current JJ operation ID;
+4. perform exactly the documented graph transformation;
 5. surface conflicts without pretending the operation completed cleanly;
-6. run configured verification;
-7. refresh Zed Git-diff metadata for affected workspaces;
-8. report the exact resulting change IDs and recovery command;
-9. leave source-workspace cleanup as a separate decision.
+6. refresh Zed Git-diff metadata when a supported baseline exists; and
+7. report exact resulting change IDs and recovery evidence.
 
-A successful gather must not automatically remove the source workspace in the first
-version:
-
-```bash
-wtf gather spike/cache --into default --strategy squash
-wtf rm spike/cache
-```
-
-An optional combined cleanup flow can be considered after repeated dogfooding.
+WTF does not inspect agent activity, declare Agent Bridge checkpoints, choose
+verification policy, or automatically clean source workspaces. Agent Bridge owns
+those decisions and calls each WTF boundary explicitly.
 
 ### Discard
 
@@ -376,47 +353,29 @@ JJ's operation log provides recovery for graph mutations. It does not recover a
 dropped database or deleted untracked workspace files, so cleanup needs a stronger
 confirmation boundary than abandon/rewrite operations.
 
-## Pi and Agent Bridge integration
+## Pi and Agent Bridge boundary
 
-WTF should remain independently useful from a human-operated terminal. AI support
-sits above its structured CLI rather than inside its core semantics.
+WTF remains independently useful from a human-operated terminal. The dependency is
+one-way: Agent Bridge and thin harness adapters call WTF; WTF never calls them.
 
-### Pi extension
+WTF owns canonical workspace identity, filesystem/VCS/resource correctness, and
+stable structured results. Agent Bridge stores WorkUnit-to-workspace relationships
+and owns participants, Herdr/Pi/Codex coordination, Linear integration, Zed and
+Watchman observation, provenance, collisions, checkpoints, integration policy,
+verification ordering, and cleanup authorization.
 
-A thin Pi extension can provide typed tools for:
-
-- creating an isolated workspace
-- inspecting workspace/resources status
-- planning and applying gather
-- running verification
-- cleaning up after confirmation
-
-The tool should call WTF and consume `--json`; it should not emit an improvised shell
-sequence of low-level jj commands. Human and agent paths must share the same safety
-checks.
-
-### Agent Bridge
-
-Before gather, discard, or cleanup, integrations can ask Agent Bridge whether another
-agent is active in the source or destination workspace. Agent Bridge supplies:
-
-- live coordination and ownership negotiation
-- workspace/repository-scoped identity
-- provenance and checkpoints
-- collision handling for agents sharing a physical workspace
-
-WTF remains responsible for filesystem, VCS, and resource correctness if Agent
-Bridge is absent. Separate workspaces should remain the default agent isolation
-model; shared physical workspaces are an intentional advanced mode.
+The WTF Pi extension remains a thin local policy adapter. It should consume or expose
+stable WTF JSON operations rather than reimplementing JJ sequences or WorkUnits.
 
 ## Git compatibility policy
 
 Existing Git worktree workflows must continue to work. New generic setup and
 resource features should work with both backends when their semantics align.
 
-`gather` should be explicitly jj-only at first. A future Git implementation should
-be based on an observed Git use case, not on forcing branches and commits to imitate
-jj changes. Unsupported backend errors should explain the limitation clearly.
+JJ graph primitives should ship before any Git equivalent. A future Git operation
+should be based on an observed physical substrate need, not on forcing branches and
+commits to imitate JJ changes. Unsupported backend errors should explain the
+limitation clearly.
 
 ## Incremental dogfood plan
 
@@ -463,34 +422,36 @@ user to remember or manually negotiate ports.
 **Exit evidence:** choosing isolation provisions a usable database without additional
 mental bookkeeping.
 
-### Phase 5: gather planning
+### Phase 5: graph planning
 
-- implement only `--dry-run --json`
-- test single change, stacked changes, conflicts, stale workspaces, and active agents
-- compare the explanation with the low-level jj commands an expert would choose
+- implement only deterministic plan output through `--json`
+- accept canonical workspace IDs selected by the caller
+- test single changes, stacks, conflicts, and stale identities
+- compare the explanation with the low-level JJ commands an expert would choose
 
 **Exit evidence:** the plan is predictable enough that the user trusts it before
 seeing the underlying commands.
 
-### Phase 6: gather apply and verification
+### Phase 6: graph apply
 
-- apply one strategy, likely `squash`, before adding `preserve`
+- apply one explicit physical transformation at a time
 - make graph preconditions and recovery explicit
-- refresh Zed metadata automatically
-- keep cleanup separate
+- refresh Zed metadata automatically when supported
+- keep publication, verification, and cleanup separate
 
-**Exit evidence:** useful spike work can be incorporated and verified without manual
-JJ graph manipulation, while recovery remains straightforward.
+**Exit evidence:** an external integrator can apply a predictable JJ operation and
+receive enough structured evidence to coordinate verification and recovery.
 
-### Phase 7: Pi/Agent Bridge tools
+### Phase 7: stable integration API
 
-- expose already-proven WTF operations as typed tools
-- add active-agent gates and durable checkpoints
-- dogfood one agent per jj workspace first
-- test shared-workspace collision behavior separately
+- expose already-proven WTF operations through stable JSON
+- return canonical repository/workspace IDs everywhere
+- keep the Pi adapter thin
+- verify that Agent Bridge can coordinate a multi-workspace run without WTF storing
+  WorkUnits or actor state
 
-**Exit evidence:** agents reduce keystrokes and coordination cost without bypassing
-human-visible WTF plans or cleanup boundaries.
+**Exit evidence:** Agent Bridge can orchestrate agents and integration entirely above
+WTF's deterministic physical substrate.
 
 ## Dogfood notes
 
@@ -520,7 +481,7 @@ The direction is working when:
 - Zed provides useful diffs without becoming the VCS authority
 - env, ports, and database state require no memorized manual coordination
 - `wtf resources` can explain what each workspace owns
-- gather plans are understandable before mutation and reproducible through JSON
+- graph plans are understandable before mutation and reproducible through JSON
 - cleanup either completes or leaves actionable, visible debt
 - agents use the same high-level operations and safety boundaries as humans
 - the default workspace remains simple for work that does not need isolation
@@ -534,10 +495,10 @@ The direction is working when:
    frameworks?
 4. Should editor opening be part of `new`, a flag, or a separate `open` command?
 5. Does the Git-diff shadow need stale-baseline detection before broader dogfooding?
-6. What exact jj graph should `squash` produce when source or destination contains a
-   stack rather than one change?
-7. Should gather target a workspace, a change ID, or accept both while resolving to
-   immutable identities during planning?
-8. Which verification failures block gather completion versus merely block cleanup?
-9. When do concurrent resource updates justify replacing locked JSON with SQLite?
-10. Which Agent Bridge activity states should block, warn, or require confirmation?
+6. Which physical JJ graph transformations belong in WTF's stable substrate API?
+7. How should canonical workspace UUIDs be generated, persisted, tombstoned, and
+   migrated for existing workspaces?
+8. How should globally unique active workspace names be allocated and renamed?
+9. When do strict identity/resource constraints justify replacing locked JSON with
+   SQLite?
+10. What idempotency and plan-expiry contract does Agent Bridge need from WTF?
