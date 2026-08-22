@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 // mockForge is a test double for the Forge interface.
 type mockForge struct {
 	prs       []PR
-	callCount int
+	callCount atomic.Int32
 	err       error
 	delay     time.Duration
 }
@@ -27,7 +28,7 @@ func (m *mockForge) FetchRef(_ int) string                       { return "" }
 func (m *mockForge) GetPR(_ context.Context, _ int) (*PR, error) { return nil, nil }
 
 func (m *mockForge) ListPRs(_ context.Context) ([]PR, error) {
-	m.callCount++
+	m.callCount.Add(1)
 	if m.delay > 0 {
 		time.Sleep(m.delay)
 	}
@@ -52,7 +53,7 @@ func TestCachedForgeMiss(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, prs, 1)
 	assert.Equal(t, 1, prs[0].Number)
-	assert.Equal(t, 1, inner.callCount, "should have fetched from API")
+	assert.Equal(t, int32(1), inner.callCount.Load(), "should have fetched from API")
 
 	// Verify cache file was written
 	data, err := os.ReadFile(cf.cachePath())
@@ -84,7 +85,7 @@ func TestCachedForgeHit(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, prs, 1)
 	assert.Equal(t, 5, prs[0].Number, "should return cached data")
-	assert.Equal(t, 0, inner.callCount, "should not call API when cache is fresh")
+	assert.Equal(t, int32(0), inner.callCount.Load(), "should not call API when cache is fresh")
 }
 
 func TestCachedForgeStale(t *testing.T) {
@@ -111,7 +112,7 @@ func TestCachedForgeStale(t *testing.T) {
 
 	// Give background goroutine time to refresh
 	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, 1, inner.callCount, "should have triggered background refresh")
+	assert.Equal(t, int32(1), inner.callCount.Load(), "should have triggered background refresh")
 }
 
 func TestCachedForgeCorruptCache(t *testing.T) {
@@ -130,7 +131,7 @@ func TestCachedForgeCorruptCache(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, prs, 1)
 	assert.Equal(t, 1, prs[0].Number, "should fetch fresh on corrupt cache")
-	assert.Equal(t, 1, inner.callCount)
+	assert.Equal(t, int32(1), inner.callCount.Load())
 }
 
 func TestCachedForgeDelegation(t *testing.T) {
@@ -201,7 +202,7 @@ func TestListPRsAsyncCacheHitThenFresh(t *testing.T) {
 	// Channel should be closed
 	_, ok := <-ch
 	assert.False(t, ok)
-	assert.Equal(t, 1, inner.callCount)
+	assert.Equal(t, int32(1), inner.callCount.Load())
 }
 
 func TestListPRsAsyncColdStart(t *testing.T) {
@@ -223,7 +224,7 @@ func TestListPRsAsyncColdStart(t *testing.T) {
 
 	_, ok := <-ch
 	assert.False(t, ok)
-	assert.Equal(t, 1, inner.callCount)
+	assert.Equal(t, int32(1), inner.callCount.Load())
 }
 
 func TestListPRsAsyncAPIError(t *testing.T) {
