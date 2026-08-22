@@ -3,11 +3,13 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/identity"
 	"github.com/AndrewPBerg/wtf/internal/port"
 	"github.com/AndrewPBerg/wtf/internal/vcs"
 )
@@ -20,6 +22,34 @@ var (
 // ErrNotARepo is returned when the current directory is not inside a repository
 // wtf can manage.
 var ErrNotARepo = vcs.ErrNotARepo
+
+// enrichWorktrees applies read-only identity data when the global state exists.
+// Legacy listings remain usable when no identity state has been created yet.
+func enrichWorktrees(wm vcs.Manager, repoDir string, wts []vcs.Worktree) ([]vcs.Worktree, error) {
+	stateDir, err := wm.StateDir(repoDir)
+	if err != nil {
+		return nil, fmt.Errorf("finding identity marker: %w", err)
+	}
+	markerID, err := identity.ReadRepositoryID(stateDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return append([]vcs.Worktree(nil), wts...), nil
+		}
+		return nil, err
+	}
+	if markerID == "" {
+		return append([]vcs.Worktree(nil), wts...), nil
+	}
+	store, err := identity.DefaultStore()
+	if err != nil {
+		return nil, err
+	}
+	state, err := store.Load()
+	if err != nil {
+		return nil, fmt.Errorf("loading identity state: %w", err)
+	}
+	return vcs.EnrichWorktrees(state, markerID, wm.Kind(), wts)
+}
 
 // getRepoDir returns the root of the current checkout, whichever backend it
 // belongs to. It never prompts; commands that need to disambiguate a colocated

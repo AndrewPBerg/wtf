@@ -122,6 +122,13 @@ func ValidateName(name string) error {
 	return nil
 }
 
+// CanonicalPhysicalPath returns the stable local path form used by identity
+// joins. It resolves symlink aliases where possible without requiring the
+// target itself to exist.
+func CanonicalPhysicalPath(value string) (string, error) {
+	return canonicalPath(value, "path")
+}
+
 func canonicalPath(value, field string) (string, error) {
 	if value == "" || strings.ContainsRune(value, '\x00') || strings.Contains(value, "://") {
 		return "", fmt.Errorf("%s must be a local absolute path", field)

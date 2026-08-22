@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/AndrewPBerg/wtf/internal/identity"
 	"github.com/AndrewPBerg/wtf/internal/port"
 	"github.com/AndrewPBerg/wtf/internal/ui"
 	"github.com/AndrewPBerg/wtf/internal/vcs"
@@ -60,19 +61,30 @@ var rmCmd = &cobra.Command{
 			return runRmInteractive(cmd, wm)
 		}
 		type rmResult struct {
-			Branch string `json:"branch"`
-			Error  string `json:"error,omitempty"`
+			Branch       string `json:"branch"`
+			RepositoryID string `json:"repository_id,omitempty"`
+			WorkspaceID  string `json:"workspace_id,omitempty"`
+			Name         string `json:"name,omitempty"`
+			NativeName   string `json:"native_name,omitempty"`
+			Error        string `json:"error,omitempty"`
 		}
 		var results []rmResult
 		var errs []error
 		for _, branch := range args {
+			var wt vcs.Worktree
+			if jsonOutput {
+				dir, resolveErr := repoDirFor(wm)
+				if resolveErr == nil {
+					wt, _ = resolveRemovalWorktree(dir, branch, wm)
+				}
+			}
 			if err := runRm(cmd, branch, wm); err != nil {
 				errs = append(errs, err)
 				if jsonOutput {
-					results = append(results, rmResult{Branch: branch, Error: err.Error()})
+					results = append(results, rmResult{Branch: branch, RepositoryID: wt.RepositoryID, WorkspaceID: wt.WorkspaceID, Name: wt.Name, NativeName: wt.NativeName, Error: err.Error()})
 				}
 			} else if jsonOutput {
-				results = append(results, rmResult{Branch: branch})
+				results = append(results, rmResult{Branch: branch, RepositoryID: wt.RepositoryID, WorkspaceID: wt.WorkspaceID, Name: wt.Name, NativeName: wt.NativeName})
 			}
 		}
 		if jsonOutput {
@@ -88,6 +100,16 @@ var rmCmd = &cobra.Command{
 	},
 }
 
+type removalIdentityStore interface {
+	LookupWorkspace(string) (identity.Workspace, error)
+	LookupRepository(string) (identity.Repository, error)
+	RemoveWorkspace(string) (identity.Workspace, error)
+}
+
+var removalIdentityStoreFactory = func() (removalIdentityStore, error) {
+	return identity.DefaultStore()
+}
+
 func runRm(cmd *cobra.Command, branch string, wm vcs.Manager) error {
 	dir, err := repoDirFor(wm)
 	if err != nil {
@@ -99,15 +121,106 @@ func runRm(cmd *cobra.Command, branch string, wm vcs.Manager) error {
 		return fmt.Errorf("getting working directory: %w", err)
 	}
 
-	runOnRemoveHooks(cmd, wm, dir, branch)
-
-	if err := wm.Remove(dir, branch, cwd, rmForce); err != nil {
+	wt, err := resolveRemovalWorktree(dir, branch, wm)
+	if err != nil {
 		return err
 	}
+	ref := nativeWorktreeRef(wt)
+
+	if err := removePhysicalAndIdentity(wm, dir, ref, cwd, wt); err != nil {
+		return err
+	}
+	runOnRemoveHooks(cmd, wm, dir, ref)
 
 	if !jsonOutput {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Removed %s for %s\n",
 			greenBold("✔"), wm.Kind().Noun(), cyan(branch))
+	}
+	return nil
+}
+
+// resolveRemovalWorktree permits only UUID-directed repair to consult identity.
+// Human selectors remain entirely VCS-based.
+func resolveRemovalWorktree(repoDir, query string, wm vcs.Manager) (vcs.Worktree, error) {
+	wt, vcsErr := resolveWorktree(repoDir, query, wm)
+	if identity.ValidateID(query) != nil {
+		return wt, vcsErr
+	}
+	store, err := removalIdentityStoreFactory()
+	if err != nil {
+		return vcs.Worktree{}, fmt.Errorf("resolving workspace UUID %s: %w", query, err)
+	}
+	workspace, lookupErr := store.LookupWorkspace(query)
+	if lookupErr != nil {
+		return vcs.Worktree{}, vcsErr
+	}
+	if workspace.Backend != string(wm.Kind()) {
+		return vcs.Worktree{}, fmt.Errorf("workspace %s belongs to %s, not %s", query, workspace.Backend, wm.Kind().Label())
+	}
+	stateDir, stateErr := wm.StateDir(repoDir)
+	marker, markerErr := "", stateErr
+	if markerErr == nil {
+		marker, markerErr = identity.ReadRepositoryID(stateDir)
+	}
+	if markerErr == nil {
+		if workspace.RepositoryID != marker {
+			return vcs.Worktree{}, fmt.Errorf("workspace %s does not belong to this repository", query)
+		}
+	} else {
+		repo, repoErr := store.LookupRepository(repoDir)
+		if repoErr != nil || repo.ID != workspace.RepositoryID {
+			return vcs.Worktree{}, fmt.Errorf("workspace %s cannot be scoped to this repository; use its registered repository", query)
+		}
+	}
+	canonical, err := identity.CanonicalPhysicalPath(workspace.Path)
+	if err != nil {
+		return vcs.Worktree{}, fmt.Errorf("invalid identity path for workspace %s: %w", query, err)
+	}
+	if vcsErr == nil {
+		physical, pathErr := identity.CanonicalPhysicalPath(wt.Path)
+		if pathErr != nil || physical != canonical {
+			return vcs.Worktree{}, fmt.Errorf("workspace UUID %s does not match the VCS checkout", query)
+		}
+		wt.RepositoryID, wt.WorkspaceID = workspace.RepositoryID, workspace.ID
+		wt.Name, wt.NativeName = workspace.Name, workspace.NativeName
+		return wt, nil
+	}
+	if _, statErr := os.Lstat(canonical); statErr == nil {
+		return vcs.Worktree{}, fmt.Errorf("cannot repair workspace %s: physical path %s still exists but %s cannot resolve it; repair the VCS registration, then retry", query, canonical, wm.Kind().Label())
+	} else if !os.IsNotExist(statErr) {
+		return vcs.Worktree{}, fmt.Errorf("checking physical path for workspace %s: %w", query, statErr)
+	}
+	return vcs.Worktree{Path: canonical, RepositoryID: workspace.RepositoryID, WorkspaceID: workspace.ID, Name: workspace.Name, NativeName: workspace.NativeName, Branch: workspace.NativeName, VCS: wm.Kind()}, nil
+}
+
+// removePhysicalAndIdentity keeps physical cleanup and the durable identity
+// lifecycle in lockstep. Legacy worktrees have no identity ID and retain the
+// pre-identity behavior.
+func removePhysicalAndIdentity(wm vcs.Manager, repoDir, ref, cwd string, wt vcs.Worktree) error {
+	var physicalErr error
+	if wt.WorkspaceID != "" {
+		if _, err := os.Lstat(wt.Path); os.IsNotExist(err) {
+			// UUID repair has already proved the canonical physical path is gone.
+			physicalErr = nil
+		} else {
+			physicalErr = wm.Remove(repoDir, ref, cwd, rmForce)
+		}
+	} else {
+		physicalErr = wm.Remove(repoDir, ref, cwd, rmForce)
+	}
+	if physicalErr != nil {
+		// Keep the identity Active so a transient physical failure can be retried.
+		return physicalErr
+	}
+	if wt.WorkspaceID == "" {
+		return nil
+	}
+	store, err := removalIdentityStoreFactory()
+	if err != nil {
+		return fmt.Errorf("physically removed %s, but identity tombstone failed for workspace %s; repair identity state before retrying: %w", ref, wt.WorkspaceID, err)
+	}
+	if _, err := store.RemoveWorkspace(wt.WorkspaceID); err != nil {
+		return fmt.Errorf("physically removed %s, but identity tombstone failed for workspace %s; repair identity state before retrying: %w", ref, wt.WorkspaceID, err)
 	}
 	return nil
 }
@@ -155,10 +268,14 @@ func runRmGlobal(cmd *cobra.Command, branches []string) error {
 	}
 
 	type rmGlobalResult struct {
-		Branch string `json:"branch"`
-		Repo   string `json:"repo,omitempty"`
-		VCS    string `json:"vcs,omitempty"`
-		Error  string `json:"error,omitempty"`
+		Branch       string `json:"branch"`
+		Repo         string `json:"repo,omitempty"`
+		VCS          string `json:"vcs,omitempty"`
+		RepositoryID string `json:"repository_id,omitempty"`
+		WorkspaceID  string `json:"workspace_id,omitempty"`
+		Name         string `json:"name,omitempty"`
+		NativeName   string `json:"native_name,omitempty"`
+		Error        string `json:"error,omitempty"`
 	}
 
 	stderr := cmd.ErrOrStderr()
@@ -168,20 +285,26 @@ func runRmGlobal(cmd *cobra.Command, branches []string) error {
 	// remove runs a single resolved match and records the outcome. Each match
 	// carries its own backend, so nothing has to be re-detected here.
 	remove := func(m globalMatch, query string) {
-		if rmErr := m.mgr.Remove(m.repo, query, cwd, rmForce); rmErr != nil {
+		ref := nativeWorktreeRef(m.wt)
+		if rmErr := removePhysicalAndIdentity(m.mgr, m.repo, ref, cwd, m.wt); rmErr != nil {
 			_, _ = fmt.Fprintf(stderr, "%s failed to remove %s %s: %s\n",
 				redBold("✗"), cyan(query), dim("("+m.label()+")"), friendlyError(rmErr))
 			errs = append(errs, fmt.Errorf("removing %q from %s: %w", query, m.label(), rmErr))
 			if jsonOutput {
 				jsonResults = append(jsonResults, rmGlobalResult{
-					Branch: query, Repo: m.repo, VCS: m.mgr.Kind().Label(), Error: rmErr.Error(),
+					Branch: m.wt.Branch, Repo: m.repo, VCS: m.mgr.Kind().Label(),
+					RepositoryID: m.wt.RepositoryID, WorkspaceID: m.wt.WorkspaceID,
+					Name: m.wt.Name, NativeName: m.wt.NativeName, Error: rmErr.Error(),
 				})
 			}
 			return
 		}
+		runOnRemoveHooks(cmd, m.mgr, m.repo, ref)
 		if jsonOutput {
 			jsonResults = append(jsonResults, rmGlobalResult{
 				Branch: m.wt.Branch, Repo: m.repo, VCS: m.mgr.Kind().Label(),
+				RepositoryID: m.wt.RepositoryID, WorkspaceID: m.wt.WorkspaceID,
+				Name: m.wt.Name, NativeName: m.wt.NativeName,
 			})
 			return
 		}
@@ -191,7 +314,11 @@ func runRmGlobal(cmd *cobra.Command, branches []string) error {
 	}
 
 	for _, branch := range branches {
-		matches := findGlobal(cmd, repos, branch)
+		matches, findErr := findGlobalStrict(cmd, repos, branch)
+		if findErr != nil {
+			errs = append(errs, findErr)
+			continue
+		}
 
 		switch {
 		case len(matches) == 1:
@@ -334,11 +461,16 @@ func runRmInteractive(cmd *cobra.Command, wm vcs.Manager) error {
 
 	var errs []error
 	for _, item := range result.Items {
-		runOnRemoveHooks(cmd, wm, dir, item.Branch)
-		if rmErr := wm.Remove(dir, item.Branch, cwd, rmForce); rmErr != nil {
+		wt, resolveErr := resolveWorktree(dir, item.Branch, wm)
+		if resolveErr != nil {
+			errs = append(errs, resolveErr)
+			continue
+		}
+		if rmErr := removePhysicalAndIdentity(wm, dir, nativeWorktreeRef(wt), cwd, wt); rmErr != nil {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s failed to remove %s: %s\n", redBold("✗"), cyan(item.Branch), friendlyError(rmErr))
 			errs = append(errs, rmErr)
 		} else {
+			runOnRemoveHooks(cmd, wm, dir, nativeWorktreeRef(wt))
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Removed worktree for %s\n", greenBold("✔"), cyan(item.Branch))
 		}
 	}
@@ -362,7 +494,10 @@ func runRmInteractiveGlobal(cmd *cobra.Command) error {
 
 	cwd, _ := os.Getwd()
 
-	groups := collectGlobal(cmd, repos)
+	groups, err := collectGlobalStrict(cmd, repos)
+	if err != nil {
+		return err
+	}
 
 	// Each row is tagged with its backend, so choosing a row chooses the backend
 	// too — no prompting needed even for a colocated repo.
@@ -392,12 +527,12 @@ func runRmInteractiveGlobal(cmd *cobra.Command) error {
 		if !ok {
 			continue
 		}
-		runOnRemoveHooks(cmd, m.mgr, m.repo, item.Branch)
-		if rmErr := m.mgr.Remove(m.repo, item.Branch, cwd, rmForce); rmErr != nil {
+		if rmErr := removePhysicalAndIdentity(m.mgr, m.repo, nativeWorktreeRef(m.wt), cwd, m.wt); rmErr != nil {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s failed to remove %s %s: %s\n",
 				redBold("✗"), cyan(item.Branch), dim("("+m.label()+")"), friendlyError(rmErr))
 			errs = append(errs, rmErr)
 		} else {
+			runOnRemoveHooks(cmd, m.mgr, m.repo, nativeWorktreeRef(m.wt))
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Removed %s for %s %s\n",
 				greenBold("✔"), m.mgr.Kind().Noun(),
 				cyan(item.Branch), dim("("+filepath.Base(m.repo)+")"))

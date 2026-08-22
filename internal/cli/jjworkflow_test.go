@@ -243,7 +243,8 @@ func TestJJ_GlobalListingTagsBackends(t *testing.T) {
 	require.NoError(t, config.Add(gitRoot))
 
 	cmd, _, _ := newTestCmd("")
-	groups := collectGlobal(cmd, []string{jjRoot, gitRoot})
+	groups, err := collectGlobalStrict(cmd, []string{jjRoot, gitRoot})
+	require.NoError(t, err)
 
 	byKind := map[vcs.Kind]int{}
 	for _, g := range groups {
@@ -262,7 +263,8 @@ func TestJJ_GlobalListingSplitsUndecidedColocatedRepo(t *testing.T) {
 	require.NoError(t, config.Add(root))
 
 	cmd, _, _ := newTestCmd("")
-	groups := collectGlobal(cmd, []string{root})
+	groups, err := collectGlobalStrict(cmd, []string{root})
+	require.NoError(t, err)
 	require.Len(t, groups, 2)
 }
 
@@ -306,7 +308,8 @@ func TestJJ_FindGlobalMatchesAreLabeledByBackend(t *testing.T) {
 	require.NoError(t, err)
 
 	cmd, _, _ := newTestCmd("")
-	matches := findGlobal(cmd, []string{root}, "shared-name")
+	matches, err := findGlobalStrict(cmd, []string{root}, "shared-name")
+	require.NoError(t, err)
 	require.Len(t, matches, 1)
 	assert.Contains(t, matches[0].label(), "jj")
 	assert.Contains(t, matches[0].label(), "myrepo")
@@ -447,7 +450,8 @@ func TestCollectGlobalSkipsUnusableRepos(t *testing.T) {
 	bad := t.TempDir() // exists, but is not a repo
 
 	cmd, _, stderr := newTestCmd("")
-	groups := collectGlobal(cmd, []string{good, bad})
+	groups, err := collectGlobalStrict(cmd, []string{good, bad})
+	require.NoError(t, err)
 
 	require.Len(t, groups, 1)
 	assert.Equal(t, good, groups[0].repo)
@@ -522,7 +526,8 @@ func TestGlobalPickerIsAlwaysLabeled(t *testing.T) {
 	require.NoError(t, config.SetVCSPref(root, vcs.KindJJ))
 
 	cmd, _, _ := newTestCmd("")
-	groups := collectGlobal(cmd, []string{root})
+	groups, err := collectGlobalStrict(cmd, []string{root})
+	require.NoError(t, err)
 	items, _ := globalPickerItems(groups, func(_ globalGroup, _ vcs.Worktree) bool { return true })
 
 	require.NotEmpty(t, items)

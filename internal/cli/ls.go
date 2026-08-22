@@ -62,6 +62,10 @@ func runLs(cmd *cobra.Command, wm vcs.Manager) error {
 	if err != nil {
 		return err
 	}
+	wts, err = enrichWorktrees(wm, dir, wts)
+	if err != nil {
+		return err
+	}
 
 	if jsonOutput {
 		enc := json.NewEncoder(cmd.OutOrStdout())
@@ -616,7 +620,10 @@ func runLsGlobal(cmd *cobra.Command) error {
 	// Detect current repo so we can highlight it.
 	currentRepo, _ := getRepoDir()
 
-	groups := collectGlobal(cmd, repos)
+	groups, err := collectGlobalStrict(cmd, repos)
+	if err != nil {
+		return err
+	}
 
 	// First pass: build rows and compute column widths shared across every group,
 	// so a git table and a jj table still line up beside each other.
@@ -670,7 +677,10 @@ func runLsGlobal(cmd *cobra.Command) error {
 
 // runLsGlobalInteractive launches an interactive picker for all registered repos.
 func runLsGlobalInteractive(cmd *cobra.Command, repos []string) error {
-	groups := collectGlobal(cmd, repos)
+	groups, err := collectGlobalStrict(cmd, repos)
+	if err != nil {
+		return err
+	}
 
 	allItems, origin := globalPickerItems(groups, func(_ globalGroup, wt vcs.Worktree) bool {
 		return !wt.IsBare && !wt.IsDetached && wt.Branch != ""
@@ -706,7 +716,11 @@ func runLsGlobalInteractive(cmd *cobra.Command, repos []string) error {
 
 func runLsGlobalJSON(cmd *cobra.Command, repos []string) error {
 	var entries []repoEntry
-	for _, g := range collectGlobal(cmd, repos) {
+	groups, err := collectGlobalStrict(cmd, repos)
+	if err != nil {
+		return err
+	}
+	for _, g := range groups {
 		entries = append(entries, repoEntry{
 			Repo:      g.repo,
 			VCS:       g.kind(),
