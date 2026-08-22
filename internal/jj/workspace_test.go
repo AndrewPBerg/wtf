@@ -101,9 +101,24 @@ func TestParseWorkspaceList(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := parseWorkspaceList(tt.output, tt.mainRoot)
 			sortMainFirst(got)
+			// Branch is the pre-identity compatibility field; JJ exposes its
+			// native name as the canonical workspace name too.
+			for i := range tt.want {
+				tt.want[i].Name = tt.want[i].Branch
+				tt.want[i].NativeName = tt.want[i].Branch
+			}
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestParseWorkspaceListUsesCanonicalNameAsNativeJJName(t *testing.T) {
+	wts := parseWorkspaceList("repo/feature"+fieldSep+"/code/feature--repo"+fieldSep+"abc"+fieldSep+"change"+fieldSep, "/code/repo")
+	require.Len(t, wts, 1)
+	assert.Equal(t, "repo/feature", wts[0].Name)
+	assert.Equal(t, wts[0].Name, wts[0].NativeName)
+	// Keep the old structured field stable for existing consumers.
+	assert.Equal(t, wts[0].Name, wts[0].Branch)
 }
 
 func TestValidateRef(t *testing.T) {

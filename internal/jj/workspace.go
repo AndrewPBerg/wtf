@@ -76,12 +76,18 @@ func parseWorkspaceList(output, mainRoot string) []vcs.Worktree {
 			continue
 		}
 
+		// JJ has one native name for a workspace. Keep Branch populated for
+		// the legacy JSON/API contract, while exposing the same value as the
+		// canonical WTF name and native backend name.
+		name := fields[0]
 		wt := vcs.Worktree{
-			Branch:   fields[0],
-			Path:     fields[1],
-			Head:     fields[2],
-			ChangeID: fields[3],
-			VCS:      vcs.KindJJ,
+			Name:       name,
+			NativeName: name,
+			Branch:     name,
+			Path:       fields[1],
+			Head:       fields[2],
+			ChangeID:   fields[3],
+			VCS:        vcs.KindJJ,
 		}
 
 		// A workspace whose directory was deleted still appears in the listing.

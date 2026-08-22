@@ -1,6 +1,7 @@
 package vcs
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,28 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestWorktreeIdentityFieldsAreIndependent(t *testing.T) {
+	wt := Worktree{
+		RepositoryID: "repo-id",
+		WorkspaceID:  "workspace-id",
+		Name:         "repo/feature",
+		NativeName:   "feature",
+		Branch:       "refs/heads/feature",
+		Path:         "/tmp/moved",
+		Head:         "abc",
+		ChangeID:     "change",
+		VCS:          KindGit,
+	}
+
+	data, err := json.Marshal(wt)
+	require.NoError(t, err)
+	var decoded Worktree
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	assert.Equal(t, wt, decoded)
+	assert.NotEqual(t, decoded.Name, decoded.Branch)
+	assert.NotEqual(t, decoded.WorkspaceID, decoded.Path)
+}
 
 func TestKindVocabulary(t *testing.T) {
 	tests := []struct {
