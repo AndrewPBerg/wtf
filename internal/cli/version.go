@@ -7,7 +7,7 @@ import (
 )
 
 // Version is set at build time via ldflags.
-var Version = "0.7.0"
+var Version = "0.8.0"
 
 func init() {
 	rootCmd.AddCommand(versionCmd)

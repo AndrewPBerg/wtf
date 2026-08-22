@@ -10,6 +10,7 @@ import (
 
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -300,6 +301,18 @@ func TestSwGlobal_NoRepos(t *testing.T) {
 	err := runSwGlobal(cmd, "anything")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no registered repos")
+}
+
+func TestNativeWorktreeRefUsesBackendNativeIdentity(t *testing.T) {
+	gitWorktree := vcs.Worktree{VCS: vcs.KindGit, Branch: "feature", NativeName: "wrong-native"}
+	jjWorktree := vcs.Worktree{VCS: vcs.KindJJ, Branch: "display", NativeName: "repo/feature"}
+	require.Equal(t, "feature", nativeWorktreeRef(gitWorktree))
+	require.Equal(t, "repo/feature", nativeWorktreeRef(jjWorktree))
+}
+
+func TestIdentityJSONOmitsEmptyLegacyFields(t *testing.T) {
+	got := identityJSON(vcs.Worktree{Path: "/tmp/feature", Branch: "feature"})
+	require.Empty(t, got)
 }
 
 func TestIsPRBranch(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/AndrewPBerg/wtf/internal/identity"
 	"github.com/AndrewPBerg/wtf/internal/vcs"
 	"github.com/spf13/cobra"
 )
@@ -77,6 +78,54 @@ See 'wtf init --help' and 'wtf setup --help' for details.`,
 	},
 }
 
+func resolveWorktree(dir, query string, wm vcs.Manager) (vcs.Worktree, error) {
+	wts, err := wm.List(dir)
+	if err != nil {
+		return vcs.Worktree{}, err
+	}
+	wts, err = enrichWorktrees(wm, dir, wts)
+	if err != nil {
+		return vcs.Worktree{}, err
+	}
+	if identity.ValidateID(query) == nil {
+		return vcs.FindWorkspaceByID(wts, query)
+	}
+	found, err := wm.Find(dir, query)
+	if err != nil {
+		return vcs.Worktree{}, err
+	}
+	for _, wt := range wts {
+		if wt.Path == found.Path {
+			return wt, nil
+		}
+	}
+	return found, nil
+}
+
+func nativeWorktreeRef(wt vcs.Worktree) string {
+	if wt.VCS == vcs.KindJJ {
+		return wt.NativeName
+	}
+	return wt.Branch
+}
+
+func identityJSON(wt vcs.Worktree) map[string]string {
+	result := make(map[string]string, 4)
+	if wt.RepositoryID != "" {
+		result["repository_id"] = wt.RepositoryID
+	}
+	if wt.WorkspaceID != "" {
+		result["workspace_id"] = wt.WorkspaceID
+	}
+	if wt.Name != "" {
+		result["name"] = wt.Name
+	}
+	if wt.NativeName != "" {
+		result["native_name"] = wt.NativeName
+	}
+	return result
+}
+
 func runSw(cmd *cobra.Command, query string, wm vcs.Manager) error {
 	dir, err := repoDirFor(wm)
 	if err != nil {
@@ -84,14 +133,13 @@ func runSw(cmd *cobra.Command, query string, wm vcs.Manager) error {
 	}
 
 	cwd, _ := os.Getwd()
-
-	wt, err := wm.Find(dir, query)
+	wt, err := resolveWorktree(dir, query, wm)
 	if err == nil {
 		if jsonOutput {
-			return writeJSON(cmd.OutOrStdout(), map[string]string{
-				"path":   wt.Path,
-				"branch": wt.Branch,
-			})
+			result := identityJSON(wt)
+			result["path"] = wt.Path
+			result["branch"] = wt.Branch
+			return writeJSON(cmd.OutOrStdout(), result)
 		}
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), wt.Path)
 		if cwd != "" && isCurrentWorktree(cwd, wt.Path) {
@@ -99,7 +147,7 @@ func runSw(cmd *cobra.Command, query string, wm vcs.Manager) error {
 			return nil
 		}
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Switched to %s\n", wt.Path)
-		runOnSwitchHooks(cmd, dir, wt.Branch)
+		runOnSwitchHooks(cmd, dir, nativeWorktreeRef(wt))
 		return nil
 	}
 
@@ -151,17 +199,20 @@ func runSwGlobal(cmd *cobra.Command, query string) error {
 		return err
 	}
 
-	matches := findGlobal(cmd, repos, query)
+	matches, findErr := findGlobalStrict(cmd, repos, query)
+	if findErr != nil {
+		return findErr
+	}
 
 	if len(matches) == 1 {
 		m := matches[0]
 		if jsonOutput {
-			return writeJSON(cmd.OutOrStdout(), map[string]string{
-				"path":   m.wt.Path,
-				"branch": m.wt.Branch,
-				"repo":   m.repo,
-				"vcs":    m.mgr.Kind().Label(),
-			})
+			result := identityJSON(m.wt)
+			result["path"] = m.wt.Path
+			result["branch"] = m.wt.Branch
+			result["repo"] = m.repo
+			result["vcs"] = m.mgr.Kind().Label()
+			return writeJSON(cmd.OutOrStdout(), result)
 		}
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), m.wt.Path)
 		cwd, _ := os.Getwd()
@@ -170,7 +221,7 @@ func runSwGlobal(cmd *cobra.Command, query string) error {
 			return nil
 		}
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Switched to %s\n", m.wt.Path)
-		runOnSwitchHooks(cmd, m.repo, m.wt.Branch)
+		runOnSwitchHooks(cmd, m.repo, nativeWorktreeRef(m.wt))
 		return nil
 	}
 
@@ -190,7 +241,11 @@ func runSwGlobal(cmd *cobra.Command, query string) error {
 	_, _ = fmt.Fprintf(stderr, "%s no worktree found matching %s across registered repos\n", redBold("error:"), cyan(query))
 
 	var allBranches []string
-	for _, g := range collectGlobal(cmd, repos) {
+	groups, collectErr := collectGlobalStrict(cmd, repos)
+	if collectErr != nil {
+		return collectErr
+	}
+	for _, g := range groups {
 		for _, w := range g.wts {
 			if w.Branch != "" && !w.IsBare {
 				allBranches = append(allBranches, w.Branch)

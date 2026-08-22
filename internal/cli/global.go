@@ -2,9 +2,11 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/AndrewPBerg/wtf/internal/config"
+	"github.com/AndrewPBerg/wtf/internal/identity"
 	"github.com/AndrewPBerg/wtf/internal/ui"
 	"github.com/AndrewPBerg/wtf/internal/vcs"
 	"github.com/spf13/cobra"
@@ -29,7 +31,7 @@ func (g globalGroup) kind() vcs.Kind { return g.mgr.Kind() }
 // Nothing here prompts: global commands must never stop to ask which backend a
 // repo means, so ambiguity is resolved by listing both and letting each row
 // carry its own kind.
-func collectGlobal(cmd *cobra.Command, repos []string) []globalGroup {
+func collectGlobalStrict(cmd *cobra.Command, repos []string) ([]globalGroup, error) {
 	var groups []globalGroup
 	for _, repo := range repos {
 		mgrs := managersForRepo(repo)
@@ -45,10 +47,14 @@ func collectGlobal(cmd *cobra.Command, repos []string) []globalGroup {
 					yellow("⚠"), cyan(repo), mgr.Kind().Label(), err)
 				continue
 			}
+			wts, err = enrichWorktrees(mgr, repo, wts)
+			if err != nil {
+				return nil, fmt.Errorf("enriching %s (%s): %w", repo, mgr.Kind().Label(), err)
+			}
 			groups = append(groups, globalGroup{repo: repo, mgr: mgr, wts: wts})
 		}
 	}
-	return groups
+	return groups, nil
 }
 
 // loadGlobalRepos returns the registered repos, or an error when none are known.
@@ -77,16 +83,74 @@ func (m globalMatch) label() string {
 }
 
 // findGlobal resolves a query against every repo and backend.
-func findGlobal(cmd *cobra.Command, repos []string, query string) []globalMatch {
+func findGlobalStrict(cmd *cobra.Command, repos []string, query string) ([]globalMatch, error) {
 	var matches []globalMatch
-	for _, g := range collectGlobal(cmd, repos) {
-		wt, err := g.mgr.Find(g.repo, query)
-		if err != nil {
-			continue
-		}
-		matches = append(matches, globalMatch{wt: wt, repo: g.repo, mgr: g.mgr})
+	groups, err := collectGlobalStrict(cmd, repos)
+	if err != nil {
+		return nil, err
 	}
-	return matches
+	for _, g := range groups {
+		var wt vcs.Worktree
+		if identity.ValidateID(query) == nil {
+			wt, err = vcs.FindWorkspaceByID(g.wts, query)
+		} else {
+			var found vcs.Worktree
+			found, err = g.mgr.Find(g.repo, query)
+			if err == nil {
+				matched := false
+				for _, enriched := range g.wts {
+					if enriched.Path == found.Path {
+						wt = enriched
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					err = fmt.Errorf("resolved worktree %q was not present in enriched listing", query)
+				}
+			}
+		}
+		if err == nil {
+			matches = append(matches, globalMatch{wt: wt, repo: g.repo, mgr: g.mgr})
+		}
+	}
+	if len(matches) == 0 && identity.ValidateID(query) == nil {
+		// A UUID can repair a physical-success/tombstone-write-failure even when
+		// both backend listings have lost the checkout.
+		store, storeErr := removalIdentityStoreFactory()
+		if storeErr != nil {
+			return nil, storeErr
+		}
+		workspace, lookupErr := store.LookupWorkspace(query)
+		if lookupErr != nil || workspace.LifecycleState != identity.Active {
+			return matches, nil
+		}
+		canonical, pathErr := identity.CanonicalPhysicalPath(workspace.Path)
+		if pathErr != nil {
+			return nil, pathErr
+		}
+		if _, statErr := os.Lstat(canonical); statErr == nil {
+			return nil, fmt.Errorf("cannot repair workspace %s: physical path %s still exists but no VCS listing can resolve it; repair the VCS registration, then retry", query, canonical)
+		} else if !os.IsNotExist(statErr) {
+			return nil, fmt.Errorf("checking physical path for workspace %s: %w", query, statErr)
+		}
+		for _, repo := range repos {
+			registered, repoErr := store.LookupRepository(repo)
+			if repoErr != nil || registered.ID != workspace.RepositoryID {
+				continue
+			}
+			for _, mgr := range managersForRepo(repo) {
+				if workspace.Backend != string(mgr.Kind()) {
+					continue
+				}
+				matches = append(matches, globalMatch{repo: repo, mgr: mgr, wt: vcs.Worktree{
+					Path: canonical, RepositoryID: workspace.RepositoryID, WorkspaceID: workspace.ID,
+					Name: workspace.Name, NativeName: workspace.NativeName, Branch: workspace.NativeName, VCS: mgr.Kind(),
+				}})
+			}
+		}
+	}
+	return matches, nil
 }
 
 // globalPickerItems flattens groups into picker items, tagging each with its repo

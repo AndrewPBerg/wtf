@@ -4,6 +4,52 @@ All notable changes to WorkTreeForge (wtf) will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08-22
+
+Adds canonical, durable repository and workspace identity as WTF's stable substrate
+for humans, Agent Bridge, and other automation.
+
+### Added
+
+- **Canonical repository/workspace UUIDs** — Persistent lowercase UUIDs survive
+  workspace moves and renames, are never reused, and remain as tombstones after
+  removal.
+- **Globally unique active workspace names** — Canonical names use
+  `<repository>/<workspace>`. JJ uses the canonical name natively; Git branches
+  remain independent forge refs.
+- **Locked atomic identity store** — `~/.wtf/state.json` uses cross-process locking,
+  strict schema validation, atomic durable replacement, corruption fail-closed
+  behavior, and Unix/Windows implementations.
+- **Repository identity markers** — Backend-shared `repository-id` markers reconcile
+  local repository identity with global state and support safe incremental adoption.
+- **Identity-aware JSON and selectors** — Creation, listing, switching, and removal
+  expose `repository_id`, `workspace_id`, `name`, and `native_name`; `sw` and `rm`
+  accept exact workspace UUIDs.
+- **Identity lifecycle** — Workspace creation reserves `pending` identity before VCS
+  mutation, activates after required setup, and records removal/cleanup history with
+  deterministic repair boundaries.
+
+### Changed
+
+- `new`/`news` now create canonical JJ workspace names while preserving Git branch
+  semantics and existing human-facing output fields.
+- Existing legacy workspaces remain listable and are never silently renamed.
+- Removal coordinates physical cleanup, identity tombstones, server shutdown, and
+  port release; UUID retry can finalize state after an interrupted tombstone write.
+
+### Fixed
+
+- CLI tests now unconditionally isolate `WTF_HOME`, preventing test identity data
+  from escaping into user state.
+- Synchronized the forge cache test mock so the complete race suite is clean.
+
+### Notes
+
+- Agent Bridge owns WorkUnits and orchestration; WTF stores only deterministic local
+  repository/workspace identity and lifecycle.
+- `.wtf.toml`, richer named resources, database hooks, gather orchestration, and
+  Charm UI removal remain deferred.
+
 ## [0.7.0] — 2026-08-22
 
 Makes JJ workspaces first-class in Zed while keeping JJ authoritative, and lays the

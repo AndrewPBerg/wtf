@@ -460,13 +460,6 @@ func TestRmGlobal_MultipleMatches_InvalidSelection(t *testing.T) {
 	assert.Contains(t, stderr.String(), "invalid selection")
 }
 
-func TestRunOnRemoveHooks_NoOp(t *testing.T) {
-	cmd := rmCmd
-	cmd.SetErr(new(bytes.Buffer))
-	// Should be a no-op — no config file system anymore
-	runOnRemoveHooks(cmd, git.NewWorktreeManager(&git.RealExecutor{}), t.TempDir(), "feature")
-}
-
 func TestFriendlyError(t *testing.T) {
 	tests := []struct {
 		name string

@@ -176,12 +176,22 @@ workspace-lifecycle operations.
 - [ ] Detect or clearly explain stale editor baselines
 - [ ] Add an explicit `wtf open` only if opening workspaces remains repeated friction
 
-## v0.8.0 — Declarative Isolation and Resources
+## v0.8.0 — Canonical Workspace Identity
 
-**Status:** planned
+**Status:** released 2026-08-22; declarative resource follow-ups remain planned
 
-**Goal:** make choosing an isolated workspace one deliberate action rather than a
-series of environment and service decisions.
+**Goal:** provide strict, durable repository/workspace identity that humans and
+Agent Bridge can use without coupling WTF to WorkUnits or orchestration.
+
+- [x] Add canonical repository/workspace UUIDs that are never reused
+- [x] Enforce globally unique active names and canonical JJ native names
+- [x] Persist locked, atomic, corruption-checked identity state
+- [x] Add repository markers and safe legacy adoption boundaries
+- [x] Add identity-aware creation, listing, switching, removal, and JSON
+- [x] Add exact workspace UUID selectors
+- [x] Make the complete Go race suite clean
+
+### Declarative isolation and resource follow-ups
 
 - [ ] Specify the minimum versioned `.wtf.toml` manifest
 - [ ] Add project-level configuration for disabling the otherwise default-on Zed

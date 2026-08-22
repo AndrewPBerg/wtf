@@ -77,22 +77,22 @@ func readState(path string) (State, error) {
 // Load strictly reads the complete state. It never writes or repairs it.
 func (s *Store) Load() (State, error) { return readState(s.statePath) }
 
-// LookupRepository finds one repository by UUID, canonical locator, or the
-// final path component of its locator. Names and paths must be unambiguous.
+// LookupRepository finds one repository by UUID or canonical locator.
 func (s *Store) LookupRepository(query string) (Repository, error) {
 	state, err := s.Load()
 	if err != nil {
 		return Repository{}, err
 	}
-	for _, r := range state.Repositories {
-		if r.ID == query {
-			return r, nil
+	for _, repo := range state.Repositories {
+		if repo.ID == query {
+			return repo, nil
 		}
 	}
+	canonical, pathErr := canonicalPath(query, "repository locator")
 	var found []Repository
-	for _, r := range state.Repositories {
-		if r.LifecycleState == Active && (r.Locator == query || filepath.Base(r.Locator) == query) {
-			found = append(found, r)
+	for _, repo := range state.Repositories {
+		if repo.LifecycleState == Active && pathErr == nil && repo.Locator == canonical {
+			found = append(found, repo)
 		}
 	}
 	if len(found) == 0 {
@@ -102,6 +102,11 @@ func (s *Store) LookupRepository(query string) (Repository, error) {
 		return Repository{}, fmt.Errorf("repository %q is ambiguous", query)
 	}
 	return found[0], nil
+}
+
+// FindRepository is the query-oriented alias for LookupRepository.
+func (s *Store) FindRepository(query string) (Repository, error) {
+	return s.LookupRepository(query)
 }
 
 // LookupWorkspace finds one workspace by UUID, canonical name, or path.
@@ -134,12 +139,7 @@ func (s *Store) LookupWorkspace(query string) (Workspace, error) {
 	return found[0], nil
 }
 
-// FindRepository and FindWorkspace are explicit aliases for callers that
-// prefer query terminology.
-// FindRepository finds a repository using the same selectors as LookupRepository.
-func (s *Store) FindRepository(query string) (Repository, error) { return s.LookupRepository(query) }
-
-// FindWorkspace finds a workspace using the same selectors as LookupWorkspace.
+// FindWorkspace is an explicit alias for callers that prefer query terminology.
 func (s *Store) FindWorkspace(query string) (Workspace, error) { return s.LookupWorkspace(query) }
 
 func now() string { return time.Now().UTC().Format(time.RFC3339Nano) }
