@@ -722,3 +722,14 @@ func TestFetchRefspecErrors(t *testing.T) {
 	repo := newTestRepoWithRemote(t, false)
 	assert.Error(t, m.FetchRefspec(repo, "origin", "no-such-branch:no-such-branch"))
 }
+
+func TestCurrentOperationIDIsReadOnly(t *testing.T) {
+	root := newTestRepo(t)
+	manager := NewWorkspaceManager(&RealExecutor{})
+	before := runJJ(t, root, "operation", "log", "--no-graph", "-n", "1", "-T", `id`)
+	got, err := manager.CurrentOperationID(root)
+	require.NoError(t, err)
+	assert.Equal(t, before, got)
+	after := runJJ(t, root, "operation", "log", "--no-graph", "-n", "1", "-T", `id`)
+	assert.Equal(t, before, after)
+}

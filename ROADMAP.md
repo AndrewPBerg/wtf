@@ -206,28 +206,32 @@ Agent Bridge can use without coupling WTF to WorkUnits or orchestration.
 - [ ] Keep failed cleanup as visible, repairable debt
 - [ ] Reconsider SQLite only after JSON concurrency or recovery fails in practice
 
-## v0.9.0 — Deterministic JJ Graph Substrate
+## v0.9.0 — Structured JJ Workspace Substrate
 
-**Status:** planned
+**Status:** released 2026-08-22
 
-**Goal:** expose safe physical workspace and JJ graph primitives without owning
-WorkUnits, participants, integration policy, verification order, or orchestration.
-Agent Bridge remains the integration specialist and supplies the exact canonical
-workspace IDs and requested operation.
+**Goal:** make WTF an independently usable physical-isolation actuator. Agent
+Bridge decides WorkUnits, peer ownership, semantic JJ change shaping, integration,
+verification, and orchestration; JJ owns graph semantics. WTF exposes stable,
+structured inspection and safe workspace removal without becoming an integration
+engine.
 
-- [ ] Resolve canonical workspace IDs to current JJ workspace/change identities
-- [ ] Expose read-only graph planning with complete source/target preconditions
-- [ ] Apply a previously returned plan only when those identities remain unchanged
-- [ ] Support rebase, multi-parent integration, and publication as explicit physical
-      operations rather than semantic WorkUnit decisions
-- [ ] Keep fetch, graph mutation, bookmark creation, push, verification, and cleanup
-      as separate boundaries
-- [ ] Return conflicts, resulting change IDs, recovery evidence, and bounded output
-      through stable `--json`
-- [ ] Resolve the Git-shadow limitation for multi-parent working copies explicitly
+- [x] Provide stable structured workspace inspection/listing through `--json`
+- [x] Distinguish persistent WTF repository/workspace UUIDs from current physical
+      paths, JJ workspace/change/bookmark identities, and Git-shadow state
+- [x] Document the ID-domain mapping: WTF's persistent random workspace UUIDs are
+      not Agent Bridge's deterministic scope UUIDs and must never be conflated
+- [x] Provide deterministic destructive-removal planning and apply
+- [x] Fail closed when removal preconditions or planned physical/JJ identities have
+      changed
+- [ ] Report incomplete cleanup as visible, repairable debt (deferred to v0.10)
+- [x] Keep JJ graph operations, semantic change shaping, publication, verification,
+      and orchestration outside WTF
+- [ ] Keep the Git shadow explicitly presentation-only and report stale or missing
+      shadow state in structured results (deferred to v0.10)
 
-Every mutating operation starts with a deterministic plan and fails if graph
-assumptions change before apply.
+`integrate --source/--target` graph gathering is deferred. WTF does not promise to
+own rebase, multi-parent integration, bookmark creation, push, or publication.
 
 ## v0.10.0 — Stable Integration API
 
@@ -247,6 +251,6 @@ consume without introducing a reverse dependency on those systems.
 ## Dogfood gate
 
 For each milestone, record real workspace creation steps, manual repairs, Zed
-friction, resource conflicts, gather/discard outcomes, and cleanup debt. Do not add a
+friction, resource conflicts, keep/remove outcomes, and cleanup debt. Do not add a
 new orchestration layer merely because it is possible; require repeated friction or
 a concrete safety failure.

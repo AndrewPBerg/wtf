@@ -12,7 +12,7 @@ wtf version
 
 ```bash
 $ wtf version
-wtf version 0.8.0
+wtf version 0.9.0
 ```
 
 ## Build-time Version

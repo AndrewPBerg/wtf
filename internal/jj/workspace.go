@@ -37,6 +37,17 @@ func NewWorkspaceManager(executor Executor) *WorkspaceManager {
 // Kind reports that this manager drives jj.
 func (m *WorkspaceManager) Kind() vcs.Kind { return vcs.KindJJ }
 
+// CurrentOperationID returns the most recent jj operation identity without
+// mutating the working copy. It is intentionally a small inspection capability
+// rather than part of vcs.Manager's mutation-oriented interface.
+func (m *WorkspaceManager) CurrentOperationID(dir string) (string, error) {
+	out, err := m.executor.Run(dir, "operation", "log", "--ignore-working-copy", "--no-graph", "-n", "1", "-T", `id ++ "\n"`)
+	if err != nil {
+		return "", fmt.Errorf("reading current jj operation: %w", err)
+	}
+	return strings.TrimSpace(out), nil
+}
+
 // List returns every workspace in the repo, main first then alphabetical.
 //
 // --ignore-working-copy keeps listing side-effect free: without it jj snapshots

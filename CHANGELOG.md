@@ -4,6 +4,28 @@ All notable changes to WorkTreeForge (wtf) will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-08-22
+
+### Added
+
+- **Read-only workspace inspection** — `wtf workspace inspect` and `wtf workspace
+  list` expose durable workspace identity separately from current physical/JJ state,
+  including JJ operation identity and Git-diff shadow status where available.
+- **Workspace cleanup plans** — `wtf cleanup plan` emits an identity-bound JSON
+  artifact; `wtf cleanup apply` requires that unchanged artifact before performing
+  the existing server, VCS, port, and identity cleanup lifecycle. Existing `wtf rm`
+  behavior is unchanged.
+
+### Changed
+
+- Refined the v0.9 boundary: WTF provides stable structured workspace/JJ/shadow
+  inspection and deterministic fail-closed removal planning/apply. Agent Bridge
+  owns WorkUnits, scope ownership, semantic change shaping, integration,
+  verification, and orchestration; WTF does not own
+  `integrate --source/--target`, rebase, multi-parent integration, or publication.
+- Documented that persistent random WTF workspace UUIDs and deterministic Agent
+  Bridge scope UUIDs are separate ID domains and require an explicit mapping.
+
 ## [0.8.0] — 2026-08-22
 
 Adds canonical, durable repository and workspace identity as WTF's stable substrate

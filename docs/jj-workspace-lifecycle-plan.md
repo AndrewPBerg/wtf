@@ -1,10 +1,11 @@
 # JJ-native workspace lifecycle plan
 
-> **Status:** exploratory design for dogfooding; not a committed CLI contract.
+> **Status:** exploratory design for dogfooding; v0.9 direction, not a committed CLI
+> contract.
 >
-> This document is intentionally broader than one command. It describes how WTF
-> could make isolated jj workspaces feel cheap in a Zed-first development workflow,
-> then provide safe higher-level operations for keeping or discarding their work.
+> WTF is an independently usable physical-isolation actuator/substrate. Agent Bridge
+> owns WorkUnits, peer ownership, semantic JJ change shaping, integration,
+> verification, and orchestration; JJ owns graph semantics.
 
 ## North star
 
@@ -23,10 +24,11 @@ Is this separate work?
 Afterward, its lifecycle should be:
 
 ```text
-Create -> Work -> Gather or Discard -> Verify -> Clean up
+Create -> Work -> Inspect -> Remove (plan -> apply) -> Repair cleanup debt
 ```
 
-WTF owns workspace and resource lifecycle. jj remains authoritative for changes.
+WTF owns physical workspace and resource lifecycle. JJ remains authoritative for
+changes and graph semantics; WTF does not decide how changes are shaped or joined.
 Zed remains the primary editor. Git exists at the forge boundary and as a
 read-only compatibility surface for Zed, not as the local workflow model.
 
@@ -43,10 +45,14 @@ read-only compatibility surface for Zed, not as the local workflow model.
 5. **Safe automation boundaries.** Planning, mutation, verification, and cleanup
    are distinct. Destructive cleanup is never implied by a successful rewrite.
 6. **CLI is the durable interface.** Pi and other agents should call structured
-   WTF operations rather than reconstructing sequences of `jj` commands.
-7. **No secrets in project configuration or output.** Configuration may name
+   WTF operations rather than reconstructing physical workspace sequences.
+7. **Identity domains stay explicit.** WTF persistent random UUIDs identify local
+   repository/workspace records. Agent Bridge deterministic scope UUIDs identify
+   its orchestration scopes; a mapping supplied by the caller must not be treated
+   as equality.
+8. **No secrets in project configuration or output.** Configuration may name
    env files and variables, but must not contain or print their values.
-8. **Observed friction drives scope.** Dogfood each layer before adding the next.
+9. **Observed friction drives scope.** Dogfood each layer before adding the next.
 
 ## Scope
 
@@ -57,7 +63,8 @@ This plan covers:
 - env-file symlink and copy policies
 - stable allocation and cleanup of named ports
 - isolated databases and other project-defined resources
-- a higher-level `gather` operation for keeping workspace work
+- structured workspace inspection and listing
+- deterministic, destructive workspace removal with visible cleanup debt
 - safe agent use through Pi and Agent Bridge
 
 It does not initially cover:
@@ -107,7 +114,7 @@ performs the project's declared setup as one operation:
 - optionally open the directory in Zed
 
 A spike is an isolated workspace with disposable intent, not necessarily a third
-provisioning mode. The decision to gather or discard it comes later.
+provisioning mode. The decision to keep or remove it comes later.
 
 Possible CLI shape, subject to dogfooding:
 
@@ -131,8 +138,8 @@ is the preferred workaround:
 - WTF marks it so repository detection still chooses jj
 - Zed's Git UI is treated as a read-only diff viewer
 
-WTF should refresh this metadata automatically after graph mutations performed by
-WTF, including a successful gather. It cannot intercept arbitrary `jj` commands,
+WTF may refresh this metadata after supported physical operations. It cannot
+intercept arbitrary `jj` commands,
 so `wtf git-diff` remains the explicit repair/refresh operation. Status output may
 later detect and explain a stale editor baseline.
 
@@ -292,74 +299,50 @@ Database deletion must be explicit and must verify that the target identifier is
 owned by the workspace being removed. A failed drop leaves a visible cleanup debt;
 it must not silently release the registry entry and orphan the database.
 
-## Deterministic JJ graph substrate
+## Structured inspection and physical removal
 
-WTF should not own semantic gathering or WorkUnit orchestration. Agent Bridge decides
-which canonical workspace IDs belong together, coordinates participants and
-checkpoints, chooses integration policy, and orders verification and cleanup.
+The v0.9 automation contract is inspection plus removal, not graph gathering.
+Structured results must keep these identities visibly separate:
 
-WTF exposes deterministic physical graph primitives that remain manually usable:
+- **WTF identity:** persistent random repository/workspace UUIDs, retained as
+  tombstones and never reused;
+- **physical identity:** current workspace path and filesystem state;
+- **JJ identity:** current workspace name, change ID, bookmarks, and relevant
+  operation identity; and
+- **shadow state:** whether the presentation-only Git shadow is present, stale,
+  missing, or unsupported.
+
+WTF workspace UUIDs are not Agent Bridge scope UUIDs. Agent Bridge may maintain a
+mapping from a deterministic scope UUID to one or more WTF workspace UUIDs, but WTF
+must not infer or persist that semantic relationship as ownership.
+
+Removal is a destructive physical operation and always has two explicit stages:
 
 ```bash
-wtf integrate plan --source <workspace-id> --source <workspace-id> --target <workspace-id> --json
-wtf integrate apply --plan <plan-id> --json
+wtf cleanup plan <workspace-id> --json > cleanup-plan.json
+wtf cleanup apply cleanup-plan.json --json
 ```
 
-Names may remain an unambiguous human convenience, but automation uses canonical
-workspace IDs. Rebase, squash, multi-parent integration, bookmark creation, push,
-verification, and cleanup remain explicit separate boundaries.
+The plan records the selected WTF UUID, current path, JJ workspace/change identity,
+resource leases, and cleanup actions. Apply fails closed if the plan is missing,
+expired, malformed, or any relevant physical/JJ identity has changed. It reports
+what was removed, what was preserved for recovery, and any cleanup debt. Failed
+resource drops, untracked files, prunable registrations, or shadow cleanup remain
+visible and repairable; successful graph operations never imply successful cleanup.
 
-### Graph planning
-
-The first implementation should be read-only. Given exact canonical workspace IDs,
-it resolves current JJ identities and reports:
-
-- source and destination workspace/change identities
-- source change ranges or stacks
-- proposed physical graph transformation
-- additional descendants or conflicts
-- expected Zed Git-diff refresh
-- resources that would remain or become eligible for cleanup
-
-The plan must be machine-readable and usable as the input to a later apply step.
-Apply should fail if relevant identities or graph assumptions changed after planning.
-
-### Graph apply
-
-A mutating graph operation should:
-
-1. resolve and validate the saved plan;
-2. reject changed workspace/change identities;
-3. record the current JJ operation ID;
-4. perform exactly the documented graph transformation;
-5. surface conflicts without pretending the operation completed cleanly;
-6. refresh Zed Git-diff metadata when a supported baseline exists; and
-7. report exact resulting change IDs and recovery evidence.
-
-WTF does not inspect agent activity, declare Agent Bridge checkpoints, choose
-verification policy, or automatically clean source workspaces. Agent Bridge owns
-those decisions and calls each WTF boundary explicitly.
-
-### Discard
-
-Discarding change history and removing workspace resources are also separate actions.
-WTF should make both easy but never conflate them:
-
-```text
-abandon source changes -> verify graph -> remove workspace -> drop resources
-```
-
-JJ's operation log provides recovery for graph mutations. It does not recover a
-dropped database or deleted untracked workspace files, so cleanup needs a stronger
-confirmation boundary than abandon/rewrite operations.
+WTF may inspect JJ graph state and report it, but does not choose rebase, squash,
+merge, multi-parent shaping, publication, bookmark creation, or verification. The
+caller owns those semantic decisions and invokes JJ or a future explicit boundary.
+`integrate --source/--target` and its graph-gather abstraction are deferred.
 
 ## Pi and Agent Bridge boundary
 
 WTF remains independently useful from a human-operated terminal. The dependency is
 one-way: Agent Bridge and thin harness adapters call WTF; WTF never calls them.
 
-WTF owns canonical workspace identity, filesystem/VCS/resource correctness, and
-stable structured results. Agent Bridge stores WorkUnit-to-workspace relationships
+WTF owns canonical local identity, filesystem/VCS/resource correctness, physical
+inspection/removal, and stable structured results. Agent Bridge stores
+WorkUnit-to-workspace relationships
 and owns participants, Herdr/Pi/Codex coordination, Linear integration, Zed and
 Watchman observation, provenance, collisions, checkpoints, integration policy,
 verification ordering, and cleanup authorization.
@@ -385,7 +368,7 @@ expanding scope.
 ### Phase 1: Zed shadow hardening
 
 - use the experimental Git-diff shadow on real jj workspaces
-- record stale-baseline and unsafe-Zed-action friction
+- record stale-baseline and unsafe-Zed-action friction in structured inspection
 - decide whether manual `wtf git-diff` is sufficient
 - do not add a deeper Zed integration without repeated evidence
 
@@ -422,27 +405,17 @@ user to remember or manually negotiate ports.
 **Exit evidence:** choosing isolation provisions a usable database without additional
 mental bookkeeping.
 
-### Phase 5: graph planning
+### Phase 5: structured inspection and removal
 
-- implement only deterministic plan output through `--json`
-- accept canonical workspace IDs selected by the caller
-- test single changes, stacks, conflicts, and stale identities
-- compare the explanation with the low-level JJ commands an expert would choose
+- expose stable JSON for WTF, physical, JJ, and shadow identities/state
+- generate deterministic removal plans from exact workspace IDs
+- fail closed on changed preconditions
+- retain and surface cleanup debt for repair
 
-**Exit evidence:** the plan is predictable enough that the user trusts it before
-seeing the underlying commands.
+**Exit evidence:** a human or external integrator can inspect a workspace and safely
+remove it without guessing what physical or JJ state remains.
 
-### Phase 6: graph apply
-
-- apply one explicit physical transformation at a time
-- make graph preconditions and recovery explicit
-- refresh Zed metadata automatically when supported
-- keep publication, verification, and cleanup separate
-
-**Exit evidence:** an external integrator can apply a predictable JJ operation and
-receive enough structured evidence to coordinate verification and recovery.
-
-### Phase 7: stable integration API
+### Phase 6: stable integration API
 
 - expose already-proven WTF operations through stable JSON
 - return canonical repository/workspace IDs everywhere
@@ -465,7 +438,7 @@ creation steps and elapsed time:
 manual repairs:
 ports/database conflicts:
 Zed friction:
-gather/discard outcome:
+keep/remove outcome:
 cleanup debt:
 candidate improvement:
 ```
@@ -481,8 +454,8 @@ The direction is working when:
 - Zed provides useful diffs without becoming the VCS authority
 - env, ports, and database state require no memorized manual coordination
 - `wtf resources` can explain what each workspace owns
-- graph plans are understandable before mutation and reproducible through JSON
-- cleanup either completes or leaves actionable, visible debt
+- workspace inspection is unambiguous through JSON
+- removal either completes or leaves actionable, visible debt
 - agents use the same high-level operations and safety boundaries as humans
 - the default workspace remains simple for work that does not need isolation
 
@@ -495,7 +468,7 @@ The direction is working when:
    frameworks?
 4. Should editor opening be part of `new`, a flag, or a separate `open` command?
 5. Does the Git-diff shadow need stale-baseline detection before broader dogfooding?
-6. Which physical JJ graph transformations belong in WTF's stable substrate API?
+6. What JJ identities and shadow states must structured inspection expose?
 7. How should canonical workspace UUIDs be generated, persisted, tombstoned, and
    migrated for existing workspaces?
 8. How should globally unique active workspace names be allocated and renamed?
