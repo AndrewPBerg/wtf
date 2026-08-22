@@ -84,11 +84,12 @@ func parseWorkspaceList(output, mainRoot string) []vcs.Worktree {
 			VCS:      vcs.KindJJ,
 		}
 
-		// A workspace whose directory was deleted still appears in the listing,
-		// but self.root() renders as "<Error: ...>" because jj cannot resolve it.
-		// That is exactly wtf's notion of prunable. The path is unrecoverable,
-		// but `jj workspace forget <name>` still cleans up the registration.
-		if strings.HasPrefix(wt.Path, "<Error:") {
+		// A workspace whose directory was deleted still appears in the listing.
+		// Depending on jj's version, self.root() renders either an error or an
+		// empty path when it cannot resolve the directory. That is exactly wtf's
+		// notion of prunable: the path is unrecoverable, but `jj workspace forget
+		// <name>` still cleans up the registration.
+		if wt.Path == "" || strings.HasPrefix(wt.Path, "<Error:") {
 			wt.Path = ""
 			wt.Prunable = true
 		}
