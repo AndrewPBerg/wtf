@@ -157,15 +157,28 @@ func runCleanupApply(cmd *cobra.Command, artifact string) error {
 	if err != nil {
 		return fmt.Errorf("checking cleanup preconditions: %w", err)
 	}
-	if !reflect.DeepEqual(workspace, p.Workspace) {
-		return fmt.Errorf("cleanup plan %s is stale: workspace identity changed", p.PlanID)
-	}
 	repo, err := store.LookupRepository(p.Repository.ID)
 	if err != nil || !reflect.DeepEqual(repo, p.Repository) {
 		return fmt.Errorf("cleanup plan %s is stale: repository identity changed", p.PlanID)
 	}
 	if repo.LifecycleState != identity.Active {
 		return fmt.Errorf("cleanup plan %s is stale: repository is no longer active", p.PlanID)
+	}
+	if workspace.LifecycleState != identity.Removed && !reflect.DeepEqual(workspace, p.Workspace) {
+		return fmt.Errorf("cleanup plan %s is stale: workspace identity changed", p.PlanID)
+	}
+	// A valid plan whose identity is now a removed tombstone was already applied.
+	// Treat this as an idempotent success, but only when immutable identity fields
+	// still match the plan; altered plans were rejected above by readCleanupPlan.
+	if workspace.LifecycleState == identity.Removed {
+		if workspace.RepositoryID != p.Workspace.RepositoryID || workspace.Name != p.Workspace.Name || workspace.Backend != p.Workspace.Backend || workspace.NativeName != p.Workspace.NativeName || workspace.Path != p.Workspace.Path {
+			return fmt.Errorf("cleanup plan %s is stale: removed workspace identity changed", p.PlanID)
+		}
+		if jsonOutput {
+			return writeJSON(cmd.OutOrStdout(), map[string]any{"version": 1, "plan_id": p.PlanID, "workspace_id": p.Workspace.ID, "applied": true, "noop": true})
+		}
+		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Workspace %s was already removed\n", p.Workspace.ID)
+		return err
 	}
 
 	kind, err := vcs.ParseKind(workspace.Backend)
@@ -210,7 +223,7 @@ func runCleanupApply(cmd *cobra.Command, artifact string) error {
 		return fmt.Errorf("applying cleanup plan %s: %w", p.PlanID, err)
 	}
 	if jsonOutput {
-		return writeJSON(cmd.OutOrStdout(), map[string]any{"applied": p.PlanID, "workspace_id": p.Workspace.ID})
+		return writeJSON(cmd.OutOrStdout(), map[string]any{"version": 1, "plan_id": p.PlanID, "applied": true, "noop": false, "workspace_id": p.Workspace.ID})
 	}
 	_, err = fmt.Fprintf(cmd.OutOrStdout(), "Removed workspace %s\n", p.Workspace.ID)
 	return err

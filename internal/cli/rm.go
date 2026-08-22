@@ -67,6 +67,7 @@ var rmCmd = &cobra.Command{
 			Name         string `json:"name,omitempty"`
 			NativeName   string `json:"native_name,omitempty"`
 			Error        string `json:"error,omitempty"`
+			Noop         bool   `json:"noop,omitempty"`
 		}
 		var results []rmResult
 		var errs []error
@@ -84,11 +85,19 @@ var rmCmd = &cobra.Command{
 					results = append(results, rmResult{Branch: branch, RepositoryID: wt.RepositoryID, WorkspaceID: wt.WorkspaceID, Name: wt.Name, NativeName: wt.NativeName, Error: err.Error()})
 				}
 			} else if jsonOutput {
-				results = append(results, rmResult{Branch: branch, RepositoryID: wt.RepositoryID, WorkspaceID: wt.WorkspaceID, Name: wt.Name, NativeName: wt.NativeName})
+				result := rmResult{Branch: branch, RepositoryID: wt.RepositoryID, WorkspaceID: wt.WorkspaceID, Name: wt.Name, NativeName: wt.NativeName}
+				if wt.WorkspaceID != "" {
+					if store, storeErr := removalIdentityStoreFactory(); storeErr == nil {
+						if workspace, lookupErr := store.LookupWorkspace(wt.WorkspaceID); lookupErr == nil {
+							result.Noop = workspace.LifecycleState == identity.Removed
+						}
+					}
+				}
+				results = append(results, result)
 			}
 		}
 		if jsonOutput {
-			return writeJSON(cmd.OutOrStdout(), map[string]any{"removed": results})
+			return writeJSON(cmd.OutOrStdout(), map[string]any{"version": 1, "removed": results})
 		}
 		if len(errs) == 1 {
 			return errs[0]
@@ -104,6 +113,8 @@ type removalIdentityStore interface {
 	LookupWorkspace(string) (identity.Workspace, error)
 	LookupRepository(string) (identity.Repository, error)
 	RemoveWorkspace(string) (identity.Workspace, error)
+	MarkCleanupFailed(string) (identity.Workspace, error)
+	FinalizeCleanup(string) (identity.Workspace, error)
 }
 
 var removalIdentityStoreFactory = func() (removalIdentityStore, error) {
@@ -126,6 +137,17 @@ func runRm(cmd *cobra.Command, branch string, wm vcs.Manager) error {
 		return err
 	}
 	ref := nativeWorktreeRef(wt)
+
+	// UUID retries after successful cleanup are durable, structured no-ops. Do
+	// not consult or mutate VCS state for a removed tombstone.
+	if jsonOutput && wt.WorkspaceID != "" {
+		store, storeErr := removalIdentityStoreFactory()
+		if storeErr == nil {
+			if workspace, lookupErr := store.LookupWorkspace(wt.WorkspaceID); lookupErr == nil && workspace.LifecycleState == identity.Removed {
+				return nil
+			}
+		}
+	}
 
 	if err := removePhysicalAndIdentity(cmd, wm, dir, ref, cwd, wt); err != nil {
 		return err
@@ -215,10 +237,24 @@ func removePhysicalAndIdentity(cmd *cobra.Command, wm vcs.Manager, repoDir, ref,
 	if wt.WorkspaceID != "" {
 		store, err := removalIdentityStoreFactory()
 		if err != nil {
-			return fmt.Errorf("physically removed %s, but identity tombstone failed for workspace %s; repair identity state before retrying: %w", ref, wt.WorkspaceID, err)
+			return fmt.Errorf("physically removed %s, but identity cleanup failed for workspace %s; repair identity state before retrying: %w", ref, wt.WorkspaceID, err)
 		}
-		if _, err := store.RemoveWorkspace(wt.WorkspaceID); err != nil {
-			return fmt.Errorf("physically removed %s, but identity tombstone failed for workspace %s; repair identity state before retrying: %w", ref, wt.WorkspaceID, err)
+		workspace, lookupErr := store.LookupWorkspace(wt.WorkspaceID)
+		if lookupErr != nil {
+			return fmt.Errorf("physically removed %s, but identity cleanup failed for workspace %s; repair identity state before retrying: %w", ref, wt.WorkspaceID, lookupErr)
+		}
+		var finalizeErr error
+		if workspace.LifecycleState == identity.CleanupFailed {
+			_, finalizeErr = store.FinalizeCleanup(wt.WorkspaceID)
+		} else {
+			_, finalizeErr = store.RemoveWorkspace(wt.WorkspaceID)
+		}
+		if finalizeErr != nil {
+			failed, markErr := store.MarkCleanupFailed(wt.WorkspaceID)
+			if markErr != nil {
+				return fmt.Errorf("physically removed %s, but identity cleanup failed for workspace %s and could not record cleanup_failed: %w (recording failure: %v)", ref, wt.WorkspaceID, finalizeErr, markErr)
+			}
+			return fmt.Errorf("physically removed %s, identity is cleanup_failed for workspace %s: %w", ref, failed.ID, finalizeErr)
 		}
 	}
 	alloc, err := portAllocator(wm, repoDir)
@@ -339,7 +375,7 @@ func runRmGlobal(cmd *cobra.Command, branches []string) error {
 	}
 
 	if jsonOutput {
-		return writeJSON(cmd.OutOrStdout(), map[string]any{"removed": jsonResults})
+		return writeJSON(cmd.OutOrStdout(), map[string]any{"version": 1, "removed": jsonResults})
 	}
 
 	if len(errs) == 1 {

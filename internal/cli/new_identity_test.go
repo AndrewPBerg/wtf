@@ -47,6 +47,7 @@ func (m *identityTestManager) InitGitDiff(string) error                 { return
 
 type identityTestLifecycle struct {
 	pending                                        identity.Workspace
+	existing                                       identity.Workspace
 	createErr                                      error
 	activateCalls, removeCalls, cleanupFailedCalls int
 	removeErr                                      error
@@ -58,6 +59,12 @@ func (l *identityTestLifecycle) CreateWorkspace(repo, name, backend, native, pat
 	}
 	l.pending = identity.Workspace{ID: "11111111-1111-4111-8111-111111111111", RepositoryID: repo, Name: name, Backend: backend, NativeName: native, Path: path, LifecycleState: identity.Pending}
 	return l.pending, nil
+}
+func (l *identityTestLifecycle) LookupWorkspace(string) (identity.Workspace, error) {
+	if l.existing.ID != "" {
+		return l.existing, nil
+	}
+	return identity.Workspace{}, errors.New("not found")
 }
 func (l *identityTestLifecycle) ActivateWorkspace(string) (identity.Workspace, error) {
 	l.activateCalls++
@@ -158,6 +165,20 @@ func TestCreateIdentityWorkspaceRejectsDuplicateBeforeAdd(t *testing.T) {
 	require.Error(t, err)
 	assert.Zero(t, m.addCalls)
 }
+func TestCreateIdentityWorkspaceEnsureIsIdempotent(t *testing.T) {
+	mainPath := t.TempDir()
+	predicted := vcs.WorktreePath(mainPath, "feature")
+	existing := identity.Workspace{ID: "11111111-1111-4111-8111-111111111111", RepositoryID: "22222222-2222-4222-8222-222222222222", Name: "tmp/feature", Backend: "git", NativeName: "feature", Path: predicted, LifecycleState: identity.Active}
+	l := &identityTestLifecycle{existing: existing}
+	withIdentityFakes(t, l)
+	m := &identityTestManager{kind: vcs.KindGit, mainPath: mainPath}
+	created, err := createIdentityWorkspaceWithEnsure(identityTestCmd(), m, nil, mainPath, "feature", "main", true)
+	require.NoError(t, err)
+	assert.Equal(t, existing.ID, created.Workspace.ID)
+	assert.Zero(t, m.addCalls)
+	assert.Zero(t, l.activateCalls)
+}
+
 func TestCreateIdentityWorkspaceActivatesExactlyOnce(t *testing.T) {
 	l := &identityTestLifecycle{}
 	withIdentityFakes(t, l)

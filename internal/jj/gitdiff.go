@@ -118,6 +118,16 @@ type gitDiffBase struct {
 	root   bool
 }
 
+// GitDiffBaseCommit returns the single JJ parent used as the Git shadow baseline.
+// An empty commit represents JJ's virtual root.
+func (m *WorkspaceManager) GitDiffBaseCommit(workspacePath string) (string, error) {
+	base, err := m.gitDiffBase(workspacePath)
+	if err != nil {
+		return "", err
+	}
+	return base.commit, nil
+}
+
 func (m *WorkspaceManager) gitDiffBase(workspacePath string) (gitDiffBase, error) {
 	out, err := m.executor.Run(workspacePath, "log", "--ignore-working-copy", "--no-graph",
 		"-r", "@-", "-T", `if(root, "root", commit_id) ++ "\n"`)

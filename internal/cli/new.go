@@ -28,6 +28,7 @@ var (
 	newNoInstall  bool
 	newNoServe    bool
 	newNoGitDiff  bool
+	newEnsure     bool
 )
 
 func init() {
@@ -40,6 +41,7 @@ func init() {
 	newCmd.Flags().BoolVar(&newNoInstall, "no-install", false, "Skip package manager install")
 	newCmd.Flags().BoolVar(&newNoServe, "no-serve", false, "Skip starting dev server")
 	newCmd.Flags().BoolVar(&newNoGitDiff, "no-git-diff", false, "Skip Git metadata for editor diff views in jj workspaces")
+	newCmd.Flags().BoolVar(&newEnsure, "ensure", false, "Ensure the requested workspace exists without repeating creation or setup")
 	newCmd.MarkFlagsMutuallyExclusive("branch", "pr")
 	newCmd.MarkFlagsMutuallyExclusive("no-env", "copy-env")
 
@@ -146,7 +148,7 @@ func dispatchNew(cmd *cobra.Command, args []string, base, branchFlag, prFlag str
 }
 
 func createdJSON(created createdWorkspace, branch string) map[string]any {
-	return map[string]any{"path": created.Path, "branch": branch, "repository_id": created.Workspace.RepositoryID, "workspace_id": created.Workspace.ID, "name": created.Workspace.Name, "native_name": created.Workspace.NativeName}
+	return map[string]any{"version": 1, "path": created.Path, "branch": branch, "repository_id": created.Workspace.RepositoryID, "workspace_id": created.Workspace.ID, "name": created.Workspace.Name, "native_name": created.Workspace.NativeName}
 }
 
 func runNew(cmd *cobra.Command, branch, base string, wm vcs.Manager, runner *setup.Runner, switchMode bool) error {
@@ -159,7 +161,7 @@ func runNew(cmd *cobra.Command, branch, base string, wm vcs.Manager, runner *set
 		return err
 	}
 
-	created, err := createIdentityWorkspace(cmd, wm, runner, dir, branch, base)
+	created, err := createIdentityWorkspaceWithEnsure(cmd, wm, runner, dir, branch, base, newEnsure)
 	wtPath := created.Path
 	if err != nil {
 		return err
@@ -196,7 +198,7 @@ func runNewBranch(cmd *cobra.Command, branch string, wm vcs.Manager, runner *set
 		return fmt.Errorf("fetching remote branch %q: %w", branch, err)
 	}
 
-	created, err := createIdentityWorkspace(cmd, wm, runner, dir, branch, branch)
+	created, err := createIdentityWorkspaceWithEnsure(cmd, wm, runner, dir, branch, branch, newEnsure)
 	wtPath := created.Path
 	if err != nil {
 		return fmt.Errorf("creating worktree: %w", err)
@@ -271,7 +273,7 @@ func runNewPR(cmd *cobra.Command, arg string, wm vcs.Manager, runner *setup.Runn
 		return fmt.Errorf("fetching PR ref: %w", err)
 	}
 
-	created, err := createIdentityWorkspace(cmd, wm, runner, dir, localBranch, localBranch)
+	created, err := createIdentityWorkspaceWithEnsure(cmd, wm, runner, dir, localBranch, localBranch, newEnsure)
 	wtPath := created.Path
 	if err != nil {
 		return fmt.Errorf("creating worktree: %w", err)
@@ -315,6 +317,7 @@ type repositoryResolver interface {
 type identityLifecycle interface {
 	CreateWorkspace(repositoryID, name, backend, nativeName, path string) (identity.Workspace, error)
 	ActivateWorkspace(id string) (identity.Workspace, error)
+	LookupWorkspace(query string) (identity.Workspace, error)
 	RemoveWorkspace(id string) (identity.Workspace, error)
 	MoveWorkspace(id, path string) (identity.Workspace, error)
 	MarkCleanupFailed(id string) (identity.Workspace, error)
@@ -337,6 +340,9 @@ func (s storeIdentityLifecycle) CreateWorkspace(repo, name, backend, native, pat
 }
 func (s storeIdentityLifecycle) ActivateWorkspace(id string) (identity.Workspace, error) {
 	return s.store.ActivateWorkspace(id)
+}
+func (s storeIdentityLifecycle) LookupWorkspace(query string) (identity.Workspace, error) {
+	return s.store.LookupWorkspace(query)
 }
 func (s storeIdentityLifecycle) RemoveWorkspace(id string) (identity.Workspace, error) {
 	return s.store.RemoveWorkspace(id)
@@ -381,7 +387,13 @@ type createdWorkspace struct {
 }
 
 // createIdentityWorkspace is the identity-critical transaction shared by new and news.
+//
+//nolint:unparam // kept as the non-ensure compatibility path for existing callers.
 func createIdentityWorkspace(cmd *cobra.Command, wm vcs.Manager, runner *setup.Runner, dir, branch, base string) (createdWorkspace, error) {
+	return createIdentityWorkspaceWithEnsure(cmd, wm, runner, dir, branch, base, false)
+}
+
+func createIdentityWorkspaceWithEnsure(cmd *cobra.Command, wm vcs.Manager, runner *setup.Runner, dir, branch, base string, ensure bool) (createdWorkspace, error) {
 	main, err := wm.MainWorktree(dir)
 	if err != nil {
 		return createdWorkspace{}, fmt.Errorf("finding main workspace: %w", err)
@@ -410,6 +422,15 @@ func createIdentityWorkspace(cmd *cobra.Command, wm vcs.Manager, runner *setup.R
 		addRef, nativeName = name, name
 	}
 	predicted := vcs.WorktreePath(main.Path, addRef)
+	if ensure {
+		existing, lookupErr := lifecycle.LookupWorkspace(name)
+		if lookupErr == nil {
+			if existing.LifecycleState != identity.Active || existing.RepositoryID != repo.ID || existing.Backend != string(backend) || existing.NativeName != nativeName || existing.Path != predicted {
+				return createdWorkspace{}, fmt.Errorf("workspace %s exists with incompatible identity or lifecycle state", name)
+			}
+			return createdWorkspace{Workspace: existing, Path: existing.Path, Branch: branch}, nil
+		}
+	}
 	pending, err := lifecycle.CreateWorkspace(repo.ID, name, string(backend), nativeName, predicted)
 	if err != nil {
 		return createdWorkspace{}, fmt.Errorf("claiming workspace identity: %w", err)

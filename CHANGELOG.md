@@ -4,6 +4,22 @@ All notable changes to WorkTreeForge (wtf) will be documented in this file.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-08-22
+
+### Added
+
+- **Versioned automation contract** — workspace inspection/listing and cleanup
+  results identify JSON schema version 1, include canonical WTF identities, and
+  report Git-diff shadow health (`absent`, `present`, `stale`, or `unavailable`).
+- **Idempotent automation operations** — `wtf new --ensure`, cleanup planning and
+  apply, and UUID cleanup retries provide explicit repeat-safe semantics.
+- **Repairable cleanup debt** — partial lifecycle finalization is retained as
+  `cleanup_failed` and can be finalized through an exact UUID retry.
+
+### Changed
+
+- The Pi extension remains a thin WTF policy adapter with no Agent Bridge dependency.
+
 ## [0.9.0] — 2026-08-22
 
 ### Added

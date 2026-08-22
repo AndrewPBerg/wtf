@@ -233,20 +233,32 @@ engine.
 `integrate --source/--target` graph gathering is deferred. WTF does not promise to
 own rebase, multi-parent integration, bookmark creation, push, or publication.
 
-## v0.10.0 — Stable Integration API
+## v0.10.0 — Versioned Automation Contract
 
-**Status:** planned
+**Status:** released 2026-08-22
 
-**Goal:** make WTF a boring substrate that Agent Bridge and thin harness adapters can
-consume without introducing a reverse dependency on those systems.
+**Goal:** make WTF a boring, versioned CLI/JSON substrate that Agent Bridge and thin
+harness adapters can consume without introducing a reverse dependency on those systems.
 
-- [ ] Return canonical repository/workspace IDs from every structured workspace result
-- [ ] Accept IDs for automation while retaining unambiguous names for human convenience
-- [ ] Provide idempotent non-interactive create, inspect, plan, apply, and cleanup APIs
-- [ ] Keep the Pi extension thin and installable from this repository
-- [ ] Document the one-way dependency: Agent Bridge calls WTF; WTF never calls Agent Bridge
-- [ ] Keep WorkUnits, actors, collisions, checkpoints, Linear, Herdr, Zed observation,
+- [x] Return versioned JSON envelopes (`version: 1`) with canonical repository/workspace
+      IDs from every structured workspace result
+- [x] Accept canonical IDs for automation while retaining unambiguous names and paths for
+      human convenience
+- [x] Provide idempotent non-interactive create, inspect, plan, apply, and cleanup APIs
+- [x] Report incomplete cleanup as visible, repairable `cleanup_failed` debt with a
+      UUID-based retry path
+- [x] Report Git-shadow health (`not_supported`, `absent`, `present`, `stale`, or
+      `unavailable` with an error) as observation-only structured data
+- [x] Keep the Pi extension thin: it directs checkout creation to WTF and does not
+      reproduce workspace lifecycle logic
+- [x] Document the one-way dependency: Agent Bridge calls WTF; WTF never calls or stores
+      Agent Bridge data
+- [x] Keep WorkUnits, actors, collisions, checkpoints, Linear, Herdr, Zed observation,
       Watchman, verification policy, and orchestration outside WTF
+
+**Non-goals:** WorkUnit or Agent Bridge RPC, JJ graph operations, bookmark creation,
+integration, publication, verification policy, resource hooks, `.wtf.toml`, or a
+general in-process Go API. The stable surface is the CLI JSON contract.
 
 ## Dogfood gate
 

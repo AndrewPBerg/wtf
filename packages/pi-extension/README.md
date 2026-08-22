@@ -2,9 +2,11 @@
 
 This directory is the canonical source for WTF's Pi extension.
 
-The extension keeps agent workspace creation on WTF's managed path by blocking raw
-`git worktree add` and `jj workspace add` tool calls. A deliberately exceptional
-raw operation can opt out with `WTF_OK=1` or a `# wtf-ok` comment.
+The extension is a thin policy adapter: it keeps agent workspace creation on WTF's
+managed path by blocking raw `git worktree add` and `jj workspace add` tool calls.
+It does not implement workspace lifecycle logic or call Agent Bridge; orchestration
+systems call WTF's versioned CLI/JSON contract. A deliberately exceptional raw
+operation can opt out with `WTF_OK=1` or a `# wtf-ok` comment.
 
 Install or refresh the local Pi copy from the repository root:
 

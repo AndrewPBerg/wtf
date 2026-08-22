@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -15,6 +17,7 @@ import (
 // These reports deliberately keep durable identity and physical state in
 // separate objects. A path or JJ name is not a substitute for a WTF UUID.
 type workspaceReport struct {
+	Version       int                `json:"version"`
 	Identity      identity.Workspace `json:"identity"`
 	Physical      physicalReport     `json:"physical"`
 	JJ            *jjReport          `json:"jj,omitempty"`
@@ -43,9 +46,11 @@ type jjReport struct {
 type shadowReport struct {
 	Supported bool   `json:"supported"`
 	Status    string `json:"status"`
+	Error     string `json:"error,omitempty"`
 }
 
 type workspaceListReport struct {
+	Version    int               `json:"version"`
 	Workspaces []workspaceReport `json:"workspaces"`
 }
 
@@ -108,7 +113,7 @@ var workspaceListCmd = &cobra.Command{
 		}
 		sort.Slice(reports, func(i, j int) bool { return reports[i].Identity.ID < reports[j].Identity.ID })
 		if jsonOutput {
-			return writeJSON(cmd.OutOrStdout(), workspaceListReport{Workspaces: reports})
+			return writeJSON(cmd.OutOrStdout(), workspaceListReport{Version: 1, Workspaces: reports})
 		}
 		for _, report := range reports {
 			printWorkspaceReport(cmd, report)
@@ -119,12 +124,13 @@ var workspaceListCmd = &cobra.Command{
 
 func inspectWorkspace(workspace identity.Workspace) (workspaceReport, error) {
 	report := workspaceReport{
+		Version:       1,
 		Identity:      workspace,
 		Physical:      physicalReport{Path: workspace.Path},
 		GitDiffShadow: shadowReport{Supported: workspace.Backend == string(identity.JJ), Status: "not_supported"},
 	}
 	if workspace.Backend == string(identity.JJ) {
-		report.GitDiffShadow.Status = "absent"
+		report.GitDiffShadow = inspectGitDiffShadow(workspace.Path, "")
 	}
 
 	stateStore, err := identity.DefaultStore()
@@ -171,18 +177,78 @@ func inspectWorkspace(workspace identity.Workspace) (workspaceReport, error) {
 		}
 		if kind == vcs.KindJJ {
 			report.JJ = &jjReport{Workspace: wt.NativeName, Change: wt.ChangeID, Commit: wt.Head, Bookmarks: wt.Bookmarks}
-			if shadow := vcs.IsJJGitDiffShadow(wt.Path); shadow {
-				report.GitDiffShadow.Status = "present"
-			}
+			expectedShadowBase := wt.Head
 			if op, ok := mgr.(*jj.WorkspaceManager); ok {
+				if base, baseErr := op.GitDiffBaseCommit(wt.Path); baseErr == nil {
+					expectedShadowBase = base
+				}
 				if operation, opErr := op.CurrentOperationID(wt.Path); opErr == nil {
 					report.JJ.Operation = operation
 				}
 			}
+			report.GitDiffShadow = inspectGitDiffShadow(wt.Path, expectedShadowBase)
 		}
 		break
 	}
 	return report, nil
+}
+
+// inspectGitDiffShadow observes the private Git metadata used by a JJ
+// workspace. It deliberately invokes only git's read-only rev-parse command;
+// inspection must never refresh or otherwise modify the shadow.
+func inspectGitDiffShadow(workspacePath, jjCommit string) shadowReport {
+	report := shadowReport{Supported: true, Status: "absent"}
+	if workspacePath == "" {
+		return report
+	}
+
+	gitDir := filepath.Join(workspacePath, ".git")
+	info, err := os.Stat(gitDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return report
+		}
+		return unavailableShadowReport(fmt.Errorf("checking Git diff metadata: %w", err))
+	}
+	if !info.IsDir() {
+		return report
+	}
+	marker := filepath.Join(gitDir, vcs.JJGitDiffMarker)
+	if _, err := os.Stat(marker); err != nil {
+		if os.IsNotExist(err) {
+			return report
+		}
+		return unavailableShadowReport(fmt.Errorf("checking Git diff marker: %w", err))
+	}
+
+	// A missing HEAD is a stale shadow, not an inspection failure: the metadata
+	// exists, but it no longer identifies a Git commit.
+	if _, err := os.Stat(filepath.Join(gitDir, "HEAD")); err != nil {
+		if os.IsNotExist(err) {
+			return shadowReport{Supported: true, Status: "stale"}
+		}
+		return unavailableShadowReport(fmt.Errorf("checking Git HEAD: %w", err))
+	}
+
+	cmd := exec.Command("git", "-C", workspacePath, "rev-parse", "--verify", "--short=12", "HEAD")
+	cmd.Env = vcs.SanitizedEnv()
+	output, err := cmd.Output()
+	if err != nil {
+		return unavailableShadowReport(fmt.Errorf("reading Git shadow HEAD: %w", err))
+	}
+	gitHead := strings.TrimSpace(string(output))
+	if gitHead == "" {
+		return unavailableShadowReport(fmt.Errorf("reading Git shadow HEAD: empty revision"))
+	}
+	status := "stale"
+	if jjCommit != "" && gitHead == jjCommit {
+		status = "present"
+	}
+	return shadowReport{Supported: true, Status: status}
+}
+
+func unavailableShadowReport(err error) shadowReport {
+	return shadowReport{Supported: true, Status: "unavailable", Error: err.Error()}
 }
 
 func printWorkspaceReport(cmd *cobra.Command, report workspaceReport) {

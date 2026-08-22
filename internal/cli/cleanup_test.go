@@ -10,6 +10,7 @@ import (
 	"github.com/AndrewPBerg/wtf/internal/git"
 	"github.com/AndrewPBerg/wtf/internal/identity"
 	"github.com/AndrewPBerg/wtf/internal/vcs"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -57,6 +58,74 @@ func TestCleanupPlanIsIdentityBoundAndReadOnly(t *testing.T) {
 	require.NotEmpty(t, plan.PlanID)
 	_, err = os.Stat(path)
 	require.NoError(t, err)
+}
+
+func TestCleanupPlanIsRepeatableAndApplyIsIdempotent(t *testing.T) {
+	repo := initCLITestRepo(t)
+	t.Chdir(repo)
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	path, err := wm.Add(repo, "cleanup-repeat", "main")
+	require.NoError(t, err)
+	store, err := identity.DefaultStore()
+	require.NoError(t, err)
+	r, err := store.CreateRepository(repo)
+	require.NoError(t, err)
+	w, err := store.CreateWorkspace(r.ID, "repo/cleanup-repeat", "git", "cleanup-repeat", path)
+	require.NoError(t, err)
+	_, err = store.ActivateWorkspace(w.ID)
+	require.NoError(t, err)
+
+	first, second := new(bytes.Buffer), new(bytes.Buffer)
+	cleanupPlanCmd.SetOut(first)
+	require.NoError(t, runCleanupPlan(cleanupPlanCmd, w.ID))
+	cleanupPlanCmd.SetOut(second)
+	require.NoError(t, runCleanupPlan(cleanupPlanCmd, "repo/cleanup-repeat"))
+	assert.Equal(t, first.String(), second.String())
+	planFile := filepath.Join(t.TempDir(), "cleanup.json")
+	require.NoError(t, os.WriteFile(planFile, first.Bytes(), 0o600))
+
+	oldJSON := jsonOutput
+	jsonOutput = true
+	t.Cleanup(func() { jsonOutput = oldJSON })
+	applyOut := new(bytes.Buffer)
+	cleanupApplyCmd.SetOut(applyOut)
+	require.NoError(t, runCleanupApply(cleanupApplyCmd, planFile))
+	applyOut.Reset()
+	require.NoError(t, runCleanupApply(cleanupApplyCmd, planFile))
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(applyOut.Bytes(), &result))
+	assert.Equal(t, true, result["noop"])
+}
+
+func TestCleanupFailedUUIDRetryAndRemovedJSONNoop(t *testing.T) {
+	repo := initCLITestRepo(t)
+	t.Chdir(repo)
+	wm := git.NewWorktreeManager(&git.RealExecutor{})
+	path, err := wm.Add(repo, "cleanup-retry", "main")
+	require.NoError(t, err)
+	store, err := identity.DefaultStore()
+	require.NoError(t, err)
+	r, err := store.CreateRepository(repo)
+	require.NoError(t, err)
+	w, err := store.CreateWorkspace(r.ID, "repo/cleanup-retry", "git", "cleanup-retry", path)
+	require.NoError(t, err)
+	_, err = store.ActivateWorkspace(w.ID)
+	require.NoError(t, err)
+	require.NoError(t, wm.Remove(repo, "cleanup-retry", repo, true))
+	_, err = store.MarkCleanupFailed(w.ID)
+	require.NoError(t, err)
+
+	oldJSON := jsonOutput
+	jsonOutput = true
+	t.Cleanup(func() { jsonOutput = oldJSON })
+	cmd := rmCmd
+	cmd.SetOut(new(bytes.Buffer))
+	require.NoError(t, runRm(cmd, w.ID, wm))
+	removed, err := store.LookupWorkspace(w.ID)
+	require.NoError(t, err)
+	assert.Equal(t, identity.Removed, removed.LifecycleState)
+	// A second UUID retry is a structured no-op and does not require VCS state.
+	require.NoError(t, runRm(cmd, w.ID, wm))
 }
 
 func TestCleanupApplyFailsClosedWhenIdentityChanges(t *testing.T) {
