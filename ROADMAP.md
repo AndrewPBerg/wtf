@@ -1,6 +1,17 @@
 # WorkTreeForge (wtf) Roadmap
 
-A fast, opinionated git worktree workflow tool with forge integrations, automated project setup, and abus-ready JSON output.
+A small, opinionated workspace-lifecycle tool. WTF is JJ-first for local work,
+Git-compatible at forge boundaries, Zed-first for editor integration, and usable by
+both humans and Pi agents through the same CLI contract.
+
+Current design documents:
+
+- [JJ-native workspace lifecycle](docs/jj-workspace-lifecycle-plan.md)
+- [Simplification plan](docs/simplification-plan.md)
+
+The completed milestones below are retained as project history. New work follows the
+current milestones at the end of this document and is promoted only after real
+9–5 and personal-project dogfooding.
 
 ## v0.1.0 — Core Worktree Operations
 
@@ -126,3 +137,111 @@ A fast, opinionated git worktree workflow tool with forge integrations, automate
 
 - [ ] ~~Creating jj bookmarks on workspace creation~~ — bookmarks are a push-time
       concern the user owns; the workspace name is the identity wtf keys on
+
+---
+
+## v0.7.0 — Smaller Core and Zed Baseline
+
+**Status:** active
+
+**Goal:** establish the smallest reliable product boundary before adding new
+workspace-lifecycle operations.
+
+### Repository and quality
+
+- [x] Make the repository colocated JJ/Git and track `main@origin`
+- [x] Move the canonical Pi extension source and tests into WTF
+- [x] Upgrade the active Go dependency graph
+- [ ] Restore the full quality gate under the configured Go and JJ versions
+- [ ] Fix JJ 0.44 prunable-workspace compatibility
+
+### Simplification
+
+- [ ] Decide between a numbered prompt and argument-only command selection
+- [ ] Replace the Bubble Tea/Lip Gloss picker surface
+- [ ] Remove Charm dependencies and compare module/binary size
+- [ ] Dogfood switching, removal, multi-selection, and cancellation
+- [ ] Audit watch, notifications, global registry flows, self-update, and automatic
+      dev-server startup one feature at a time
+
+### Zed
+
+- [ ] Finish and land the experimental JJ Git-diff shadow, enabled by default for
+      secondary JJ workspaces
+- [ ] Keep explicit CLI/environment opt-outs narrow; defer `.wtf.toml` control for
+      disabling the shadow until the manifest milestone
+- [ ] Dogfood the shadow as a read-only Zed source-control projection
+- [ ] Detect or clearly explain stale editor baselines
+- [ ] Add an explicit `wtf open` only if opening workspaces remains repeated friction
+
+## v0.8.0 — Declarative Isolation and Resources
+
+**Status:** planned
+
+**Goal:** make choosing an isolated workspace one deliberate action rather than a
+series of environment and service decisions.
+
+- [ ] Specify the minimum versioned `.wtf.toml` manifest
+- [ ] Add project-level configuration for disabling the otherwise default-on Zed
+      Git-diff shadow
+- [ ] Preserve useful zero-config behavior
+- [ ] Add default-workspace policy: `allow`, `warn`, or agent-enforced denial
+- [ ] Separate source env-file policy from generated workspace values
+- [ ] Support multiple stable named ports per workspace
+- [ ] Harden shared per-repository state with locking and atomic writes
+- [ ] Add project-defined create/drop hooks for isolated databases
+- [ ] Keep failed cleanup as visible, repairable debt
+- [ ] Reconsider SQLite only after JSON concurrency or recovery fails in practice
+
+## v0.9.0 — JJ Change-Line Operations
+
+**Status:** planned
+
+**Goal:** package common JJ graph operations without hiding their plans, identities,
+conflicts, or recovery boundaries.
+
+### `sync`
+
+- [ ] Define workspace-owned change-line discovery
+- [ ] Implement read-only sync planning against the configured trunk
+- [ ] Preserve stacks while rebasing onto current trunk
+- [ ] Keep fetch, rebase, push, and publish semantics distinct
+
+### `gather`
+
+- [ ] Resolve multiple source workspaces to stable JJ change heads
+- [ ] Plan a multi-parent integration change without mutating sources
+- [ ] Create a dedicated integration workspace and surface conflicts there
+- [ ] Resolve the Zed shadow limitation for multi-parent changes explicitly
+- [ ] Run configured verification before cleanup becomes available
+
+### `publish`
+
+- [ ] Create or move a JJ bookmark only at explicit publication time
+- [ ] Push the corresponding Git forge branch
+- [ ] Keep publication separate from workspace removal
+
+Every mutating operation starts with a deterministic `--dry-run --json` plan and
+fails if graph assumptions change before apply.
+
+## v0.10.0 — Pi and Agent Bridge Workflow
+
+**Status:** planned
+
+**Goal:** let agents use proven WTF lifecycle operations without bypassing the human
+CLI's plans and safety checks.
+
+- [ ] Add typed Pi tools for stable WTF JSON operations
+- [ ] Keep the Pi extension thin and installable from this repository
+- [ ] Warn or block agent work in protected default workspaces
+- [ ] Query Agent Bridge activity before gather, discard, and cleanup
+- [ ] Record durable checkpoints around graph and resource mutations
+- [ ] Default to one agent per JJ workspace
+- [ ] Test shared-workspace collision behavior as a separate advanced mode
+
+## Dogfood gate
+
+For each milestone, record real workspace creation steps, manual repairs, Zed
+friction, resource conflicts, gather/discard outcomes, and cleanup debt. Do not add a
+new orchestration layer merely because it is possible; require repeated friction or
+a concrete safety failure.
