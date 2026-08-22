@@ -3,10 +3,12 @@ package identity
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -74,6 +76,71 @@ func readState(path string) (State, error) {
 
 // Load strictly reads the complete state. It never writes or repairs it.
 func (s *Store) Load() (State, error) { return readState(s.statePath) }
+
+// LookupRepository finds one repository by UUID, canonical locator, or the
+// final path component of its locator. Names and paths must be unambiguous.
+func (s *Store) LookupRepository(query string) (Repository, error) {
+	state, err := s.Load()
+	if err != nil {
+		return Repository{}, err
+	}
+	for _, r := range state.Repositories {
+		if r.ID == query {
+			return r, nil
+		}
+	}
+	var found []Repository
+	for _, r := range state.Repositories {
+		if r.LifecycleState == Active && (r.Locator == query || filepath.Base(r.Locator) == query) {
+			found = append(found, r)
+		}
+	}
+	if len(found) == 0 {
+		return Repository{}, fmt.Errorf("repository %q not found", query)
+	}
+	if len(found) != 1 {
+		return Repository{}, fmt.Errorf("repository %q is ambiguous", query)
+	}
+	return found[0], nil
+}
+
+// LookupWorkspace finds one workspace by UUID, canonical name, or path.
+func (s *Store) LookupWorkspace(query string) (Workspace, error) {
+	state, err := s.Load()
+	if err != nil {
+		return Workspace{}, err
+	}
+	// UUIDs address retained tombstones. Human selectors address only
+	// claim-retaining states, so reusing a removed name/path is not ambiguous.
+	for _, w := range state.Workspaces {
+		if w.ID == query {
+			return w, nil
+		}
+	}
+	canonical, pathErr := canonicalPath(query, "workspace path")
+	var found []Workspace
+	for _, w := range state.Workspaces {
+		if (w.LifecycleState == Pending || w.LifecycleState == Active || w.LifecycleState == CleanupFailed) &&
+			(w.Name == query || (pathErr == nil && w.Path == canonical)) {
+			found = append(found, w)
+		}
+	}
+	if len(found) == 0 {
+		return Workspace{}, fmt.Errorf("workspace %q not found", query)
+	}
+	if len(found) != 1 {
+		return Workspace{}, fmt.Errorf("workspace %q is ambiguous", query)
+	}
+	return found[0], nil
+}
+
+// FindRepository and FindWorkspace are explicit aliases for callers that
+// prefer query terminology.
+// FindRepository finds a repository using the same selectors as LookupRepository.
+func (s *Store) FindRepository(query string) (Repository, error) { return s.LookupRepository(query) }
+
+// FindWorkspace finds a workspace using the same selectors as LookupWorkspace.
+func (s *Store) FindWorkspace(query string) (Workspace, error) { return s.LookupWorkspace(query) }
 
 func now() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
@@ -326,4 +393,104 @@ func (s *Store) MoveWorkspace(id, path string) (Workspace, error) {
 		return fmt.Errorf("workspace %q not found", id)
 	})
 	return out, err
+}
+
+// AdoptionStatus describes whether an existing physical workspace is safe to
+// bring under identity management.
+type AdoptionStatus string
+
+var (
+	errAdoptionRenameRequired = errors.New("workspace adoption requires rename")
+	errAdoptionRepairRequired = errors.New("workspace adoption requires repair")
+)
+
+const (
+	// Adopted indicates that the physical workspace was safely recorded.
+	Adopted AdoptionStatus = "adopted"
+	// RenameRequired indicates that the legacy workspace needs explicit renaming.
+	RenameRequired AdoptionStatus = "rename_required"
+	// RepairRequired indicates that an exact pending or cleanup-failed workspace
+	// must be repaired before it can be adopted. The existing workspace is
+	// returned for diagnostics and the state is not changed.
+	RepairRequired AdoptionStatus = "repair_required"
+)
+
+// AdoptionResult is non-mutating for RenameRequired and RepairRequired results.
+type AdoptionResult struct {
+	Status    AdoptionStatus
+	Workspace Workspace
+}
+
+// AdoptWorkspace adopts an existing workspace only when all identity fields
+// are canonical and globally available. Legacy entries are reported, never
+// renamed or persisted.
+func (s *Store) AdoptWorkspace(repositoryID, name, backend, nativeName, path string) (AdoptionResult, error) {
+	var result AdoptionResult
+	if err := ValidateName(name); err != nil {
+		result.Status = RenameRequired
+		return result, nil
+	}
+	canonical, err := canonicalPath(path, "workspace path")
+	if err != nil {
+		result.Status = RenameRequired
+		return result, nil
+	}
+	if !validBackend(backend) || nativeName == "" || strings.ContainsAny(nativeName, "\x00\r\n") || (backend == string(JJ) && nativeName != name) {
+		result.Status = RenameRequired
+		return result, nil
+	}
+	err = s.mutate(func(state *State) error {
+		var repo *Repository
+		for i := range state.Repositories {
+			if state.Repositories[i].ID == repositoryID {
+				repo = &state.Repositories[i]
+				break
+			}
+		}
+		if repo == nil || repo.LifecycleState != Active {
+			return fmt.Errorf("repository %q does not exist", repositoryID)
+		}
+		for _, w := range state.Workspaces {
+			if w.LifecycleState == Removed {
+				continue
+			}
+			exact := w.RepositoryID == repositoryID && w.Name == name && w.Backend == backend && w.NativeName == nativeName && w.Path == canonical
+			if exact {
+				result.Workspace = w
+				switch w.LifecycleState {
+				case Active:
+					result.Status = Adopted
+					return nil
+				case Pending, CleanupFailed:
+					result.Status = RepairRequired
+					return errAdoptionRepairRequired
+				}
+			}
+			if w.Name == name || w.Path == canonical || (w.RepositoryID == repositoryID && w.Backend == backend && w.NativeName == nativeName) {
+				result.Status = RenameRequired
+				return errAdoptionRenameRequired
+			}
+		}
+		id, e := NewID()
+		if e != nil {
+			return e
+		}
+		t := now()
+		result.Workspace = Workspace{ID: id, RepositoryID: repositoryID, Name: name, Backend: backend, NativeName: nativeName, Path: canonical, LifecycleState: Active, CreatedAt: t, UpdatedAt: t}
+		state.Workspaces = append(state.Workspaces, result.Workspace)
+		result.Status = Adopted
+		return nil
+	})
+	if errors.Is(err, errAdoptionRenameRequired) || errors.Is(err, errAdoptionRepairRequired) {
+		return result, nil
+	}
+	if err != nil {
+		return AdoptionResult{}, err
+	}
+	return result, nil
+}
+
+// AdoptExistingWorkspace is a descriptive alias for AdoptWorkspace.
+func (s *Store) AdoptExistingWorkspace(repositoryID, name, backend, nativeName, path string) (AdoptionResult, error) {
+	return s.AdoptWorkspace(repositoryID, name, backend, nativeName, path)
 }

@@ -102,6 +102,12 @@ func TestLifecycleTombstoneAndReuse(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, Removed, loaded.Workspaces[0].LifecycleState)
 	require.NoError(t, loaded.Validate())
+	old, err := s.LookupWorkspace(first.ID)
+	require.NoError(t, err)
+	require.Equal(t, Removed, old.LifecycleState)
+	byName, err := s.LookupWorkspace("repo/main")
+	require.NoError(t, err)
+	require.Equal(t, second.ID, byName.ID)
 }
 
 func TestClaimsAreAtomic(t *testing.T) {
@@ -254,3 +260,150 @@ func mustStore(t *testing.T) *Store {
 	return s
 }
 func mustPath(s *Store) string { p, _ := s.Paths(); return p }
+
+func TestConcurrentMarkerWritersAreCompareAndSet(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "marker")
+	ids := []string{}
+	for i := 0; i < 2; i++ {
+		id, err := NewID()
+		require.NoError(t, err)
+		ids = append(ids, id)
+	}
+	results := make(chan error, len(ids))
+	for _, id := range ids {
+		go func() { results <- WriteRepositoryID(dir, id) }()
+	}
+	var successes int
+	for range ids {
+		if err := <-results; err == nil {
+			successes++
+		}
+	}
+	require.Equal(t, 1, successes)
+	got, err := ReadRepositoryID(dir)
+	require.NoError(t, err)
+	require.Contains(t, ids, got)
+}
+
+func TestStateDirectoryMustBeAbsolutePhysicalAndLocal(t *testing.T) {
+	id, err := NewID()
+	require.NoError(t, err)
+	for _, dir := range []string{"relative", "", "https://example.invalid/state", "bad\x00dir"} {
+		require.Error(t, WriteRepositoryID(dir, id))
+	}
+	realDir := t.TempDir()
+	alias := filepath.Join(t.TempDir(), "alias")
+	require.NoError(t, os.Symlink(realDir, alias))
+	require.Error(t, WriteRepositoryID(alias, id))
+}
+
+func TestRepeatedAdoptionReturnsExistingWorkspace(t *testing.T) {
+	s := mustStore(t)
+	repo, err := s.CreateRepository(filepath.Join(t.TempDir(), "repo"))
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), "existing")
+	first, err := s.AdoptWorkspace(repo.ID, "repo/existing", "jj", "repo/existing", path)
+	require.NoError(t, err)
+	second, err := s.AdoptWorkspace(repo.ID, "repo/existing", "jj", "repo/existing", path)
+	require.NoError(t, err)
+	require.Equal(t, Adopted, second.Status)
+	require.Equal(t, first.Workspace, second.Workspace)
+	state, err := s.Load()
+	require.NoError(t, err)
+	require.Len(t, state.Workspaces, 1)
+}
+
+func TestExactPendingAdoptionRequiresRepairWithoutMutation(t *testing.T) {
+	s := mustStore(t)
+	repo, err := s.CreateRepository(filepath.Join(t.TempDir(), "repo"))
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), "pending")
+	pending, err := s.CreateWorkspace(repo.ID, "repo/pending", string(JJ), "repo/pending", path)
+	require.NoError(t, err)
+	statePath, _ := s.Paths()
+	before, err := os.ReadFile(statePath)
+	require.NoError(t, err)
+
+	result, err := s.AdoptWorkspace(repo.ID, pending.Name, pending.Backend, pending.NativeName, pending.Path)
+	require.NoError(t, err)
+	require.Equal(t, RepairRequired, result.Status)
+	require.Equal(t, pending, result.Workspace)
+	after, err := os.ReadFile(statePath)
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+}
+
+func TestExactCleanupFailedAdoptionRequiresRepairWithoutMutation(t *testing.T) {
+	s := mustStore(t)
+	repo, err := s.CreateRepository(filepath.Join(t.TempDir(), "repo"))
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), "failed")
+	pending, err := s.CreateWorkspace(repo.ID, "repo/failed", string(JJ), "repo/failed", path)
+	require.NoError(t, err)
+	failed, err := s.MarkCleanupFailed(pending.ID)
+	require.NoError(t, err)
+	statePath, _ := s.Paths()
+	before, err := os.ReadFile(statePath)
+	require.NoError(t, err)
+
+	result, err := s.AdoptWorkspace(repo.ID, failed.Name, failed.Backend, failed.NativeName, failed.Path)
+	require.NoError(t, err)
+	require.Equal(t, RepairRequired, result.Status)
+	require.Equal(t, failed, result.Workspace)
+	after, err := os.ReadFile(statePath)
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+}
+
+func TestRepositoryMarkerReconciliationAndCorruption(t *testing.T) {
+	s := mustStore(t)
+	locator := filepath.Join(t.TempDir(), "repo")
+	markerDir := filepath.Join(t.TempDir(), ".jj", "repo", "wtf")
+	r, err := s.EnsureRepository(locator, markerDir)
+	require.NoError(t, err)
+	got, err := ReadRepositoryID(markerDir)
+	require.NoError(t, err)
+	require.Equal(t, r.ID, got)
+	again, err := s.EnsureRepository(locator, markerDir)
+	require.NoError(t, err)
+	require.Equal(t, r.ID, again.ID)
+	require.NoError(t, os.WriteFile(RepositoryMarkerPath(markerDir), []byte("bad\n"), 0o600))
+	_, err = s.EnsureRepository(locator, markerDir)
+	require.Error(t, err)
+}
+
+func TestMarkerCanRepairMissingGlobalState(t *testing.T) {
+	s := mustStore(t)
+	locator := filepath.Join(t.TempDir(), "repo")
+	dir := filepath.Join(t.TempDir(), "git-wtf")
+	id, _ := NewID()
+	require.NoError(t, WriteRepositoryID(dir, id))
+	r, err := s.EnsureRepository(locator, dir)
+	require.NoError(t, err)
+	require.Equal(t, id, r.ID)
+}
+
+func TestAdoptionValidationAndQueries(t *testing.T) {
+	s := mustStore(t)
+	repo, err := s.CreateRepository(filepath.Join(t.TempDir(), "repo"))
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), "existing")
+	result, err := s.AdoptWorkspace(repo.ID, "repo/existing", "jj", "repo/existing", path)
+	require.NoError(t, err)
+	require.Equal(t, Adopted, result.Status)
+	byID, err := s.LookupWorkspace(result.Workspace.ID)
+	require.NoError(t, err)
+	require.Equal(t, result.Workspace.ID, byID.ID)
+	byPath, err := s.FindWorkspace(path)
+	require.NoError(t, err)
+	require.Equal(t, result.Workspace.ID, byPath.ID)
+	legacy, err := s.AdoptWorkspace(repo.ID, "default", "jj", "default", filepath.Join(t.TempDir(), "legacy"))
+	require.NoError(t, err)
+	require.Equal(t, RenameRequired, legacy.Status)
+	state, err := s.Load()
+	require.NoError(t, err)
+	require.Len(t, state.Workspaces, 1)
+	collision, err := s.AdoptWorkspace(repo.ID, "repo/existing", "git", "branch", filepath.Join(t.TempDir(), "other"))
+	require.NoError(t, err)
+	require.Equal(t, RenameRequired, collision.Status)
+}

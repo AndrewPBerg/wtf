@@ -1,6 +1,6 @@
 # v0.8 identity kernel: acceptance test plan
 
-WorkUnit: `6d77417a-6754-44a2-851c-739faed74cd5`  
+WorkUnit: `6d77417a-6754-44a2-851c-739faed74cd5`
 Lane: C (independent acceptance design)
 
 This plan is intentionally implementation-independent. The current tree has no

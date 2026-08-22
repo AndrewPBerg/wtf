@@ -33,8 +33,14 @@ func persistState(path string, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("writing identity state: %w", err)
 	}
-	from, _ := windows.UTF16PtrFromString(tmpName)
-	to, _ := windows.UTF16PtrFromString(path)
+	from, err := windows.UTF16PtrFromString(tmpName)
+	if err != nil {
+		return fmt.Errorf("converting temporary identity state path to UTF-16: %w", err)
+	}
+	to, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return fmt.Errorf("converting identity state path to UTF-16: %w", err)
+	}
 	if err = windows.MoveFileEx(from, to, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH); err != nil {
 		return fmt.Errorf("replacing identity state: %w", err)
 	}
