@@ -279,6 +279,18 @@ func TestIsRepo(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "jj editor Git shadow is not a primary repo",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, ".git", vcs.JJGitDiffMarker), []byte("shadow\n"), 0o644))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, ".jj"), 0o755))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, ".jj", "repo"), []byte("../../main/.jj/repo\n"), 0o644))
+				return dir
+			},
+			want: false,
+		},
+		{
 			name: "no .git dir",
 			setup: func(t *testing.T) string {
 				return t.TempDir()

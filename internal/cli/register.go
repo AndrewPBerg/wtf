@@ -8,6 +8,7 @@ import (
 
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/ui"
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 	"github.com/spf13/cobra"
 )
 
@@ -181,6 +182,9 @@ func discoverRepos(dir string) ([]ui.RepoPickerItem, error) {
 
 // isGitRepo checks if a directory contains a .git directory.
 func isGitRepo(path string) bool {
+	if vcs.IsJJGitDiffShadow(path) {
+		return false
+	}
 	info, err := os.Stat(filepath.Join(path, ".git"))
 	return err == nil && info.IsDir()
 }
@@ -199,7 +203,10 @@ func resolveAndValidateRepo(arg string) (string, error) {
 		abs = resolved
 	}
 
-	// Check it's a git repo.
+	// Check it's a real git repo, not private editor metadata in a jj workspace.
+	if vcs.IsJJGitDiffShadow(abs) {
+		return "", fmt.Errorf("%s contains jj editor Git metadata, not a Git repository", abs)
+	}
 	gitDir := filepath.Join(abs, ".git")
 	info, err := os.Stat(gitDir)
 	if err != nil || !info.IsDir() {

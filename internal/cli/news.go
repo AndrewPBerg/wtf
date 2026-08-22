@@ -21,6 +21,7 @@ func init() {
 	newsCmd.Flags().BoolVar(&newCopyEnv, "copy-env", false, "Copy env files instead of symlinking (safer for agent worktrees)")
 	newsCmd.Flags().BoolVar(&newNoInstall, "no-install", false, "Skip package manager install")
 	newsCmd.Flags().BoolVar(&newNoServe, "no-serve", false, "Skip starting dev server")
+	newsCmd.Flags().BoolVar(&newNoGitDiff, "no-git-diff", false, "Skip Git metadata for editor diff views in jj workspaces")
 	newsCmd.MarkFlagsMutuallyExclusive("branch", "pr")
 	newsCmd.MarkFlagsMutuallyExclusive("no-env", "copy-env")
 

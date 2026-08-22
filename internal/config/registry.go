@@ -270,7 +270,12 @@ func Prune() ([]string, error) {
 // repo directory itself.
 func IsRepo(path string) bool {
 	if info, err := os.Stat(filepath.Join(path, ".git")); err == nil && info.IsDir() {
-		return true
+		// A secondary jj workspace may carry private Git metadata solely for
+		// editor diffs. It is not a primary Git checkout and must not be added to
+		// the global repo registry.
+		if !vcs.IsJJGitDiffShadow(path) {
+			return true
+		}
 	}
 	if info, err := os.Stat(filepath.Join(path, ".jj", "repo")); err == nil && info.IsDir() {
 		return true

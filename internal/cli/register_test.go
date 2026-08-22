@@ -8,6 +8,7 @@ import (
 
 	"github.com/AndrewPBerg/wtf/internal/config"
 	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/vcs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -260,6 +261,17 @@ func TestResolveAndValidateRepo_RelativePath(t *testing.T) {
 	resolved, err := resolveAndValidateRepo(filepath.Base(repo))
 	require.NoError(t, err)
 	assert.Equal(t, repo, resolved)
+}
+
+func TestResolveAndValidateRepo_RejectsJJGitDiffShadow(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".git", vcs.JJGitDiffMarker), []byte("shadow\n"), 0o644))
+
+	assert.False(t, isGitRepo(dir))
+	_, err := resolveAndValidateRepo(dir)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "jj editor Git metadata")
 }
 
 func TestResolveAndValidateRepo_NotARepo(t *testing.T) {

@@ -175,6 +175,36 @@ falls back to jj's own default (a sibling of your current working-copy commit). 
 fallback matters in a repo with no remote, where `trunk()` resolves to the *root*
 commit — basing a workspace there would produce an empty directory.
 
+## Git-aware editor diffs
+
+Secondary jj workspaces normally have no `.git`, so editors such as Zed cannot
+show their source-control diff. WTF creates private Git metadata by default, with
+an index based on the current jj parent (`@-`):
+
+```bash
+wtf new feat/auth
+# Opt out for one workspace or an entire shell:
+wtf new feat/plain --no-git-diff
+export WTF_JJ_GIT_DIFF=0
+```
+
+The private repository borrows jj's Git object database but has no remote and is
+marked so WTF still detects the checkout as jj-only. Git-aware editors see normal
+modified and untracked files; jj remains authoritative.
+
+After an operation that changes the working-copy parent, such as `jj new`, `jj
+squash`, or a rebase, refresh the editor baseline from inside that workspace:
+
+```bash
+wtf git-diff
+```
+
+Refreshing never changes working-copy files. It resets the private Git index, so
+any Git staging is cleared. Treat the editor's source-control controls as read-only:
+Git commits affect only private metadata, while Git checkout, reset, clean, or
+"discard" actions can modify or delete real workspace files—especially if the
+baseline is stale. Use jj for all VCS mutations.
+
 ## Env files and install
 
 This is identical to git, and it is the main reason to use wtf with jj at all: jj
@@ -219,6 +249,10 @@ rather than guessing. Tested against jj 0.43.
 
 ## Known limits
 
+- **Git-aware editor diffs** need `wtf git-diff` after jj changes the workspace
+  parent. WTF cannot intercept arbitrary `jj` commands to refresh automatically.
+  Merge workspaces with multiple parents are rejected because Git has no single
+  baseline that represents jj's merge change.
 - **PR/forge integration** resolves a workspace to a PR through its bookmarks, so a
   workspace with no bookmark will not match an open PR in `wtf sw --prs`.
 - **`wtf clean`** is deliberately conservative under jj: it will not remove a

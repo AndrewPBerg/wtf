@@ -110,6 +110,14 @@ type Worktree struct {
 }
 
 // Manager is the set of worktree operations wtf needs from a backend.
+// GitDiffManager is an optional capability implemented by jj. It creates and
+// refreshes private Git metadata for Git-aware editor diff views without making
+// that metadata a real WTF Git backend.
+type GitDiffManager interface {
+	InitGitDiff(workspacePath string) error
+	RefreshGitDiff(workspacePath string) error
+}
+
 type Manager interface {
 	// Kind reports which backend this manager drives.
 	Kind() Kind
