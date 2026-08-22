@@ -176,13 +176,26 @@ that is both.
 
 See [docs/](docs/) for detailed command documentation, and [docs/jj.md](docs/jj.md) for Jujutsu specifics.
 
+## Pi extension
+
+The canonical Pi extension lives in [`packages/pi-extension/`](packages/pi-extension/).
+It keeps agent checkout creation on WTF's managed path instead of raw `git worktree
+add` or `jj workspace add` commands.
+
+Install or refresh it locally, then run `/reload` in existing Pi sessions:
+
+```bash
+./scripts/install-pi-extension.sh
+```
+
 ## Development
 
 Requires [Task](https://taskfile.dev):
 
 ```bash
-task all            # fmt -> lint -> test -> build
-task test-coverage  # run tests with 90% coverage gate
+task all                 # fmt -> lint -> test -> build
+task test-coverage       # run tests with 90% coverage gate
+task pi-extension-check  # lint, typecheck, and test the Pi extension
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full dev loop.

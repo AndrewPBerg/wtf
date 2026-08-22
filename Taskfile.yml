@@ -42,6 +42,17 @@ tasks:
     cmds:
       - go mod tidy
 
+  pi-extension-check:
+    desc: Check the canonical Pi extension
+    dir: packages/pi-extension
+    cmds:
+      - pnpm check
+
+  pi-extension-install:
+    desc: Install the canonical Pi extension locally
+    cmds:
+      - ./scripts/install-pi-extension.sh
+
   all:
     desc: Format, lint, test, and build
     cmds:
