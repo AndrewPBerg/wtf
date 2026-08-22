@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/AndrewPBerg/wtf/internal/forge"
+	"github.com/AndrewPBerg/wtf/internal/identity"
 	"github.com/AndrewPBerg/wtf/internal/port"
 	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/AndrewPBerg/wtf/internal/vcs"
@@ -143,6 +145,10 @@ func dispatchNew(cmd *cobra.Command, args []string, base, branchFlag, prFlag str
 	}
 }
 
+func createdJSON(created createdWorkspace, branch string) map[string]any {
+	return map[string]any{"path": created.Path, "branch": branch, "repository_id": created.Workspace.RepositoryID, "workspace_id": created.Workspace.ID, "name": created.Workspace.Name, "native_name": created.Workspace.NativeName}
+}
+
 func runNew(cmd *cobra.Command, branch, base string, wm vcs.Manager, runner *setup.Runner, switchMode bool) error {
 	if err := validateRef(wm, branch); err != nil {
 		return err
@@ -153,19 +159,14 @@ func runNew(cmd *cobra.Command, branch, base string, wm vcs.Manager, runner *set
 		return err
 	}
 
-	wtPath, err := wm.Add(dir, branch, base)
+	created, err := createIdentityWorkspace(cmd, wm, runner, dir, branch, base)
+	wtPath := created.Path
 	if err != nil {
-		return err
-	}
-	if err := initWorkspaceGitDiff(wm, wtPath); err != nil {
 		return err
 	}
 
 	if jsonOutput {
-		return writeJSON(cmd.OutOrStdout(), map[string]string{
-			"path":   wtPath,
-			"branch": branch,
-		})
+		return writeJSON(cmd.OutOrStdout(), createdJSON(created, branch))
 	}
 
 	msgW, pathW := newOutputWriters(cmd, switchMode)
@@ -174,8 +175,6 @@ func runNew(cmd *cobra.Command, branch, base string, wm vcs.Manager, runner *set
 	}
 	_, _ = fmt.Fprintf(msgW, "%s Created %s at %s\n",
 		greenBold("✔"), wm.Kind().Noun(), cyan(wtPath))
-
-	runPostCreateSetup(cmd, wm, runner, dir, wtPath)
 
 	return nil
 }
@@ -189,7 +188,6 @@ func runNewBranch(cmd *cobra.Command, branch string, wm vcs.Manager, runner *set
 	if err != nil {
 		return err
 	}
-
 	// Fetch the remote branch, creating a local tracking ref. This goes through the
 	// backend because a jj repo may keep its git repo inside .jj, out of reach of a
 	// plain `git fetch`.
@@ -198,19 +196,14 @@ func runNewBranch(cmd *cobra.Command, branch string, wm vcs.Manager, runner *set
 		return fmt.Errorf("fetching remote branch %q: %w", branch, err)
 	}
 
-	wtPath, err := wm.Add(dir, branch, branch)
+	created, err := createIdentityWorkspace(cmd, wm, runner, dir, branch, branch)
+	wtPath := created.Path
 	if err != nil {
 		return fmt.Errorf("creating worktree: %w", err)
 	}
-	if err := initWorkspaceGitDiff(wm, wtPath); err != nil {
-		return err
-	}
 
 	if jsonOutput {
-		return writeJSON(cmd.OutOrStdout(), map[string]string{
-			"path":   wtPath,
-			"branch": branch,
-		})
+		return writeJSON(cmd.OutOrStdout(), createdJSON(created, branch))
 	}
 
 	msgW, pathW := newOutputWriters(cmd, switchMode)
@@ -219,8 +212,6 @@ func runNewBranch(cmd *cobra.Command, branch string, wm vcs.Manager, runner *set
 	}
 	_, _ = fmt.Fprintf(msgW, "%s Created %s at %s\n",
 		greenBold("✔"), wm.Kind().Noun(), cyan(wtPath))
-
-	runPostCreateSetup(cmd, wm, runner, dir, wtPath)
 
 	return nil
 }
@@ -274,33 +265,22 @@ func runNewPR(cmd *cobra.Command, arg string, wm vcs.Manager, runner *setup.Runn
 
 	_, _ = fmt.Fprintf(stderr, "Fetching %s %s…\n", prLink, dim(pr.Title))
 
+	localBranch := prBranchName(f.Name(), pr.Number)
 	fetchRef := f.FetchRef(pr.Number)
 	if err := wm.FetchRefspec(dir, "origin", fetchRef); err != nil {
 		return fmt.Errorf("fetching PR ref: %w", err)
 	}
 
-	localBranch := prBranchName(f.Name(), pr.Number)
-
-	wtPath, err := wm.Add(dir, localBranch, localBranch)
+	created, err := createIdentityWorkspace(cmd, wm, runner, dir, localBranch, localBranch)
+	wtPath := created.Path
 	if err != nil {
 		return fmt.Errorf("creating worktree: %w", err)
 	}
-	if err := initWorkspaceGitDiff(wm, wtPath); err != nil {
-		return err
-	}
 
 	if jsonOutput {
-		return writeJSON(cmd.OutOrStdout(), map[string]any{
-			"path":   wtPath,
-			"branch": localBranch,
-			"pr": map[string]any{
-				"number": pr.Number,
-				"title":  pr.Title,
-				"author": pr.Author,
-				"url":    prURL,
-				"draft":  pr.IsDraft,
-			},
-		})
+		result := createdJSON(created, localBranch)
+		result["pr"] = map[string]any{"number": pr.Number, "title": pr.Title, "author": pr.Author, "url": prURL, "draft": pr.IsDraft}
+		return writeJSON(cmd.OutOrStdout(), result)
 	}
 
 	msgW, pathW := newOutputWriters(cmd, switchMode)
@@ -323,9 +303,155 @@ func runNewPR(cmd *cobra.Command, arg string, wm vcs.Manager, runner *setup.Runn
 		}
 	}()
 
-	runPostCreateSetup(cmd, wm, runner, dir, wtPath)
-
 	return nil
+}
+
+// repositoryResolver is intentionally narrow: repository marker/adoption policy
+// belongs to the identity layer, not command orchestration.
+type repositoryResolver interface {
+	ResolveRepository(locator, stateDir string) (identity.Repository, error)
+}
+
+type identityLifecycle interface {
+	CreateWorkspace(repositoryID, name, backend, nativeName, path string) (identity.Workspace, error)
+	ActivateWorkspace(id string) (identity.Workspace, error)
+	RemoveWorkspace(id string) (identity.Workspace, error)
+	MoveWorkspace(id, path string) (identity.Workspace, error)
+	MarkCleanupFailed(id string) (identity.Workspace, error)
+}
+
+type storeRepositoryResolver struct{ store *identity.Store }
+
+// identityDependencies is replaceable by focused CLI tests; production uses the
+// durable store resolver above.
+var identityDependencies = defaultIdentityDependencies
+
+func (r storeRepositoryResolver) ResolveRepository(locator, stateDir string) (identity.Repository, error) {
+	return r.store.EnsureRepository(locator, stateDir)
+}
+
+type storeIdentityLifecycle struct{ store *identity.Store }
+
+func (s storeIdentityLifecycle) CreateWorkspace(repo, name, backend, native, path string) (identity.Workspace, error) {
+	return s.store.CreateWorkspace(repo, name, backend, native, path)
+}
+func (s storeIdentityLifecycle) ActivateWorkspace(id string) (identity.Workspace, error) {
+	return s.store.ActivateWorkspace(id)
+}
+func (s storeIdentityLifecycle) RemoveWorkspace(id string) (identity.Workspace, error) {
+	return s.store.RemoveWorkspace(id)
+}
+func (s storeIdentityLifecycle) MoveWorkspace(id, path string) (identity.Workspace, error) {
+	return s.store.MoveWorkspace(id, path)
+}
+func (s storeIdentityLifecycle) MarkCleanupFailed(id string) (identity.Workspace, error) {
+	return s.store.MarkCleanupFailed(id)
+}
+
+func defaultIdentityDependencies() (repositoryResolver, identityLifecycle, error) {
+	store, err := identity.DefaultStore()
+	if err != nil {
+		return nil, nil, err
+	}
+	return storeRepositoryResolver{store}, storeIdentityLifecycle{store}, nil
+}
+
+func canonicalWorkspaceName(repoSlug, requested string) (string, error) {
+	repoSlug = strings.ToLower(filepath.Base(repoSlug))
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		return "", fmt.Errorf("workspace name is empty")
+	}
+	prefix := repoSlug + "/"
+	requested = strings.TrimPrefix(requested, prefix)
+	// Slashes are valid nested workspace paths (for example
+	// feature/frontend/login), so an unscoped request cannot be distinguished
+	// from a nested feature name by slash count alone.
+	name := prefix + requested
+	if err := identity.ValidateName(name); err != nil {
+		return "", fmt.Errorf("invalid canonical workspace name: %w", err)
+	}
+	return name, nil
+}
+
+type createdWorkspace struct {
+	Workspace identity.Workspace
+	Path      string
+	Branch    string
+}
+
+// createIdentityWorkspace is the identity-critical transaction shared by new and news.
+func createIdentityWorkspace(cmd *cobra.Command, wm vcs.Manager, runner *setup.Runner, dir, branch, base string) (createdWorkspace, error) {
+	main, err := wm.MainWorktree(dir)
+	if err != nil {
+		return createdWorkspace{}, fmt.Errorf("finding main workspace: %w", err)
+	}
+	stateDir, err := wm.StateDir(dir)
+	if err != nil {
+		return createdWorkspace{}, fmt.Errorf("finding identity state directory: %w", err)
+	}
+	repoResolver, lifecycle, err := identityDependencies()
+	if err != nil {
+		return createdWorkspace{}, err
+	}
+	repo, err := repoResolver.ResolveRepository(main.Path, stateDir)
+	if err != nil {
+		return createdWorkspace{}, fmt.Errorf("resolving repository identity: %w", err)
+	}
+	name, err := canonicalWorkspaceName(filepath.Base(main.Path), branch)
+	if err != nil {
+		return createdWorkspace{}, err
+	}
+	addRef := branch
+	backend := identity.Git
+	nativeName := branch
+	if wm.Kind() == vcs.KindJJ {
+		backend = identity.JJ
+		addRef, nativeName = name, name
+	}
+	predicted := vcs.WorktreePath(main.Path, addRef)
+	pending, err := lifecycle.CreateWorkspace(repo.ID, name, string(backend), nativeName, predicted)
+	if err != nil {
+		return createdWorkspace{}, fmt.Errorf("claiming workspace identity: %w", err)
+	}
+	wtPath, err := wm.Add(dir, addRef, base)
+	if err != nil {
+		if _, removeErr := lifecycle.RemoveWorkspace(pending.ID); removeErr != nil {
+			_, _ = lifecycle.MarkCleanupFailed(pending.ID)
+			return createdWorkspace{}, fmt.Errorf("creating workspace: %w (identity cleanup failed: %v)", err, removeErr)
+		}
+		return createdWorkspace{}, err
+	}
+	cleanup := func(cause error) error {
+		if removeErr := wm.Remove(dir, addRef, dir, false); removeErr != nil {
+			_, _ = lifecycle.MarkCleanupFailed(pending.ID)
+			return fmt.Errorf("%w (workspace rollback failed: %v; identity retained as cleanup_failed)", cause, removeErr)
+		}
+		if _, removeErr := lifecycle.RemoveWorkspace(pending.ID); removeErr != nil {
+			_, _ = lifecycle.MarkCleanupFailed(pending.ID)
+			return fmt.Errorf("%w (identity cleanup failed: %v)", cause, removeErr)
+		}
+		return cause
+	}
+	if err := initWorkspaceGitDiff(wm, wtPath); err != nil {
+		return createdWorkspace{}, cleanup(err)
+	}
+	actualPath := filepath.Clean(wtPath)
+	if resolved, err := filepath.EvalSymlinks(actualPath); err == nil {
+		actualPath = filepath.Clean(resolved)
+	}
+	if actualPath != filepath.Clean(predicted) {
+		if _, err := lifecycle.MoveWorkspace(pending.ID, actualPath); err != nil {
+			return createdWorkspace{}, cleanup(fmt.Errorf("recording workspace path: %w", err))
+		}
+	}
+	active, err := lifecycle.ActivateWorkspace(pending.ID)
+	if err != nil {
+		return createdWorkspace{}, cleanup(fmt.Errorf("activating workspace identity: %w", err))
+	}
+	// Setup is outside the identity-critical transaction and runs exactly once.
+	runPostCreateSetup(cmd, wm, runner, dir, wtPath)
+	return createdWorkspace{Workspace: active, Path: wtPath, Branch: branch}, nil
 }
 
 func initWorkspaceGitDiff(wm vcs.Manager, wtPath string) error {

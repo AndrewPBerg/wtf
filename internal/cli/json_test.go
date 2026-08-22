@@ -3,9 +3,11 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"testing"
 
 	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/identity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -43,6 +45,27 @@ func TestVersionCommand_JSON(t *testing.T) {
 	var result map[string]string
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &result))
 	assert.Equal(t, Version, result["version"])
+}
+
+func assertCreatedJSON(t *testing.T, raw []byte, repo, branch, path string) {
+	t.Helper()
+	var result struct {
+		Path         string `json:"path"`
+		Branch       string `json:"branch"`
+		RepositoryID string `json:"repository_id"`
+		WorkspaceID  string `json:"workspace_id"`
+		Name         string `json:"name"`
+		NativeName   string `json:"native_name"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &result))
+	require.NoError(t, identity.ValidateID(result.RepositoryID))
+	require.NoError(t, identity.ValidateID(result.WorkspaceID))
+	canonical, err := canonicalWorkspaceName(filepath.Base(repo), branch)
+	require.NoError(t, err)
+	assert.Equal(t, path, result.Path)
+	assert.Equal(t, branch, result.Branch)
+	assert.Equal(t, canonical, result.Name)
+	assert.Equal(t, branch, result.NativeName, "Git native name remains the forge ref")
 }
 
 func TestSwCommand_JSON(t *testing.T) {
@@ -87,10 +110,7 @@ func TestNewCommand_JSON(t *testing.T) {
 	err := runNew(cmd, "feat-new-json", newBase, wm, nil, false)
 	require.NoError(t, err)
 
-	var result map[string]string
-	require.NoError(t, json.Unmarshal(buf.Bytes(), &result))
-	assert.Equal(t, "feat-new-json", result["branch"])
-	assert.Contains(t, result["path"], "feat-new-json")
+	assertCreatedJSON(t, buf.Bytes(), dir, "feat-new-json", git.WorktreePath(dir, "feat-new-json"))
 }
 
 func TestNewsCommand_JSON(t *testing.T) {
@@ -109,10 +129,7 @@ func TestNewsCommand_JSON(t *testing.T) {
 	err := runNews(cmd, "feat-news-json", wm, nil)
 	require.NoError(t, err)
 
-	var result map[string]string
-	require.NoError(t, json.Unmarshal(buf.Bytes(), &result))
-	assert.Equal(t, "feat-news-json", result["branch"])
-	assert.Contains(t, result["path"], "feat-news-json")
+	assertCreatedJSON(t, buf.Bytes(), dir, "feat-news-json", git.WorktreePath(dir, "feat-news-json"))
 }
 
 func TestCleanCommand_JSON_NothingToClean(t *testing.T) {

@@ -16,6 +16,12 @@ import (
 // initCLITestRepo creates a temporary git repo for CLI tests.
 func initCLITestRepo(t *testing.T) string {
 	t.Helper()
+	// CLI creation commands persist identity state through WTF_HOME. Keep every
+	// fixture's store private so tests cannot claim production state or each
+	// other's workspace names.
+	// Always replace the inherited home: callers may run tests with a real
+	// WTF_HOME, and fixture creation must never write into it.
+	t.Setenv("WTF_HOME", t.TempDir())
 
 	dir := t.TempDir()
 	exec := &git.RealExecutor{}

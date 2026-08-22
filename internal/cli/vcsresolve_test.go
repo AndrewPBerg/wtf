@@ -32,11 +32,15 @@ func initCLITestJJRepo(t *testing.T) string {
 	t.Helper()
 	requireJJ(t)
 
+	// New/news/PR use the durable identity store; always isolate fixtures from
+	// any developer or CI WTF_HOME inherited by the test process.
+	t.Setenv("WTF_HOME", t.TempDir())
 	base := t.TempDir()
 	if resolved, err := filepath.EvalSymlinks(base); err == nil {
 		base = resolved
 	}
-	root := filepath.Join(base, "myrepo")
+	slug := "repo-" + strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-"))
+	root := filepath.Join(base, slug)
 	require.NoError(t, os.MkdirAll(root, 0o755))
 
 	run := func(args ...string) {

@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/AndrewPBerg/wtf/internal/config"
+	"github.com/AndrewPBerg/wtf/internal/identity"
 	"github.com/AndrewPBerg/wtf/internal/jj"
 	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/AndrewPBerg/wtf/internal/ui"
@@ -39,13 +41,47 @@ func TestJJ_NewCreatesWorkspaceAndSymlinksEnv(t *testing.T) {
 
 	require.NoError(t, runNew(cmd, "feat/auth", "main", mgr, runner, false))
 
-	wsPath := filepath.Join(filepath.Dir(root), "feat-auth--myrepo")
+	wsPath := vcs.WorktreePath(root, filepath.Base(root)+"/feat/auth")
 	assert.DirExists(t, wsPath)
 
 	// The output names a workspace, not a worktree, so the backend is obvious.
 	assert.Contains(t, stdout.String()+stderr.String(), "Created workspace at")
 	assert.FileExists(t, filepath.Join(wsPath, ".git", vcs.JJGitDiffMarker),
 		"jj workspaces should expose editor Git diffs by default")
+
+	canonical, err := canonicalWorkspaceName(filepath.Base(root), "feat/auth")
+	require.NoError(t, err)
+	// Assert both the real jj registration and wtf's manager view: the native
+	// workspace name is the canonical scoped identity, not the request alone.
+	realList, err := (&jj.RealExecutor{}).Run(root, "workspace", "list", "--ignore-working-copy")
+	require.NoError(t, err)
+	assert.Contains(t, realList, canonical)
+	listed, err := mgr.List(root)
+	require.NoError(t, err)
+	var got vcs.Worktree
+	for _, item := range listed {
+		if item.Path == wsPath {
+			got = item
+		}
+	}
+	assert.Equal(t, canonical, got.Name)
+	assert.Equal(t, canonical, got.NativeName)
+	assert.Equal(t, canonical, got.Branch)
+
+	stateDir, err := mgr.StateDir(root)
+	require.NoError(t, err)
+	marker, err := identity.ReadRepositoryID(stateDir)
+	require.NoError(t, err)
+	store, err := identity.DefaultStore()
+	require.NoError(t, err)
+	state, err := store.Load()
+	require.NoError(t, err)
+	require.Len(t, state.Repositories, 1)
+	require.Len(t, state.Workspaces, 1)
+	assert.Equal(t, state.Repositories[0].ID, marker)
+	assert.Equal(t, marker, state.Workspaces[0].RepositoryID)
+	assert.Equal(t, canonical, state.Workspaces[0].Name)
+	assert.Equal(t, canonical, state.Workspaces[0].NativeName)
 
 	// The project files came across...
 	assert.FileExists(t, filepath.Join(wsPath, "a.txt"))
@@ -62,6 +98,34 @@ func TestJJ_NewCreatesWorkspaceAndSymlinksEnv(t *testing.T) {
 	assert.NotZero(t, info.Mode()&os.ModeSymlink, ".env should be symlinked by default")
 }
 
+func TestJJ_NewsCreatesCanonicalNativeWorkspace(t *testing.T) {
+	mgr, root := jjTestManager(t)
+	newNoInstall = true
+	newNoServe = true
+	t.Cleanup(func() { newNoInstall = false; newNoServe = false })
+
+	cmd, stdout, _ := newTestCmd("")
+	t.Chdir(root)
+	require.NoError(t, dispatchNew(cmd, []string{"feat/news"}, "", "", "", true))
+	wsPath := strings.TrimSpace(stdout.String())
+	canonical, err := canonicalWorkspaceName(filepath.Base(root), "feat/news")
+	require.NoError(t, err)
+	realList, err := (&jj.RealExecutor{}).Run(root, "workspace", "list", "--ignore-working-copy")
+	require.NoError(t, err)
+	assert.Contains(t, realList, canonical)
+	listed, err := mgr.List(root)
+	require.NoError(t, err)
+	var found bool
+	for _, item := range listed {
+		if item.Path == wsPath {
+			found = true
+			assert.Equal(t, canonical, item.Name)
+			assert.Equal(t, canonical, item.NativeName)
+		}
+	}
+	assert.True(t, found, "news path should be a real listed jj workspace")
+}
+
 func TestJJ_NewCanOptOutOfGitDiffMetadata(t *testing.T) {
 	mgr, root := jjTestManager(t)
 	newNoGitDiff = true
@@ -70,7 +134,7 @@ func TestJJ_NewCanOptOutOfGitDiffMetadata(t *testing.T) {
 	cmd, _, _ := newTestCmd("")
 	require.NoError(t, runNew(cmd, "plain", "main", mgr, nil, false))
 
-	wsPath := filepath.Join(filepath.Dir(root), "plain--myrepo")
+	wsPath := vcs.WorktreePath(root, filepath.Base(root)+"/plain")
 	assert.NoDirExists(t, filepath.Join(wsPath, ".git"))
 }
 
@@ -81,7 +145,7 @@ func TestJJ_NewHonorsGitDiffEnvironmentOptOut(t *testing.T) {
 	cmd, _, _ := newTestCmd("")
 	require.NoError(t, runNew(cmd, "env-plain", "main", mgr, nil, false))
 
-	wsPath := filepath.Join(filepath.Dir(root), "env-plain--myrepo")
+	wsPath := vcs.WorktreePath(root, filepath.Base(root)+"/env-plain")
 	assert.NoDirExists(t, filepath.Join(wsPath, ".git"))
 }
 
@@ -96,7 +160,7 @@ func TestJJ_NewCopyEnvWritesRealFile(t *testing.T) {
 	cmd, _, _ := newTestCmd("")
 	require.NoError(t, runNew(cmd, "agent-1", "main", mgr, setup.NewRunner(), false))
 
-	linked := filepath.Join(filepath.Dir(root), "agent-1--myrepo", ".env")
+	linked := filepath.Join(vcs.WorktreePath(root, filepath.Base(root)+"/agent-1"), ".env")
 	info, err := os.Lstat(linked)
 	require.NoError(t, err)
 	assert.Zero(t, info.Mode()&os.ModeSymlink, "--copy-env must write a real file")
@@ -112,7 +176,7 @@ func TestJJ_SwFindsWorkspaceByName(t *testing.T) {
 	require.NoError(t, runSw(cmd, "auth", mgr))
 
 	// sw prints the path on stdout for the shell wrapper to cd into.
-	assert.Contains(t, stdout.String(), "feat-auth--myrepo")
+	assert.Contains(t, stdout.String(), "feat-auth--"+filepath.Base(root))
 }
 
 func TestJJ_RmRemovesWorkspaceDirectory(t *testing.T) {
@@ -238,6 +302,9 @@ func TestJJ_GlobalListingTagsBackends(t *testing.T) {
 	jjRoot := initCLITestJJRepo(t)
 	require.NoError(t, config.SetVCSPref(jjRoot, vcs.KindJJ))
 	gitRoot := initCLITestRepo(t)
+	// Each fixture deliberately gets a fresh WTF_HOME; re-establish the JJ
+	// preference in the home owned by the last fixture before registry writes.
+	require.NoError(t, config.SetVCSPref(jjRoot, vcs.KindJJ))
 
 	require.NoError(t, config.Add(jjRoot))
 	require.NoError(t, config.Add(gitRoot))
@@ -309,7 +376,7 @@ func TestJJ_FindGlobalMatchesAreLabeledByBackend(t *testing.T) {
 	matches := findGlobal(cmd, []string{root}, "shared-name")
 	require.Len(t, matches, 1)
 	assert.Contains(t, matches[0].label(), "jj")
-	assert.Contains(t, matches[0].label(), "myrepo")
+	assert.Contains(t, matches[0].label(), filepath.Base(root))
 }
 
 func TestJJ_RmInteractiveGlobalUsesRowBackend(t *testing.T) {

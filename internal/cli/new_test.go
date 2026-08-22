@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/AndrewPBerg/wtf/internal/forge"
 	"github.com/AndrewPBerg/wtf/internal/git"
+	"github.com/AndrewPBerg/wtf/internal/identity"
 	"github.com/AndrewPBerg/wtf/internal/setup"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -789,12 +791,26 @@ func TestRunNewPR_JSON(t *testing.T) {
 	err = runNewPR(cmd, "5", wmStub, nil, ff, false)
 	require.NoError(t, err)
 
-	out := stdout.String()
-	assert.Contains(t, out, `"path"`)
-	assert.Contains(t, out, `"branch"`)
-	assert.Contains(t, out, `"pr"`)
-	assert.Contains(t, out, `"number"`)
-	assert.Contains(t, out, `"JSON PR"`)
+	var result struct {
+		Path         string         `json:"path"`
+		Branch       string         `json:"branch"`
+		RepositoryID string         `json:"repository_id"`
+		WorkspaceID  string         `json:"workspace_id"`
+		Name         string         `json:"name"`
+		NativeName   string         `json:"native_name"`
+		PR           map[string]any `json:"pr"`
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &result))
+	require.NoError(t, identity.ValidateID(result.RepositoryID))
+	require.NoError(t, identity.ValidateID(result.WorkspaceID))
+	canonical, err := canonicalWorkspaceName(filepath.Base(dir), "pr-5")
+	require.NoError(t, err)
+	assert.Equal(t, git.WorktreePath(dir, "pr-5"), result.Path)
+	assert.Equal(t, "pr-5", result.Branch)
+	assert.Equal(t, canonical, result.Name)
+	assert.Equal(t, "pr-5", result.NativeName, "Git native name remains the forge ref")
+	assert.Equal(t, float64(5), result.PR["number"])
+	assert.Equal(t, "JSON PR", result.PR["title"])
 }
 
 func TestRunNewPR_NoRemote(t *testing.T) {
