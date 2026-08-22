@@ -7,6 +7,17 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestParseWorktreeListKeepsBranchSeparateFromWTFName(t *testing.T) {
+	wts, err := parseWorktreeList("worktree /repo\nHEAD abc\nbranch refs/heads/forge/feature\n")
+	assert.NoError(t, err)
+	assert.Len(t, wts, 1)
+	assert.Equal(t, "forge/feature", wts[0].Branch)
+	// Git has no native workspace name. Identity adoption supplies Name later;
+	// parsing must not incorrectly turn a mutable branch into workspace identity.
+	assert.Empty(t, wts[0].Name)
+	assert.Empty(t, wts[0].NativeName)
+}
+
 func TestWorktreeManager_List_Error(t *testing.T) {
 	mock := newMockExecutor()
 	mock.on("worktree list --porcelain", "", fmt.Errorf("not a repo"))

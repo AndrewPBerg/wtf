@@ -3,11 +3,11 @@
 // workspace are the same idea — a sibling checkout of the same repo — so both
 // reduce to the Worktree model below.
 //
-// The mapping is deliberately thin. For jj, the workspace *name* plays the role
-// git gives the branch name: jj enforces workspace-name uniqueness, so it is a
-// valid primary key for lookup, removal, and port allocation. Bookmarks are
-// carried as display-only metadata and are never created implicitly — that stays
-// the user's call via `jj bookmark create` or `jj git push -c`.
+// The mapping is deliberately thin. Name is the canonical WTF workspace
+// identity, while Branch remains a compatibility/display field. JJ's native
+// workspace name is Name; Git's Branch is only a forge-facing ref. Bookmarks
+// are carried as display-only metadata and are never created implicitly — that
+// stays the user's call via `jj bookmark create` or `jj git push -c`.
 package vcs
 
 import (
@@ -48,8 +48,8 @@ func (k Kind) Noun() string {
 	}
 }
 
-// RefNoun returns the backend's word for what identifies a checkout. git keys
-// on the branch name; jj keys on the workspace name.
+// RefNoun returns the backend's legacy word for the identifying VCS field. New
+// identity-aware callers should use Worktree.Name rather than this vocabulary.
 func (k Kind) RefNoun() string {
 	switch k {
 	case KindJJ:
@@ -87,10 +87,24 @@ var (
 )
 
 // Worktree is a single checkout of a repo — a git worktree or a jj workspace.
+//
+// Name is WTF's canonical workspace name. It is deliberately separate from
+// Branch: Git branches are forge-facing refs, not WTF workspace identity. JJ
+// has no separate checkout ref, so its native workspace name is also Name.
+// Identity fields are optional until the identity store adopts the checkout;
+// callers must not derive them from Path.
 type Worktree struct {
 	Path string `json:"path"`
-	// Branch is the checkout's identifying name: a git branch name, or a jj
-	// workspace name. Empty for detached or bare git worktrees.
+	// RepositoryID and WorkspaceID are stable identity-store values. They are
+	// not path-derived and remain empty for unadopted legacy checkouts.
+	RepositoryID string `json:"repository_id,omitempty"`
+	WorkspaceID  string `json:"workspace_id,omitempty"`
+	Name         string `json:"name,omitempty"`
+	NativeName   string `json:"native_name,omitempty"`
+
+	// Branch is retained as a compatibility/display field. For Git it is the
+	// checked-out branch (a forge ref); for JJ it mirrors the native workspace
+	// name. Empty for detached or bare Git worktrees.
 	Branch     string `json:"branch"`
 	Head       string `json:"head"`
 	IsMain     bool   `json:"is_main"`
