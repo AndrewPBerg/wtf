@@ -4,6 +4,12 @@ All notable changes to WorkTreeForge (wtf) will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **v0.11 resource substrate** — strict optional `.wtf.toml` intent, UUID-owned
+  file/port resource state, read-only `workspace current`, `capabilities`,
+  `resources`, and `doctor` JSON contracts, plus fail-closed managed-file cleanup.
+
 ## [0.10.0] — 2026-08-22
 
 ### Added

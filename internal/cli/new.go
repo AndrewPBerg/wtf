@@ -470,6 +470,22 @@ func createIdentityWorkspaceWithEnsure(cmd *cobra.Command, wm vcs.Manager, runne
 	if err != nil {
 		return createdWorkspace{}, cleanup(fmt.Errorf("activating workspace identity: %w", err))
 	}
+	if err := reconcileCreatedResources(active.ID, dir, wtPath, stateDir); err != nil {
+		// Resource writes and leases are durable. Repair them before removing the
+		// VCS workspace; if repair itself fails, retain both visible states.
+		resourceErr := cleanupResources(active.ID, dir, wtPath, wm, func() error {
+			store, storeErr := removalIdentityStoreFactory()
+			if storeErr != nil {
+				return storeErr
+			}
+			_, markErr := store.MarkCleanupFailed(active.ID)
+			return markErr
+		})
+		if resourceErr != nil {
+			return createdWorkspace{}, fmt.Errorf("applying workspace resources: %v (resource repair failed: %w)", err, resourceErr)
+		}
+		return createdWorkspace{}, cleanup(fmt.Errorf("applying workspace resources: %w", err))
+	}
 	// Setup is outside the identity-critical transaction and runs exactly once.
 	runPostCreateSetup(cmd, wm, runner, dir, wtPath)
 	return createdWorkspace{Workspace: active, Path: wtPath, Branch: branch}, nil

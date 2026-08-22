@@ -55,8 +55,9 @@ type workspaceListReport struct {
 }
 
 func init() {
-	workspaceCmd.AddCommand(workspaceInspectCmd, workspaceListCmd)
+	workspaceCmd.AddCommand(workspaceInspectCmd, workspaceListCmd, workspaceCurrentCmd)
 	rootCmd.AddCommand(workspaceCmd)
+	rootCmd.AddCommand(capabilitiesCmd)
 }
 
 var workspaceCmd = &cobra.Command{
@@ -90,6 +91,64 @@ var workspaceInspectCmd = &cobra.Command{
 	},
 }
 
+var workspaceCurrentCmd = &cobra.Command{
+	Use:   "current",
+	Short: "Inspect the managed workspace containing the current directory",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		store, err := identity.DefaultStore()
+		if err != nil {
+			return err
+		}
+		workspace, err := currentWorkspace(store)
+		if err != nil {
+			return err
+		}
+		report, err := inspectWorkspace(workspace)
+		if err != nil {
+			return err
+		}
+		if jsonOutput {
+			return writeJSON(cmd.OutOrStdout(), report)
+		}
+		printWorkspaceReport(cmd, report)
+		return nil
+	},
+}
+
+// currentWorkspace resolves by durable identity and containment, not by
+// deriving a name from the current VCS checkout. This also works in a nested
+// directory and keeps secondary JJ workspaces discoverable without .git.
+func currentWorkspace(store *identity.Store) (identity.Workspace, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return identity.Workspace{}, fmt.Errorf("finding current directory: %w", err)
+	}
+	cwd, err = identity.CanonicalPhysicalPath(cwd)
+	if err != nil {
+		return identity.Workspace{}, err
+	}
+	state, err := store.Load()
+	if err != nil {
+		return identity.Workspace{}, err
+	}
+	var found []identity.Workspace
+	for _, workspace := range state.Workspaces {
+		if workspace.LifecycleState != identity.Pending && workspace.LifecycleState != identity.Active && workspace.LifecycleState != identity.CleanupFailed {
+			continue
+		}
+		rel, relErr := filepath.Rel(workspace.Path, cwd)
+		if relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			found = append(found, workspace)
+		}
+	}
+	if len(found) == 0 {
+		return identity.Workspace{}, fmt.Errorf("current directory is not a managed workspace")
+	}
+	sort.Slice(found, func(i, j int) bool { return len(found[i].Path) > len(found[j].Path) })
+	return found[0], nil
+}
+
 var workspaceListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List managed workspaces",
@@ -113,7 +172,7 @@ var workspaceListCmd = &cobra.Command{
 		}
 		sort.Slice(reports, func(i, j int) bool { return reports[i].Identity.ID < reports[j].Identity.ID })
 		if jsonOutput {
-			return writeJSON(cmd.OutOrStdout(), workspaceListReport{Version: 1, Workspaces: reports})
+			return writeJSON(cmd.OutOrStdout(), workspaceListReport{Version: ReportVersion, Workspaces: reports})
 		}
 		for _, report := range reports {
 			printWorkspaceReport(cmd, report)
@@ -124,7 +183,7 @@ var workspaceListCmd = &cobra.Command{
 
 func inspectWorkspace(workspace identity.Workspace) (workspaceReport, error) {
 	report := workspaceReport{
-		Version:       1,
+		Version:       ReportVersion,
 		Identity:      workspace,
 		Physical:      physicalReport{Path: workspace.Path},
 		GitDiffShadow: shadowReport{Supported: workspace.Backend == string(identity.JJ), Status: "not_supported"},

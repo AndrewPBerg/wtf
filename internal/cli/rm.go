@@ -217,11 +217,23 @@ func resolveRemovalWorktree(repoDir, query string, wm vcs.Manager) (vcs.Worktree
 // removePhysicalAndIdentity keeps physical cleanup and the durable identity
 // lifecycle in lockstep. Legacy worktrees have no identity ID and retain the
 // pre-identity behavior.
-func removePhysicalAndIdentity(cmd *cobra.Command, wm vcs.Manager, repoDir, ref, cwd string, wt vcs.Worktree) error {
+func removePhysicalAndIdentity(_ *cobra.Command, wm vcs.Manager, repoDir, ref, cwd string, wt vcs.Worktree) error {
 	pathMissing := false
 	if wt.WorkspaceID != "" {
 		_, err := os.Lstat(wt.Path)
 		pathMissing = os.IsNotExist(err)
+	}
+	if wt.WorkspaceID != "" {
+		if err := cleanupResources(wt.WorkspaceID, repoDir, wt.Path, wm, func() error {
+			store, storeErr := removalIdentityStoreFactory()
+			if storeErr != nil {
+				return storeErr
+			}
+			_, markErr := store.MarkCleanupFailed(wt.WorkspaceID)
+			return markErr
+		}); err != nil {
+			return err
+		}
 	}
 	if !pathMissing {
 		// The PID file lives inside the workspace, so stop the server before the
@@ -255,12 +267,6 @@ func removePhysicalAndIdentity(cmd *cobra.Command, wm vcs.Manager, repoDir, ref,
 				return fmt.Errorf("physically removed %s, but identity cleanup failed for workspace %s and could not record cleanup_failed: %w (recording failure: %v)", ref, wt.WorkspaceID, finalizeErr, markErr)
 			}
 			return fmt.Errorf("physically removed %s, identity is cleanup_failed for workspace %s: %w", ref, failed.ID, finalizeErr)
-		}
-	}
-	alloc, err := portAllocator(wm, repoDir)
-	if err == nil {
-		if err := alloc.Release(ref); err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s port release failed: %v\n", yellow("⚠"), err)
 		}
 	}
 	return nil

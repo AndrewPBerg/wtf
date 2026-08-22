@@ -260,6 +260,28 @@ harness adapters can consume without introducing a reverse dependency on those s
 integration, publication, verification policy, resource hooks, `.wtf.toml`, or a
 general in-process Go API. The stable surface is the CLI JSON contract.
 
+## v0.11.0 — Resource Substrate and Declarative Configuration
+
+**Status:** in progress; local dogfood started
+
+**Goal:** make workspace file and port intent inspectable, UUID-owned, and
+repairable without adding database, Docker/service, secret, or orchestration scope.
+
+- [x] Strict optional v1 `.wtf.toml` manifest and metadata-only secret handling
+- [x] Versioned `workspace current`, `capabilities`, `resources`, and `doctor`
+      JSON surfaces
+- [x] UUID-owned file/port registry, leases, observed state, and cleanup debt
+- [x] Fail-closed managed-file creation/removal and UUID retry behavior
+- [x] Dogfood non-secret Markdown and nested secret-marked env symlinks, a named
+      port lease, drift diagnosis, cleanup debt, and repair on Pluckmd
+- [ ] Dogfood a second VCS-backed project (Labctl currently has no VCS metadata)
+- [ ] Expand deterministic glob reconciliation only after its target-mapping
+      semantics are specified; v1 currently rejects globs before state changes
+
+**Deferred to v0.12:** database lifecycle/stress testing, Docker/services
+integration, package-manager installation behavior, and any task-runner or generic
+lifecycle-hook abstraction.
+
 ## Dogfood gate
 
 For each milestone, record real workspace creation steps, manual repairs, Zed
