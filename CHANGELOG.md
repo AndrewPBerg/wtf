@@ -4,6 +4,13 @@ All notable changes to WorkTreeForge (wtf) will be documented in this file.
 
 ## [Unreleased]
 
+## [0.11.2] — 2026-08-23
+
+### Fixed
+
+- Installed the configured JJ version in CI so JJ integration coverage is
+  measured consistently with the local quality gate.
+
 ## [0.11.1] — 2026-08-23
 
 ### Fixed

@@ -286,13 +286,20 @@ lifecycle-hook abstraction.
 
 ## v0.11.1 — Release Corrections and Quality Restoration
 
-**Status:** ready for release
+**Status:** released 2026-08-23
 
 - [x] Correct the stale embedded/build version left in the v0.11.0 tag
 - [x] Reconcile roadmap, changelog, command documentation, and lifecycle-script scope
 - [x] Fail closed on uninspectable managed resource targets
 - [x] Restore and enforce the adjusted 90% coverage gate in CI
 - [x] Expand identity, resource, workspace, cleanup, setup, and JJ Git-diff contract tests
+
+## v0.11.2 — CI Parity Correction
+
+**Status:** ready for release
+
+- [x] Install JJ 0.44 in CI before measuring the adjusted coverage gate
+- [x] Keep local and CI quality inputs equivalent
 
 ## Dogfood gate
 
