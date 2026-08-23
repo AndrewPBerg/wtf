@@ -72,7 +72,7 @@ jobs:
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: 0
         run: |
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${GITHUB_REF_NAME#v}"
           go build \
             -trimpath \
             -ldflags="-s -w -X github.com/AndrewPBerg/wtf/internal/cli.Version=${VERSION}" \

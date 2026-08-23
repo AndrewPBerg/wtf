@@ -3,6 +3,7 @@ package cli
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,9 +18,10 @@ const lifecycleTestID = "11111111-1111-4111-8111-111111111111"
 type lifecycleStateManager struct {
 	vcs.Manager
 	stateDir string
+	stateErr error
 }
 
-func (m lifecycleStateManager) StateDir(string) (string, error) { return m.stateDir, nil }
+func (m lifecycleStateManager) StateDir(string) (string, error) { return m.stateDir, m.stateErr }
 
 func lifecycleRegistry(t *testing.T) *resource.Registry {
 	t.Helper()
@@ -134,6 +136,41 @@ func TestCleanupResourcesSuccessAndDrift(t *testing.T) {
 			require.Equal(t, resource.LifecycleFinalized, ws.Lifecycle)
 		})
 	}
+}
+
+func TestCleanupResourcesHandlesAbsentStatePortsAndWorkspaceDebt(t *testing.T) {
+	workspacePath := t.TempDir()
+	require.NoError(t, cleanupResources(lifecycleTestID, t.TempDir(), workspacePath, lifecycleStateManager{stateDir: t.TempDir()}, func() error {
+		t.Fatal("absent resource state marked identity failed")
+		return nil
+	}))
+
+	stateErr := errors.New("state unavailable")
+	require.ErrorIs(t, cleanupResources(lifecycleTestID, t.TempDir(), workspacePath, lifecycleStateManager{stateErr: stateErr}, func() error { return nil }), stateErr)
+
+	stateDir := t.TempDir()
+	reg := resource.NewRegistry(filepath.Join(stateDir, "resources.json"))
+	desired := resource.Desired{Ports: []resource.PortIntent{{Name: "web", Preferred: 3000}}}
+	require.NoError(t, reg.SetDesired(lifecycleTestID, desired))
+	_, err := reg.Acquire(lifecycleTestID, resource.KindPort, "web")
+	require.NoError(t, err)
+	require.NoError(t, cleanupResources(lifecycleTestID, t.TempDir(), workspacePath, lifecycleStateManager{stateDir: stateDir}, func() error { return nil }))
+	got, err := reg.Get(lifecycleTestID)
+	require.NoError(t, err)
+	require.Equal(t, resource.LifecycleFinalized, got.Lifecycle)
+	require.Equal(t, resource.LeaseReleased, got.Leases[0].State)
+
+	debtState := t.TempDir()
+	debtRegistry := resource.NewRegistry(filepath.Join(debtState, "resources.json"))
+	require.NoError(t, debtRegistry.SetDesired(lifecycleTestID, resource.Desired{}))
+	require.NoError(t, debtRegistry.MarkCleanupDebt(lifecycleTestID, resource.KindFile, "orphan", "manual repair required"))
+	failed := false
+	err = cleanupResources(lifecycleTestID, t.TempDir(), workspacePath, lifecycleStateManager{stateDir: debtState}, func() error {
+		failed = true
+		return nil
+	})
+	require.ErrorContains(t, err, "finalizing resource workspace")
+	require.True(t, failed)
 }
 
 func TestDebtExistsAndFileOwnership(t *testing.T) {

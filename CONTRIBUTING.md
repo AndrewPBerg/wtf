@@ -31,7 +31,7 @@ task lint           # run golangci-lint
 task test           # run all tests
 task build          # build binary to bin/wtf
 task all            # fmt → lint → test → build (the full pipeline)
-task test-coverage  # run tests with coverage report (fails below adjusted 88%)
+task test-coverage  # run tests with coverage report (fails below adjusted 90%)
 task tidy           # go mod tidy
 task clean          # remove build artifacts
 ```
@@ -73,7 +73,7 @@ Hooks run automatically on every `git commit`. If a hook fails and modifies file
 
 ## Testing
 
-- **88% adjusted coverage minimum** enforced by CI and ratcheted upward as testable paths gain coverage
+- **90% adjusted coverage minimum** enforced by CI
 - Use `testify` for assertions (`assert`, `require`)
 - Integration tests create real temp git repos via `initTestRepo(t)`
 - Run `task test-coverage` to check your coverage locally

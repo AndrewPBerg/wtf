@@ -18,6 +18,7 @@ EXCLUDE_FUNCS=(
   runWatchSingle runWatchGlobal watchRepo
   fetchPRMap createCachedForge runLsWithAsyncPRs
   completePRValues completeRemoteBranchValues
+  RunPicker RunRepoPicker FetchRefspec
 )
 
 # Build function boundary map: file → [(startLine, funcName), ...] sorted by line.

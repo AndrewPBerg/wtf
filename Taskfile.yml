@@ -4,10 +4,8 @@ vars:
   BINARY: wtf
   BUILD_DIR: bin
   COVER_PROFILE: coverage.out
-  # Real adjusted baseline after v0.11 resource/identity coverage expansion.
-  # Ratchet upward; do not lower to accommodate new untested code.
-  MIN_COVERAGE: 88
-  VERSION: 0.11.0
+  MIN_COVERAGE: 90
+  VERSION: 0.11.1
 
 tasks:
   build:

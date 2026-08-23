@@ -4,6 +4,20 @@ All notable changes to WorkTreeForge (wtf) will be documented in this file.
 
 ## [Unreleased]
 
+## [0.11.1] — 2026-08-23
+
+### Fixed
+
+- Corrected source/build version metadata that remained at `0.10.0` in the
+  `v0.11.0` tag and reconciled the release and command documentation.
+- Failed closed when a managed resource target cannot be inspected because an
+  ancestor is not a directory.
+
+### Changed
+
+- Expanded identity, resource, cleanup, workspace-contract, and JJ Git-diff
+  coverage and made the adjusted coverage floor an enforced CI gate.
+
 ## [0.11.0] — 2026-08-22
 
 ### Added

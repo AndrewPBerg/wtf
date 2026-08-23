@@ -38,7 +38,7 @@ current milestones at the end of this document and is promoted only after real
 
 ### Quality
 
-- [x] Historical coverage gate established; the current enforced adjusted floor is 88% and should ratchet upward
+- [x] 90% adjusted coverage gate enforced locally and in CI
 - [x] Integration tests against real temp git repos
 - [x] golangci-lint passing
 - [x] `task all` green
@@ -283,6 +283,16 @@ repairable without adding database, Docker/service, secret, or orchestration sco
 **Deferred to v0.12:** database lifecycle/stress testing, Docker/services
 integration, package-manager installation behavior, and any task-runner or generic
 lifecycle-hook abstraction.
+
+## v0.11.1 — Release Corrections and Quality Restoration
+
+**Status:** ready for release
+
+- [x] Correct the stale embedded/build version left in the v0.11.0 tag
+- [x] Reconcile roadmap, changelog, command documentation, and lifecycle-script scope
+- [x] Fail closed on uninspectable managed resource targets
+- [x] Restore and enforce the adjusted 90% coverage gate in CI
+- [x] Expand identity, resource, workspace, cleanup, setup, and JJ Git-diff contract tests
 
 ## Dogfood gate
 
