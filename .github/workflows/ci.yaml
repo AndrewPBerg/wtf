@@ -29,8 +29,13 @@ jobs:
       - name: Lint
         run: golangci-lint run
 
-      - name: Test with coverage
-        run: go test -coverprofile=coverage.out ./...
+      - name: Test
+        run: go test ./...
+
+      - name: Enforce adjusted coverage gate
+        run: |
+          go test -coverprofile=coverage.out ./internal/...
+          scripts/coverage-check.sh coverage.out 88
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v6

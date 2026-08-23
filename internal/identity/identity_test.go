@@ -17,9 +17,21 @@ func TestUUID(t *testing.T) {
 	id, err := NewID()
 	require.NoError(t, err)
 	require.NoError(t, ValidateID(id))
+	require.NoError(t, ValidateUUID(id))
 	require.Equal(t, strings.ToLower(id), id)
 	for _, bad := range []string{"", "550E8400-E29B-41D4-A716-446655440000", "550e8400-e29b-61d4-a716-446655440000", "550e8400-e29b-41d4-c716-446655440000", "not-a-uuid"} {
 		require.Error(t, ValidateID(bad))
+	}
+}
+
+func TestCanonicalPhysicalPathRejectsRemoteAndResolvesMissingSuffix(t *testing.T) {
+	root := t.TempDir()
+	got, err := CanonicalPhysicalPath(filepath.Join(root, "missing", "workspace"))
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(root, "missing", "workspace"), got)
+	for _, invalid := range []string{"", "https://example.com/repo", "bad\x00path"} {
+		_, err := CanonicalPhysicalPath(invalid)
+		require.Error(t, err)
 	}
 }
 
@@ -406,4 +418,65 @@ func TestAdoptionValidationAndQueries(t *testing.T) {
 	collision, err := s.AdoptWorkspace(repo.ID, "repo/existing", "git", "branch", filepath.Join(t.TempDir(), "other"))
 	require.NoError(t, err)
 	require.Equal(t, RenameRequired, collision.Status)
+}
+
+func TestRepositoryLookupSupportsDurableIDAndCanonicalLocator(t *testing.T) {
+	s := mustStore(t)
+	locator := filepath.Join(t.TempDir(), "repo")
+	repo, err := s.CreateRepository(locator)
+	require.NoError(t, err)
+
+	byID, err := s.LookupRepository(repo.ID)
+	require.NoError(t, err)
+	require.Equal(t, repo, byID)
+	byLocator, err := s.FindRepository(locator)
+	require.NoError(t, err)
+	require.Equal(t, repo, byLocator)
+	_, err = s.LookupRepository(filepath.Join(t.TempDir(), "missing"))
+	require.ErrorContains(t, err, "not found")
+}
+
+func TestRenameAndMoveWorkspacePreserveIdentityAndRejectClaimCollisions(t *testing.T) {
+	s := mustStore(t)
+	repo, err := s.CreateRepository(filepath.Join(t.TempDir(), "repo"))
+	require.NoError(t, err)
+	firstPath := filepath.Join(t.TempDir(), "first")
+	secondPath := filepath.Join(t.TempDir(), "second")
+	first, err := s.CreateWorkspace(repo.ID, "repo/first", string(JJ), "repo/first", firstPath)
+	require.NoError(t, err)
+	first, err = s.ActivateWorkspace(first.ID)
+	require.NoError(t, err)
+	second, err := s.CreateWorkspace(repo.ID, "repo/second", string(Git), "second", secondPath)
+	require.NoError(t, err)
+	_, err = s.ActivateWorkspace(second.ID)
+	require.NoError(t, err)
+
+	renamed, err := s.RenameWorkspace(first.ID, "repo/renamed")
+	require.NoError(t, err)
+	require.Equal(t, first.ID, renamed.ID)
+	require.Equal(t, "repo/renamed", renamed.Name)
+	require.Equal(t, "repo/renamed", renamed.NativeName)
+	_, err = s.RenameWorkspace(first.ID, second.Name)
+	require.ErrorContains(t, err, "name already exists")
+
+	movedPath := filepath.Join(t.TempDir(), "moved")
+	moved, err := s.MoveWorkspace(first.ID, movedPath)
+	require.NoError(t, err)
+	require.Equal(t, first.ID, moved.ID)
+	require.Equal(t, movedPath, moved.Path)
+	_, err = s.MoveWorkspace(first.ID, second.Path)
+	require.ErrorContains(t, err, "path already exists")
+
+	_, err = s.RemoveWorkspace(first.ID)
+	require.NoError(t, err)
+	_, err = s.RenameWorkspace(first.ID, "repo/after-remove")
+	require.ErrorContains(t, err, "immutable")
+	_, err = s.MoveWorkspace(first.ID, filepath.Join(t.TempDir(), "after-remove"))
+	require.ErrorContains(t, err, "immutable")
+	missingID, err := NewUUID()
+	require.NoError(t, err)
+	_, err = s.RenameWorkspace(missingID, "repo/missing")
+	require.ErrorContains(t, err, "not found")
+	_, err = s.MoveWorkspace(missingID, filepath.Join(t.TempDir(), "missing"))
+	require.ErrorContains(t, err, "not found")
 }

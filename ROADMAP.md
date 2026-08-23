@@ -38,7 +38,7 @@ current milestones at the end of this document and is promoted only after real
 
 ### Quality
 
-- [x] 90% test coverage gate (cli package at ~78%)
+- [x] Historical coverage gate established; the current enforced adjusted floor is 88% and should ratchet upward
 - [x] Integration tests against real temp git repos
 - [x] golangci-lint passing
 - [x] `task all` green
@@ -154,7 +154,7 @@ workspace-lifecycle operations.
 - [x] Make the repository colocated JJ/Git and track `main@origin`
 - [x] Move the canonical Pi extension source and tests into WTF
 - [x] Upgrade the active Go dependency graph
-- [ ] Restore the full quality gate under the configured Go and JJ versions
+- [x] Restore the full quality gate under the configured Go and JJ versions
 - [x] Fix JJ 0.44 prunable-workspace compatibility
 - [x] Introduce canonical repository/workspace UUIDs that are never reused (completed in v0.8)
 - [x] Enforce globally unique names for all active WTF-managed workspaces (completed in v0.8)

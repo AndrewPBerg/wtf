@@ -80,7 +80,10 @@ func preflightResourceFiles(files []resource.FileIntent, mainPath, workspacePath
 func applyResourceFile(id string, f resource.FileIntent, mainPath, workspacePath string, reg *resource.Registry) error {
 	source := filepath.Join(mainPath, filepath.FromSlash(f.Source))
 	target := filepath.Join(workspacePath, filepath.FromSlash(f.Target))
-	if _, err := os.Lstat(target); os.IsNotExist(err) {
+	if _, err := os.Lstat(target); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("checking resource target %q: %w", f.Target, err)
+		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return fmt.Errorf("creating resource directory: %w", err)
 		}
