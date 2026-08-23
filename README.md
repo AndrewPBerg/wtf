@@ -138,16 +138,32 @@ Worktrees and jj workspaces are created as sibling directories to the main repo.
 
 ### Worktree Operations
 
-| Command     | Description                                          |
-|-------------|------------------------------------------------------|
-| `wtf new`   | Create a worktree (`--base`, `--pr`, `--no-setup`)   |
-| `wtf sw`    | Switch/list worktrees (`--global`, `--prs`, `--json`)|
-| `wtf rm`    | Remove a worktree and branch (`--force`)             |
-| `wtf clean` | Remove merged/prunable worktrees (`--dry-run`)       |
-| `wtf news`  | Create a worktree and switch to it (`--base`)        |
+| Command     | Description                                                   |
+|-------------|---------------------------------------------------------------|
+| `wtf new`   | Create or ensure a workspace (`--base`, `--pr`, `--ensure`)    |
+| `wtf sw`    | Switch/list workspaces (`--global`, `--prs`, `--json`)         |
+| `wtf rm`    | Remove a workspace (`--force`, UUID selectors)                 |
+| `wtf clean` | Remove merged/prunable workspaces (`--dry-run`)                |
+| `wtf news`  | Create a workspace and switch to it (`--base`)                 |
 
 All of these work on jj workspaces too. `--vcs git|jj` forces a backend in a repo
 that is both.
+
+### Structured workspace lifecycle
+
+| Command                    | Description                                              |
+|----------------------------|----------------------------------------------------------|
+| `wtf workspace current`    | Inspect the workspace containing the current directory   |
+| `wtf workspace inspect`    | Inspect one managed workspace by UUID, name, or path      |
+| `wtf workspace list`       | List managed workspaces through the versioned contract   |
+| `wtf cleanup plan/apply`   | Plan and apply identity-bound, fail-closed cleanup        |
+| `wtf resources`            | Inspect UUID-owned declared files, ports, leases, and debt|
+| `wtf doctor`               | Diagnose identity, VCS, resource, and cleanup health      |
+| `wtf capabilities --json` | Describe supported JSON schemas and automation contracts |
+| `wtf port`                 | Show the current workspace's allocated port              |
+
+Structured JSON results use `version: 1`. WTF workspace UUIDs are persistent random
+identities and are distinct from Agent Bridge's deterministic scope UUIDs.
 
 ### Setup
 

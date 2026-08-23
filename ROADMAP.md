@@ -72,9 +72,10 @@ current milestones at the end of this document and is promoted only after real
 
 - [x] `wtf setup` — Re-run setup in current worktree (`--env`, `--install`)
 - [x] `wtf setup shell` — Shell integration (moved from `wtf setup`)
-## v0.3.0 — Platform Integration (GitHub & GitLab)
 
-**Status:** planned
+## v0.3.0–v0.5.1 — Platform Integration (GitHub & GitLab)
+
+**Status:** released historically across v0.3.0–v0.5.1
 
 **Goals:**
 - Checkout PRs directly as worktrees
@@ -92,9 +93,9 @@ current milestones at the end of this document and is promoted only after real
 
 ### Commands
 
-- [x] `wtf pr <number|branch>` — Checkout a PR as a worktree
+- [x] PR checkout, now exposed through `wtf new <number>` and `wtf new --pr`
 - [x] `wtf ls --prs` — List worktrees with PR status inline (lazy-loaded)
-- [x] news isn't working as expected
+- [x] `wtf news` create-and-switch behavior
 
 ### Completions
 
@@ -106,9 +107,10 @@ current milestones at the end of this document and is promoted only after real
 - [x] `wtf init` embeds completions inline — `eval "$(wtf init)"` handles everything
 - [x] `wtf completion --install` writes to standard user-local path
 
---
-- Changelog updated with every PR
-- `docs/` has one markdown per command, updated as commands ship
+Historical delivery expectations:
+
+- changelog entries for releases; and
+- one maintained Markdown page per current command.
 
 ## v0.6.0 — Jujutsu (jj) Support
 
@@ -154,8 +156,8 @@ workspace-lifecycle operations.
 - [x] Upgrade the active Go dependency graph
 - [ ] Restore the full quality gate under the configured Go and JJ versions
 - [x] Fix JJ 0.44 prunable-workspace compatibility
-- [ ] Introduce canonical repository/workspace UUIDs that are never reused
-- [ ] Enforce globally unique names for all active WTF-managed workspaces
+- [x] Introduce canonical repository/workspace UUIDs that are never reused (completed in v0.8)
+- [x] Enforce globally unique names for all active WTF-managed workspaces (completed in v0.8)
 
 ### Simplification
 
@@ -262,7 +264,7 @@ general in-process Go API. The stable surface is the CLI JSON contract.
 
 ## v0.11.0 — Resource Substrate and Declarative Configuration
 
-**Status:** in progress; local dogfood started
+**Status:** released 2026-08-22; second-project confidence work remains
 
 **Goal:** make workspace file and port intent inspectable, UUID-owned, and
 repairable without adding database, Docker/service, secret, or orchestration scope.
@@ -274,7 +276,7 @@ repairable without adding database, Docker/service, secret, or orchestration sco
 - [x] Fail-closed managed-file creation/removal and UUID retry behavior
 - [x] Dogfood non-secret Markdown and nested secret-marked env symlinks, a named
       port lease, drift diagnosis, cleanup debt, and repair on Pluckmd
-- [ ] Dogfood a second VCS-backed project (Labctl currently has no VCS metadata)
+- [ ] Post-release: dogfood a second VCS-backed project (Labctl currently has no VCS metadata)
 - [ ] Expand deterministic glob reconciliation only after its target-mapping
       semantics are specified; v1 currently rejects globs before state changes
 

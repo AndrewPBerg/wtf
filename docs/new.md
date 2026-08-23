@@ -22,7 +22,9 @@ wtf new --pr <number|branch|title>
 | `--no-env`        |       |         | Skip env file handling                               |
 | `--copy-env`      |       |         | Copy env files instead of symlinking (agent-safe)    |
 | `--no-install`    |       |         | Skip package manager install                         |
+| `--no-serve`      |       |         | Skip starting the detected development server        |
 | `--no-git-diff`   |       |         | Skip default Git metadata for jj editor diffs        |
+| `--ensure`        |       |         | Idempotently return an existing matching workspace   |
 | `--vcs`           |       |         | Force a backend in a colocated repo: `git` or `jj`   |
 
 The positional branch, `--branch`, and `--pr` modes are mutually exclusive.

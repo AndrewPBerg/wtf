@@ -4,11 +4,19 @@ All notable changes to WorkTreeForge (wtf) will be documented in this file.
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-08-22
+
 ### Added
 
-- **v0.11 resource substrate** — strict optional `.wtf.toml` intent, UUID-owned
-  file/port resource state, read-only `workspace current`, `capabilities`,
-  `resources`, and `doctor` JSON contracts, plus fail-closed managed-file cleanup.
+- **Resource substrate** — strict optional `.wtf.toml` intent, UUID-owned file/port
+  resource state, read-only `workspace current`, `capabilities`, `resources`, and
+  `doctor` JSON contracts, plus fail-closed managed-file cleanup.
+
+### Notes
+
+- Pluckmd dogfood covered managed Markdown, nested secret-marked env links, named
+  port leases, drift diagnosis, cleanup debt, and repair. A second VCS-backed
+  project remains post-release confidence work rather than an unshipped feature.
 
 ## [0.10.0] — 2026-08-22
 

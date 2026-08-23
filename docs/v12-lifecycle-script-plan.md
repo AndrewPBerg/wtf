@@ -1,10 +1,13 @@
-# v0.11 Lifecycle Script Plan
+# v0.12+ Lifecycle Script Proposal
+
+> **Status:** deferred proposal. v0.11 shipped only typed file/port resources and
+> explicitly excluded arbitrary lifecycle hooks. Promote this proposal only after
+> repeated dogfood evidence justifies executable project hooks.
 
 ## Decision
 
-Keep v0.11 as the single manifest/substrate milestone. Do **not** build a WTF task
-runner, task-file replacement, or generic `wtf task` CLI. Existing tools already
-serve that purpose.
+Do **not** build a WTF task runner, task-file replacement, or generic `wtf task`
+CLI. Existing tools already serve that purpose.
 
 The value WTF adds is opt-in project scripts at safe workspace lifecycle points.
 A project may declare create/remove scripts, but WTF runs them only when the
@@ -32,7 +35,8 @@ provider later.
 
 ## Manifest extension
 
-Keep `version = 1`; add strict additive lifecycle declarations:
+If promoted, retain manifest `version = 1` only when the change is strictly additive;
+otherwise increment the manifest version. The proposed declarations are:
 
 ```toml
 [[lifecycle.on_create]]

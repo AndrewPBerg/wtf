@@ -1,5 +1,9 @@
 # v0.11 Resource Substrate
 
+> **Status:** released. The typed file/port substrate and one-project dogfood gate
+> shipped in v0.11. A second VCS-backed project remains post-release confidence
+> work; lifecycle scripts are deferred to the v0.12+ proposal.
+
 ## Goal
 
 Make a WTF workspace self-describing and repairable for both people and thin
@@ -105,5 +109,6 @@ replaces it per resource, never silently changes it.
   partial failure.
 - `.wtf.toml` supports composable file source/target/mode declarations,
   including non-secret Markdown symlinks and metadata-only secret files.
-- Two real projects dogfood nested env/config paths, Markdown links, named
-  ports, and at least one repairable resource failure.
+- One release-gate project dogfoods nested env/config paths, Markdown links,
+  named ports, and at least one repairable resource failure; a second project is
+  tracked as post-release confidence work.
