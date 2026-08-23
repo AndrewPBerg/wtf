@@ -211,7 +211,7 @@ Requires [Task](https://taskfile.dev):
 
 ```bash
 task all                 # fmt -> lint -> test -> build
-task test-coverage       # enforce the adjusted 90% coverage floor
+task test-coverage       # enforce the adjusted 75% coverage floor
 task pi-extension-check  # lint, typecheck, and test the Pi extension
 ```
 

@@ -38,7 +38,7 @@ current milestones at the end of this document and is promoted only after real
 
 ### Quality
 
-- [x] 90% adjusted coverage gate enforced locally and in CI
+- [x] Coverage gate established; current adjusted floor is 75% with behavioral tests prioritized over percentage chasing
 - [x] Integration tests against real temp git repos
 - [x] golangci-lint passing
 - [x] `task all` green
@@ -300,6 +300,7 @@ lifecycle-hook abstraction.
 
 - [x] Install JJ 0.44 in CI before measuring the adjusted coverage gate
 - [x] Keep local and CI quality inputs equivalent
+- [x] Set a pragmatic 75% adjusted floor and retain the expanded lifecycle contract tests
 
 ## Dogfood gate
 

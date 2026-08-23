@@ -10,6 +10,8 @@ All notable changes to WorkTreeForge (wtf) will be documented in this file.
 
 - Installed the configured JJ version in CI so JJ integration coverage is
   measured consistently with the local quality gate.
+- Set a pragmatic 75% adjusted coverage floor while retaining the expanded
+  behavioral contract tests.
 
 ## [0.11.1] — 2026-08-23
 

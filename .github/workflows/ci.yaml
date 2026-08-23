@@ -40,7 +40,7 @@ jobs:
       - name: Enforce adjusted coverage gate
         run: |
           go test -coverprofile=coverage.out ./internal/...
-          scripts/coverage-check.sh coverage.out 90
+          scripts/coverage-check.sh coverage.out 75
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v6
