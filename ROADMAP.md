@@ -1,17 +1,59 @@
-# WorkTreeForge (wtf) Roadmap
+# WTF roadmap
 
-A small, opinionated workspace-lifecycle tool. WTF is JJ-first for local work,
-Git-compatible at forge boundaries, Zed-first for editor integration, and usable by
-both humans and Pi agents through the same CLI contract.
+## Future — V1 direction
 
-Current design documents:
+A small Go workspace manager with a CLI and Charm/Bubble Tea navigation. JJ owns
+local history and publishes to GitHub through `jj git push`; WTF shows how each
+workspace relates to its GitHub PRs. Hooks own project behavior. The core provides
+scope resolution, ownership records, and execution primitives.
+
+[Read the V1 direction and code examples](docs/roadmap.md).
+
+**From the first command:** useful `--help`, versioned `--json` success/error
+results, and non-interactive JSON behavior. A command-tree contract gate covers
+groups, aliases, argument errors, and stdout isolation before new commands ship.
+
+```sh
+wtf list                             # repository or parent-directory view; alias ls
+wtf list --global --json              # all registered repositories
+wtf ports list --here                 # current workspace's claims
+wtf new auth --from 'trunk()'          # configured override runs automatically
+wtf run test -- tests/auth
+wtf hook run prepare                 # manual hook invocation
+wtf validate
+wtf doctor
+wtf switch auth                      # aliases sw, w
+wtf remove auth                      # alias rm
+```
+
+Proposed syntax, for review. Delivery direction:
+
+1. **Dogfood hooks first:** create/prepare/test/teardown stages in actual WTF
+   workspaces. Project hooks provision isolated services and Docker resources;
+   recorded progress, reuse checks, and ownership let agents recover without
+   losing setup/testing work. Keep expensive stages bounded.
+2. **Orient:** repository/workspace views, GitHub PR state, published-head agreement,
+   and registry diagnostics.
+3. **Extend:** reusable tasks and hook add-ons justified by the pilot. Agents own
+   fan-out; WTF supplies observable per-workspace lifecycle and resource ownership.
+4. **Simplify:** evaluate native JJ colocation and migrate existing state before
+   retiring standalone Git worktree support and editor-shadow machinery.
+
+Open decisions: hook runtime and delegation protocol, state migration, and the
+minimal add-on API. This remains design work; no JJ upgrade is planned yet.
+
+## Archive — previous milestones and proposals
+
+Earlier plans are retained below as history, including unfinished proposals. They
+do not define the current V1 direction.
+
+<details>
+<summary>Previous roadmap, release milestones, and workspace proposals</summary>
+
+Previous design documents:
 
 - [JJ-native workspace lifecycle](docs/jj-workspace-lifecycle-plan.md)
 - [Simplification plan](docs/simplification-plan.md)
-
-The completed milestones below are retained as project history. New work follows the
-current milestones at the end of this document and is promoted only after real
-9–5 and personal-project dogfooding.
 
 ## v0.1.0 — Core Worktree Operations
 
@@ -302,9 +344,72 @@ lifecycle-hook abstraction.
 - [x] Keep local and CI quality inputs equivalent
 - [x] Set a pragmatic 75% adjusted floor and retain the expanded lifecycle contract tests
 
+## v0.12.0 — Git Worktree Addressability
+
+- [ ] Allow detached Git worktrees to be selected by exact path or canonical workspace
+      ID when no branch name is available, so a confirmed-clean checkout can be removed
+      non-forced without risking the default checkout
+- [ ] Disambiguate detached worktrees in listings instead of reporting each only as
+      `(detached)`
+
+## v0.13.0 — Opinionated JJ + GitHub Stack Restacking
+
+**Status:** proposed from repeated dogfood friction
+
+**Goal:** turn the common “rebase every bookmark in this GitHub PR stack and publish
+all updated tips” operation into one safe, inspectable WTF command instead of a
+manual sequence of JJ and GitHub queries. This intentionally revisits the v0.9/v0.10
+graph-operation non-goal only for this narrow, evidence-backed JJ + GitHub workflow;
+WTF must not become a general integration engine or multi-forge abstraction.
+
+### Proposed human contract
+
+- [ ] Add `wtf stack status` to read GitHub PR base/head relationships, infer the
+      connected stack, and show its ordered local JJ bookmarks, GitHub branch tips,
+      divergence, conflicts, and required publication actions
+- [ ] Add `wtf stack restack` as the opinionated happy path: run the equivalent of
+      `jj git fetch`, preflight the whole connected stack, use JJ graph operations to
+      rebase each descendant onto its updated parent, update every intermediate
+      bookmark, and publish the complete stack with `jj git push`
+- [ ] When local bookmark tips are already a linear ancestry chain, skip needless
+      rewriting and only publish stale intermediate GitHub branches; this is the exact
+      low-ceremony path exposed by the ALI-1894 → ALI-2658 five-PR dogfood case
+- [ ] Require an explicit confirmation before any non-fast-forward publication;
+      support `--dry-run`, `--json`, and a non-interactive confirmation flag for
+      automation without weakening JJ/Git lease protection
+- [ ] Print one concise final result: ordered PR stack, rewritten/published bookmarks,
+      remaining conflicts or GitHub review gates, and a JJ recovery/continue command
+
+### Stack policy
+
+- [ ] Treat GitHub PR base/head relationships as the canonical stack order; do not
+      infer order from bookmark names or commit timestamps
+- [ ] Preserve JJ changes and PR boundaries by default: no implicit squashing,
+      merging, bookmark creation/deletion, or conflict auto-resolution
+- [ ] Refuse to start when the affected JJ working copy is dirty, a GitHub branch
+      moved since fetch, the PR stack is cyclic/incomplete, or the operation would
+      touch a bookmark outside the connected stack
+- [ ] Use only JJ-native mutation and publication commands; Git is an interchange
+      format behind JJ, not a second user-facing execution backend for this feature
+- [ ] Push every changed bookmark with leases so upper PRs never remain based on
+      unpublished intermediate tips; report partial publication as repairable debt
+- [ ] Keep GitLab, Git-only repositories, review readiness, merge approval, CI policy,
+      and arbitrary graph surgery outside scope
+
+### Acceptance dogfood
+
+- [ ] The five-PR ALI-1894 → ALI-2658 stack can be repaired from its observed
+      divergent-GitHub state with one WTF command plus at most one confirmation
+- [ ] A dry run explains that only the first three GitHub branches require publication
+      when the top two already match, without rewriting clean local JJ history
+- [ ] Tests cover already-linear bookmark stacks, genuine JJ descendant rebases,
+      conflicts, stale leases, dirty working copies, and partial GitHub push failure
+
 ## Dogfood gate
 
 For each milestone, record real workspace creation steps, manual repairs, Zed
 friction, resource conflicts, keep/remove outcomes, and cleanup debt. Do not add a
 new orchestration layer merely because it is possible; require repeated friction or
 a concrete safety failure.
+
+</details>
