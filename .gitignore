@@ -35,3 +35,6 @@ bin/
 
 # wt-forge config (user-specific)
 .wt-forge.toml
+
+# Runtime state for profile workspaces (the manifest is committed).
+.wtf/state/

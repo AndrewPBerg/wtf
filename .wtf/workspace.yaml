@@ -1,0 +1,14 @@
+version: 1
+
+profiles:
+  wtf:
+    services: [wtf]
+
+services:
+  wtf:
+    # This dogfoods a profile whose only component is this repository.
+    dir: .
+    source: worktree
+    ports:
+      http: {from: 8080, to: 8099}
+    up: task build
