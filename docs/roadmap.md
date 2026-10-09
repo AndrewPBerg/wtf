@@ -35,6 +35,9 @@ wtf remove auth                       # alias: rm; explicit workspace target
 Every command, command group, and alias accepts `--help` and `--json`. Help describes
 arguments, defaults, scope, side effects, and examples; it never runs hooks or
 changes state. `--json --help` returns structured help through the same envelope.
+Command names, aliases, and flags are case-insensitive through common middleware.
+`-j` aliases `--json`; `-f` aliases `--from`. Values and child argv retain their case.
+New commands inherit the rule, with a dynamic extension test guarding that boundary.
 
 ```sh
 wtf new --help
@@ -82,7 +85,26 @@ cd /Work/alita_core/src
 wtf list                              # every workspace in alita_core
 wtf ports list --here                  # only the current workspace
 wtf list --global --json               # every registered repository
+wtf list -p                           # GitHub PR state, loaded on demand
+wtf list -p --refresh                  # refresh cached PR metadata
 ```
+
+Commands stay barebones; registered flags can be enabled once or inherited as
+defaults. Per-flag priority is **CLI → leaf → nearest parent → outer parents →
+global**. Directory scopes use `.wtf/config.toml`; global uses
+`$WTF_HOME/config.toml`. Explicit flags win, including `--pr=false`.
+
+```toml
+version = 1
+
+[commands.list]
+pr = true
+hook = true
+```
+
+PR views use a two-minute cache, at most three concurrent Go workers, and a bounded
+refresh. Terminals show cached/pending state first; JSON emits one final result.
+Failed refresh retains stale data instead of claiming no PR exists.
 
 Logical membership follows repository identity, regardless of workspace placement:
 

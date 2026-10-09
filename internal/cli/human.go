@@ -1,0 +1,280 @@
+package cli
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/AndrewPBerg/wtf/internal/core"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
+	"github.com/charmbracelet/x/ansi"
+)
+
+func (s *Session) human(out io.Writer, err error) error {
+	p := humanPresentation(out)
+	if err != nil {
+		if _, e := fmt.Fprintln(out, p.Bad.Bold(true).Render("Error")+"  "+plain(err.Error())); e != nil {
+			return e
+		}
+		if w, ok := s.Data.(core.Workspace); ok && w.ID != "" {
+			_, e := fmt.Fprintln(out, p.Muted.Render("Workspace: ")+plain(w.Path))
+			return e
+		}
+		return nil
+	}
+	text := ""
+	switch data := s.Data.(type) {
+	case []core.WorkspaceView:
+		text = workspaceTable(p, data, s.App.Cwd, s.ShowStages, s.ShowPRs)
+	case core.Initialization:
+		message := "Workspace registered"
+		if data.Code == "already_initialized" {
+			message = "Already initialized"
+		}
+		text = p.Title.Render(message) + "  " + p.Text.Render(plain(data.Name)) + "\n" + p.Muted.Render(shortPath(data.Path))
+	case core.Workspace:
+		verb := "Workspace ready"
+		if data.Status == "removed" {
+			verb = "Workspace removed"
+		}
+		text = p.Good.Render("✓ "+verb) + "  " + p.Title.Render(plain(data.Name)) + "\n" + p.Muted.Render(shortPath(data.Path))
+		names := make([]string, 0, len(data.Stages))
+		for name := range data.Stages {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			stage := data.Stages[name]
+			detail := stage.Status
+			if stage.Reused {
+				detail += " · reused"
+			}
+			text += "\n  " + p.Muted.Render(plain(name)) + "  " + p.Good.Render(detail)
+		}
+	case core.Stage:
+		text = p.Good.Render("✓ Task " + data.Status)
+		if data.Reused {
+			text += p.Muted.Render(" · reused")
+		}
+	case core.Health:
+		text = p.Good.Render("✓ Workspace healthy") + "  " + p.Title.Render(plain(data.Workspace.Name)) + "\n" + p.Muted.Render(fmt.Sprintf("%d stages · %d resource claims", len(data.Workspace.Stages), len(data.Claims)))
+	case core.Config:
+		text = p.Good.Render("✓ Configuration valid")
+		if data.Lua != "" {
+			text += "\n" + p.Muted.Render("Hooks: "+plain(data.Lua))
+		}
+		names := make([]string, 0, len(data.Tasks))
+		for name := range data.Tasks {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		if len(names) > 0 {
+			text += "\n" + p.Muted.Render("Tasks: "+plain(strings.Join(names, ", ")))
+		}
+	case []core.Claim:
+		if len(data) == 0 {
+			text = p.Muted.Render("No port claims in this workspace.")
+		} else {
+			lines := []string{p.Title.Render("Ports")}
+			for _, c := range data {
+				lines = append(lines, p.Text.Render(plain(c.Name))+"  "+p.Muted.Render(plain(c.Value)))
+			}
+			text = strings.Join(lines, "\n")
+		}
+	case core.Claim:
+		text = p.Good.Render("✓ Claimed ") + p.Text.Render(plain(data.Name)) + "  " + p.Muted.Render(plain(data.Value))
+	case map[string][]string:
+		lines := []string{p.Title.Render("Hooks")}
+		for _, group := range []string{"hooks", "overrides"} {
+			for _, name := range data[group] {
+				lines = append(lines, "  "+p.Text.Render(plain(name))+"  "+p.Muted.Render(group))
+			}
+		}
+		if len(lines) == 1 {
+			lines = append(lines, p.Muted.Render("No hooks configured."))
+		}
+		text = strings.Join(lines, "\n")
+	case map[string]string:
+		if path, ok := data["path"]; ok {
+			text = plain(path)
+		} else if version, ok := data["version"]; ok {
+			text = p.Title.Render("WTF ") + plain(version)
+		} else if name, ok := data["released"]; ok {
+			text = p.Good.Render("✓ Released ") + plain(name)
+		} else {
+			text = humanFields(p, data)
+		}
+	case map[string]any:
+		if _, ok := data["usage"].(string); ok {
+			text = helpPresentation(p, data)
+		} else if usage, ok := data["text"].(string); ok {
+			text = usage
+		} else {
+			text = p.Good.Render("✓ Command completed")
+		}
+	default:
+		text = p.Good.Render("✓ Command completed")
+	}
+	_, e := fmt.Fprintln(out, text)
+	return e
+}
+
+func humanFields(p presentation, data map[string]string) string {
+	keys := make([]string, 0, len(data))
+	for key := range data {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	lines := []string{}
+	for _, key := range keys {
+		lines = append(lines, p.Muted.Render(plain(key))+"  "+p.Text.Render(plain(data[key])))
+	}
+	return strings.Join(lines, "\n")
+}
+func shortPath(path string) string {
+	home, e := os.UserHomeDir()
+	if e == nil {
+		if path == home {
+			return "~"
+		}
+		if strings.HasPrefix(path, home+string(os.PathSeparator)) {
+			return plain("~" + strings.TrimPrefix(path, home))
+		}
+	}
+	return plain(path)
+}
+func currentPath(path, cwd string) bool {
+	rel, e := filepath.Rel(path, cwd)
+	return e == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+}
+func listPath(path, cwd string) string {
+	rel, err := filepath.Rel(cwd, path)
+	if err == nil && (rel == "." || !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.Dir(rel) == "..") {
+		return plain(rel)
+	}
+	return shortPath(path)
+}
+
+func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string, showStages, showPRs bool) string {
+	if len(workspaces) == 0 {
+		return p.Title.Render("Workspaces") + "\n" + p.Muted.Render("No active workspaces in this scope.")
+	}
+	rows := [][]string{}
+	states := []string{}
+	headers := []string{"", "WORKSPACE"}
+	widths := []int{3, 11}
+	if showStages {
+		headers = append(headers, "STAGES")
+		widths = append(widths, 8)
+	}
+	prColumn := -1
+	if showPRs {
+		prColumn = len(headers)
+		headers = append(headers, "PR")
+		widths = append(widths, 14)
+	}
+	headers = append(headers, "PATH")
+	widths = append(widths, 6)
+	pathColumn := len(headers) - 1
+	for _, w := range workspaces {
+		marker := ""
+		if w.Exists && w.Status != "removed" && currentPath(w.Path, cwd) {
+			marker = "●"
+		}
+		status := strings.ReplaceAll(w.Status, "_", " ")
+		if !w.Exists && w.Status != "removed" {
+			status = "missing"
+		}
+		passed := 0
+		for _, st := range w.Stages {
+			if st.Status == "succeeded" {
+				passed++
+			}
+		}
+		stages := "—"
+		if len(w.Stages) > 0 {
+			stages = fmt.Sprintf("%d/%d", passed, len(w.Stages))
+		}
+		row := []string{marker, plain(w.Name)}
+		if showStages {
+			row = append(row, stages)
+		}
+		if showPRs {
+			row = append(row, prLabel(w.GitHub))
+		}
+		rows = append(rows, append(row, listPath(w.Path, cwd)))
+		states = append(states, status)
+	}
+	width := min(p.Width-1, 140) // Reserve a cell to avoid terminal-edge wrapping.
+	title := p.Title.Render("Workspaces") + p.Muted.Render(fmt.Sprintf("  %d", len(workspaces)))
+	for _, row := range rows {
+		widths[1] = max(widths[1], min(lipgloss.Width(row[1])+2, 24))
+		if showPRs {
+			widths[prColumn] = max(widths[prColumn], min(lipgloss.Width(row[prColumn])+2, 24))
+		}
+		widths[pathColumn] = max(widths[pathColumn], min(lipgloss.Width(row[pathColumn])+2, 70))
+	}
+	borders := len(headers) + 1
+	used := borders
+	for column, cellWidth := range widths {
+		if column != pathColumn {
+			used += cellWidth
+		}
+	}
+	if width < 70 || width-used < 10 {
+		lines := []string{ansi.Truncate(title, max(width, 1), "…")}
+		for _, row := range rows {
+			detail := ""
+			if showStages {
+				detail = "stages " + row[2]
+			}
+			if showPRs {
+				detail += " · PR " + row[prColumn]
+			}
+			lines = append(lines,
+				p.Title.Render(ansi.Truncate(strings.TrimSpace(row[0]+" "+row[1]), max(width, 1), "…")),
+				p.Text.Render(ansi.Truncate(detail, max(width, 1), "…")),
+				p.Muted.Render(ansi.Truncate(row[pathColumn], max(width, 1), "…")), "")
+		}
+		return strings.TrimRight(strings.Join(lines, "\n"), "\n")
+	}
+	// Include both outer edges and every column separator in the width budget.
+	widths[pathColumn] = min(widths[pathColumn], width-used)
+	tableWidth := borders
+	for _, cellWidth := range widths {
+		tableWidth += cellWidth
+	}
+	for _, row := range rows {
+		for column := range row {
+			row[column] = ansi.Truncate(row[column], widths[column]-2, "…")
+		}
+	}
+	t := table.New().Headers(headers...).Rows(rows...).Width(tableWidth).Wrap(false).
+		Border(lipgloss.RoundedBorder()).BorderColumn(true).BorderStyle(p.Muted).
+		StyleFunc(func(row, column int) lipgloss.Style {
+			style := p.Text
+			if row == table.HeaderRow {
+				style = p.Title
+			} else if row >= 0 && row < len(states) {
+				state := states[row]
+				if state == "removed" {
+					style = p.Muted
+				} else if column == 0 {
+					style = p.Title
+				} else if column == prColumn {
+					style = p.Title
+					if workspaces[row].GitHub != nil && workspaces[row].GitHub.Error != "" {
+						style = p.Warning
+					}
+				} else if column == pathColumn {
+					style = p.Muted
+				}
+			}
+			return style.Padding(0, 1).Width(widths[column]).Height(1)
+		})
+	return title + "\n" + t.Render()
+}

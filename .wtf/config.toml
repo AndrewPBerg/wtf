@@ -1,0 +1,8 @@
+#:schema ./schema.json
+
+version = 1
+lua = "hooks/init.lua"
+
+[tasks.test]
+command = ["go", "test", "-p", "1", "./internal/..."]
+timeout_seconds = 120

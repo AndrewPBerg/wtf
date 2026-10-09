@@ -12,6 +12,8 @@ scope resolution, ownership records, and execution primitives.
 **From the first command:** useful `--help`, versioned `--json` success/error
 results, and non-interactive JSON behavior. A command-tree contract gate covers
 groups, aliases, argument errors, and stdout isolation before new commands ship.
+Commands, aliases, and flags ignore case through shared middleware; `-j` is
+`--json` and `-f` is `--from`. Opaque values and child arguments retain their case.
 
 ```sh
 wtf list                             # repository or parent-directory view; alias ls

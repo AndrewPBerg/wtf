@@ -35,3 +35,6 @@ bin/
 
 # wt-forge config (user-specific)
 .wt-forge.toml
+
+# V1 pilot runtime marker; project configuration and hooks remain tracked.
+.wtf/workspace.json

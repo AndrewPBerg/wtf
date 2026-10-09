@@ -1,218 +1,218 @@
-[![codecov](https://codecov.io/github/AndrewPBerg/wtf/graph/badge.svg?token=DTXJ31R8RX)](https://codecov.io/github/AndrewPBerg/wtf)
-[![CI](https://github.com/AndrewPBerg/wtf/actions/workflows/ci.yaml/badge.svg)](https://github.com/AndrewPBerg/wtf/actions/workflows/ci.yaml)
+# WTF V1 hook pilot
 
-# WorkTreeForge (WTF)
+An isolated, first-principles experiment in Go: JJ workspace lifecycle, Lua method
+wrapping, and recorded command stages. The first real hook is intentionally small:
+`wtf new` prints the created workspace's path and checks the Go toolchain.
 
-A fast worktree workflow tool for **git and [Jujutsu](https://jj-vcs.github.io/jj/)**. Create, switch, and clean up git worktrees or jj workspaces with automated project setup — zero config required.
-
-## Install
-
-```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/AndrewPBerg/wtf/main/install.sh | sh
-
-# Windows (PowerShell) — download and run manually, don't pipe to iex
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/AndrewPBerg/wtf/main/install.ps1 -OutFile install.ps1
-.\install.ps1
-Remove-Item install.ps1
-
-# Go (all platforms)
-go install github.com/AndrewPBerg/wtf/cmd/wtf@latest
+```sh
+GOMAXPROCS=1 go build -p 1 -o bin/wtf-pilot ./cmd/wtf
+./bin/wtf-pilot init --json
+./bin/wtf-pilot new agent-a --from @ --json
 ```
 
-## Quickstart
+`init` registers the current JJ repository and workspace, then runs the optional
+registered `init` hook. `new` creates a JJ workspace and uses that same registration
+and preparation lifecycle. A first registration returns `code: initialized`;
+repeating it returns `code: already_initialized` and preserves identity and
+ownership. Reusable stages check whether completed preparation can be kept.
+Preparation failures remain errors and retain the workspace and completed stages;
+run `init` inside that workspace to retry. Project options follow `--` for both
+commands, for example `wtf init -- --compose --test`.
 
-```bash
-# Set up shell integration (one-time)
-wtf setup shell
+The project selects [.wtf/hooks/init.lua](.wtf/hooks/init.lua) explicitly:
 
-# List / pick worktrees interactively
-wtf sw
-
-# Create a worktree for a new branch
-wtf new feature/auth
-# ✔ Created worktree at /code/myrepo--feature-auth
-
-# Create a worktree and switch to it in one step
-wtf news feature/auth
-
-# Checkout a PR by number
-wtf new --pr 42
-
-# Switch to a worktree (cd's automatically with shell wrapper)
-wtf sw auth
-
-# Switch across all registered repos
-wtf sw -g auth
-
-# Remove a worktree and its branch
-wtf rm feature/auth
-
-# Clean up merged/prunable worktrees
-wtf clean --dry-run
-wtf clean
-
-# Re-run setup in current worktree
-wtf setup
+```toml
+version = 1
+lua = "hooks/init.lua"
 ```
 
-## Git and Jujutsu
-
-The same commands drive both. wtf uses git worktrees in a `.git` repo and jj
-workspaces in a `.jj` repo:
-
-```bash
-$ wtf new feat/auth          # in a jj repo
-✔ Created workspace at /code/feat-auth--myrepo
-  env: .env → symlink
-  install: pnpm install
+```lua
+return {
+  hooks = { init = require("initialize"), prepare = require("prepare") },
+  overrides = { new = require("new") },
+}
 ```
 
-This matters most for setup: jj honors `.gitignore`, so a fresh jj workspace has no
-`.env` and no installed dependencies until wtf links and installs them.
+The imported implementation wraps the operation:
 
-A repo that is **both** (colocated — jj's default layout) is the only ambiguous case.
-wtf asks once and remembers your answer per-repo; `--vcs git|jj` and `WTF_VCS`
-override it. Non-interactive shells never prompt: wtf infers the backend from the
-checkouts the repo already has, so existing scripts are unaffected.
-
-```
-$ wtf new feat/auth
-? myrepo is both a git and a jj repo — which should wtf use?
-  [1] jj    workspace   (jj manages the working copy here)
-  [2] git   worktree
-Use which? [1-2] (saved for this repo)
+```lua
+new = function(ctx, request, default)
+  ctx:hook("guard", request)
+  return default(request) -- native creation, then shared initialization
+end
 ```
 
-See [docs/jj.md](docs/jj.md) for workspace naming, bookmarks, revsets, and listing.
+The registered `init` hook calls `prepare` and any optional service/test stages.
+`default` creates and records the workspace, then initializes it. `prepare` prints a message and runs a
+synchronous `workspace-check` stage. Filenames have no automatic behavior; only
+the entrypoint's returned table registers hooks and overrides. Run a hook again
+from the child to inspect reuse:
 
-## Automatic Setup
-
-When you create a worktree with `wtf new` or `wtf news`, WTF automatically:
-
-1. **Handles env files** (`.env`, `.env.local`, `.env.development`, `.env.development.local`) from the main worktree (symlink by default, copy with `--copy-env`)
-2. **Detects your package manager** and runs install (pnpm, bun, yarn, npm, uv, poetry, go, cargo, and more)
-
-No config file needed. Override with flags:
-
-```bash
-wtf new feature/auth --copy-env     # copy env files for isolated agent worktrees
-wtf new feature/auth --no-setup     # skip everything
-wtf new feature/auth --no-env       # skip env file handling
-wtf new feature/auth --no-install   # skip package install
+```sh
+cd ../agent-a--wtf-v1-hook-pilot--wtf
+/path/to/wtf-pilot hook run prepare --json
+/path/to/wtf-pilot doctor --here --json
+/path/to/wtf-pilot run test --json
 ```
 
-## Shell Integration
+Every command accepts `--help` and `--json`, including JSON help and argument errors.
+JSON stdout contains exactly one versioned result. Hook messages and subprocess
+output go to stderr. Help and config validation never execute hooks.
 
-`wtf sw` prints the worktree path to stdout (a subprocess can't `cd` your shell). The shell wrapper intercepts `wtf sw` to `cd` automatically. Tab completions are also included — one line handles everything.
+Human-readable output is the default. `list`, `ls`, `switch`, `sw`, and `w` are
+one command: on a terminal, they open an inline Bubble Tea workspace browser
+below your prompt, with one horizontal row per workspace. Arrow keys move,
+Enter selects, and Esc cancels. Pages resize with the terminal, capped at ten
+rows; page counts and page-key hints appear only when multiple pages are needed.
+JSON and piped output never prompt. An optional workspace name resolves its path
+directly through any alias.
 
-```bash
-# Automatic setup (recommended)
-wtf setup shell
+For selection to change your current Bash directory, source the local wrapper:
 
-# Or manually add to your profile:
-
-# bash — ~/.bashrc
-eval "$(wtf init bash)"
-
-# zsh — ~/.zshrc
-eval "$(wtf init zsh)"
-
-# fish — ~/.config/fish/config.fish
-wtf init fish | source
+```sh
+source ./scripts/wtf-pilot.bash
+wtf-pilot ls
+wtf-pilot sw -p
 ```
 
-After setup, `wtf sw auth` will `cd` into the matching worktree directly, and `wtf sw <TAB>` will show available worktrees.
+The binary itself returns a selected path; the wrapper performs `cd`. It keeps
+help, JSON, redirected output, and cancellation from changing directories.
+It does not replace your installed `wtf` or edit shell startup files.
 
-## Worktree Path Convention
+`list` shows active workspaces;
+`--all` (`-a`) includes removed records. A dot marks the current workspace.
+Local lifecycle state remains in JSON and `doctor`. Nearby paths are relative to the current
+directory (`.` for the workspace root); distant paths use `~` where possible.
+`list --hook` (or `list -k`) adds local **Stages**:
+successful recorded stages / total recorded stages, not GitHub Actions checks.
+JSON always includes full stage records. Long paths shorten with an ellipsis; narrow
+terminals use a stacked layout. Use `-j` for complete records. Colors come from
+Omarchy's active `colors.toml` on each invocation; theme switches apply immediately.
+Redirected output and `NO_COLOR` remain unstyled. Human help uses the same shared
+Omarchy presentation, with rounded sections and wrapped command/flag descriptions;
+JSON help remains structured and unstyled.
 
-Worktrees and jj workspaces are created as sibling directories to the main repo. Slashes in names become dashes:
+Command names, aliases, and flags ignore case through shared CLI middleware.
+`--JsOn`, `--JSON`, `--json`, `-J`, and `-j` are equivalent. `-f`/`-F` aliases
+`--from`. Paths, workspace names, revision values, and child argv keep their case:
 
-```
-/code/myrepo                    (main)
-/code/myrepo--feature-auth      (feature/auth)
-/code/myrepo--hotfix-bug        (hotfix/bug)
-```
-
-## Commands
-
-### Worktree Operations
-
-| Command     | Description                                                   |
-|-------------|---------------------------------------------------------------|
-| `wtf new`   | Create or ensure a workspace (`--base`, `--pr`, `--ensure`)    |
-| `wtf sw`    | Switch/list workspaces (`--global`, `--prs`, `--json`)         |
-| `wtf rm`    | Remove a workspace (`--force`, UUID selectors)                 |
-| `wtf clean` | Remove merged/prunable workspaces (`--dry-run`)                |
-| `wtf news`  | Create a workspace and switch to it (`--base`)                 |
-
-All of these work on jj workspaces too. `--vcs git|jj` forces a backend in a repo
-that is both.
-
-### Structured workspace lifecycle
-
-| Command                    | Description                                              |
-|----------------------------|----------------------------------------------------------|
-| `wtf workspace current`    | Inspect the workspace containing the current directory   |
-| `wtf workspace inspect`    | Inspect one managed workspace by UUID, name, or path      |
-| `wtf workspace list`       | List managed workspaces through the versioned contract   |
-| `wtf cleanup plan/apply`   | Plan and apply identity-bound, fail-closed cleanup        |
-| `wtf resources`            | Inspect UUID-owned declared files, ports, leases, and debt|
-| `wtf doctor`               | Diagnose identity, VCS, resource, and cleanup health      |
-| `wtf capabilities --json` | Describe supported JSON schemas and automation contracts |
-| `wtf port`                 | Show the current workspace's allocated port              |
-
-Structured JSON results use `version: 1`. WTF workspace UUIDs are persistent random
-identities and are distinct from Agent Bridge's deterministic scope UUIDs.
-
-### Setup
-
-| Command            | Description                                            |
-|--------------------|--------------------------------------------------------|
-| `wtf setup`        | Run project setup in current worktree (`--env`, `--install`) |
-| `wtf setup shell`  | Auto-configure shell integration (one-time)            |
-| `wtf init`         | Print shell functions + tab completions for eval/source |
-| `wtf completion`   | Generate shell completion script (`--shell`, `--install`) |
-
-### Registry & Monitoring
-
-| Command          | Description                                             |
-|------------------|---------------------------------------------------------|
-| `wtf repos`      | List all registered repos                               |
-| `wtf unregister` | Remove a repo from the registry                         |
-| `wtf watch`      | Watch PRs for changes and send notifications (`-g`, `-i`) |
-
-### Tooling
-
-| Command          | Description                                      |
-|------------------|--------------------------------------------------|
-| `wtf git-diff`   | Create or refresh Zed/Git diff metadata for a JJ workspace |
-| `wtf version`    | Print version                                    |
-| `wtf update`     | Update to the latest version                     |
-| `wtf uninstall`  | Remove the wtf binary (`--force` to skip prompt) |
-
-See [docs/](docs/) for detailed command documentation, and [docs/jj.md](docs/jj.md) for Jujutsu specifics.
-
-## Pi extension
-
-The canonical Pi extension lives in [`packages/pi-extension/`](packages/pi-extension/).
-It keeps agent checkout creation on WTF's managed path instead of raw `git worktree
-add` or `jj workspace add` commands.
-
-Install or refresh it locally, then run `/reload` in existing Pi sessions:
-
-```bash
-./scripts/install-pi-extension.sh
+```sh
+./bin/wtf-pilot NeW agent-a -F @ --JsOn
+./bin/wtf-pilot HOOK LIST -J --HELP
 ```
 
-## Development
+This is a repository invariant in [AGENTS.md](AGENTS.md), backed by a test that
+registers a new nested command and verifies inherited behavior.
 
-Requires [Task](https://taskfile.dev):
+## Optional command features
 
-```bash
-task all                 # fmt -> lint -> test -> build
-task test-coverage       # enforce the adjusted 75% coverage floor
-task pi-extension-check  # lint, typecheck, and test the Pi extension
+```sh
+./bin/wtf-pilot list -p          # GitHub PRs: draft/open/merged/closed
+./bin/wtf-pilot list -p -k       # PRs plus local hook stages
+./bin/wtf-pilot list -p --refresh
+./bin/wtf-pilot list --pr=false  # override an inherited preference
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full dev loop.
+The same registered flags can be configured through TOML:
+
+```toml
+version = 1
+
+[commands.list]
+pr = true
+hook = true
+
+[commands.new]
+from = "trunk()"
+```
+
+Priority, highest to lowest, resolved separately for each flag:
+
+```text
+explicit CLI flags                 highest priority
+/Work/repo/src/.wtf/config.toml     current leaf
+/Work/repo/.wtf/config.toml         nearest parent
+/Work/.wtf/config.toml             outer parent (continue up the directory tree)
+~/.wtf-v1/config.toml               global (or $WTF_HOME/config.toml)
+```
+
+Only command defaults inherit; project hooks/tasks remain project-local. Reading
+defaults never runs hooks. Command aliases and flag names ignore case in settings,
+and future registered flags use the same resolver and their own value validation.
+Help remains available even if configuration is invalid.
+
+PR loading uses `gh` authentication and readonly JJ bookmark/revision inspection.
+On a terminal it displays cached/pending results first, then refreshes in place.
+Fresh cache lasts two minutes; refresh uses at most three Go workers and an
+eight-second network budget. JSON emits one final result with URLs, observed-at
+timestamps, association state, and revision relationships. Stale matches retain a
+`~` marker on failed refresh. Unavailable is distinct from unassociated.
+
+Lookup considers the latest 200 PRs per repository; **unassociated** means no match
+in that result, not proof that a workspace never had a PR. Associations use current
+or parent bookmarks and exact revision IDs, never workspace names. Unsnapshotted
+filesystem changes and GitHub Actions CI are not inspected by this view.
+
+## Hook API
+
+```lua
+-- Pre-creation checks use ctx.project.path; failed requirements block creation.
+ctx:require(ctx:exists("go.mod"), "This project requires go.mod")
+ctx:require(ctx:check({ "go", "version" }), "Go must be available")
+
+-- After default creation, stages use ctx.workspace.path.
+ctx:stage("prepare", { "uv", "sync", "--frozen" }, {
+  inputs = { "pyproject.toml", "uv.lock" },
+  check = { "./scripts/check-workspace-ready" }, -- optional live reuse/readiness check
+  reuse = true,
+  timeout_seconds = 120,
+})
+ctx:hook("prepare")
+ctx:has_hook("start")
+ctx:check({ "./scripts/check-service" })
+ctx:claims()
+ctx:claim("docker", "database", "project-specific-container-name")
+ctx:release("docker", "database")
+local port, error_code = ctx:claim_port("web", 3000)
+ctx:listening(3000)
+```
+
+The checked-in module also registers `guard`, `start`, `test`, `stop`, and `remove`.
+Its optional Compose recipe provisions an isolated Redis service:
+
+```sh
+./bin/wtf-pilot new sandbox -f @ -- --compose --test
+```
+
+Raw hook arguments after `--` reach `request.args`; project Lua decides their
+meaning. [Module contract and Compose walkthrough](docs/hooks.md).
+
+Claims record ownership; hooks choose port policy and provision/teardown Docker
+resources through ordinary argv commands. Stages serialize within one workspace,
+record failure/cancellation, and preserve completed setup. Reuse requires matching
+inputs or a live check; test tasks rerun by default. This pilot has no background
+job runner, durable process supervisor, or native Docker provider.
+
+## Local state and boundaries
+
+- Linux pilot; it does not replace the installed `wtf` binary or upgrade JJ.
+- Separate shared repository state: `.jj/repo/wtf-v1-pilot/`.
+- Separate global index: `~/.wtf-v1/`, or an explicit `WTF_HOME`.
+- Lua 5.1 through GopherLua, with project operations exposed through `ctx` and
+  explicit project-local `require` imports. Native/system Lua modules and escaping
+  module paths are rejected; external scripts use stage argv commands.
+- Hook execution is bounded to ten minutes and responds to cancellation. Individual
+  stages default to 120 seconds, with an explicit maximum of 3600 seconds.
+- `new` and `remove` overrides currently must delegate to the core once.
+- Resource claim conflicts are checked within a repository; cross-repository
+  leases and add-on loading are future work.
+- Removal verifies native JJ membership and the workspace marker, refuses changed
+  source or external claims, and protects current/adopted workspaces. A `remove`
+  override must teardown external resources before calling `default`.
+- Earlier command docs and Pi extension describe the old implementation, not this
+  pilot. See [the direction draft](docs/roadmap.md) for the future design.
+
+```sh
+GOMAXPROCS=1 go test -p 1 ./internal/...
+GOMAXPROCS=1 go vet -p 1 ./internal/...
+```
