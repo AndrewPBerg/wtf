@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Repo locates a JJ workspace and its shared WTF registry.
@@ -46,7 +47,7 @@ func (r Repo) Load() (State, error) {
 	var s State
 	e := readJSON(filepath.Join(r.Store, "state.json"), &s)
 	if errors.Is(e, os.ErrNotExist) {
-		return s, Fail("not_registered", "Run wtf init to opt this repository into the pilot")
+		return s, Fail("not_registered", "Run wtf new . to register this repository")
 	}
 	if e != nil {
 		return s, e
@@ -88,7 +89,7 @@ func (r Repo) Workspace(_ context.Context) (Workspace, error) {
 			return w, nil
 		}
 	}
-	return Workspace{}, Fail("unmanaged_workspace", "This JJ workspace is not registered; run wtf init here")
+	return Workspace{}, Fail("unmanaged_workspace", "This JJ workspace is not registered; run wtf new . here")
 }
 
 // Update changes one registered workspace under the registry lock.
@@ -176,7 +177,7 @@ func (a *App) Initialize(ctx context.Context, args ...string) (Initialization, e
 	if err != nil && ErrorCode(err) != "not_registered" && ErrorCode(err) != "unmanaged_workspace" {
 		return Initialization{}, err
 	}
-	return a.initializeOperation(ctx, r, w, false, args...)
+	return a.initializeOperation(ctx, r, w, false, NewWorkspaceOptions{}, args...)
 }
 
 // Init initializes the workspace and returns its durable record.
@@ -239,7 +240,8 @@ func (a *App) initialize(ctx context.Context, code *string) (Workspace, error) {
 			unlock()
 			return w, e
 		}
-		w = Workspace{id, name, r.Root, false, "ready", map[string]Stage{}, ""}
+		now := time.Now().UTC()
+		w = Workspace{ID: id, Name: name, Path: r.Root, Status: "ready", Stages: map[string]Stage{}, CreatedAt: &now}
 		s.Workspaces[id] = w
 	}
 	e = writeAtomic(filepath.Join(r.Store, "state.json"), s)
@@ -256,16 +258,17 @@ func (a *App) initialize(ctx context.Context, code *string) (Workspace, error) {
 // WorkspaceView adds repository and remote observations to a workspace record.
 type WorkspaceView struct {
 	Workspace
-	RepositoryID string  `json:"repository_id"`
-	Exists       bool    `json:"exists"`
-	GitHub       *PRInfo `json:"github,omitempty"`
+	RepositoryID   string  `json:"repository_id"`
+	RepositoryPath string  `json:"repository_path,omitempty"`
+	Exists         bool    `json:"exists"`
+	GitHub         *PRInfo `json:"github,omitempty"`
 }
 
 func views(s State) []WorkspaceView {
 	out := []WorkspaceView{}
 	for _, w := range s.Workspaces {
 		_, e := os.Stat(w.Path)
-		out = append(out, WorkspaceView{Workspace: w, RepositoryID: s.RepositoryID, Exists: e == nil})
+		out = append(out, WorkspaceView{Workspace: w, RepositoryID: s.RepositoryID, RepositoryPath: s.Anchor, Exists: e == nil})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out

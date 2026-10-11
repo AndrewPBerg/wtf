@@ -13,14 +13,9 @@ import (
 )
 
 func (s *Session) loadPRs(ctx context.Context, rows []core.WorkspaceView) []core.WorkspaceView {
-	service := s.App.GitHubService()
-	plan := service.Prepare(ctx, rows, true)
-	if !plan.NeedsRefresh {
-		if s.ShowPRs {
-			return s.App.WithReviewLinks(ctx, plan.Rows, s.RefreshPRs)
-		}
-		return plan.Rows
-	}
+	plan := s.App.Metadata().Prepare(ctx, rows, core.MetadataRequest{
+		PRs: s.ShowPRs, CI: s.ShowChecks, Reviews: s.ShowPRs, ForceReviews: s.RefreshPRs,
+	})
 	interactive := false
 	if file, ok := s.Out.(interface{ Fd() uintptr }); ok {
 		interactive = !s.JSON && !s.browseInteractive() && term.IsTerminal(file.Fd())
@@ -28,22 +23,15 @@ func (s *Session) loadPRs(ctx context.Context, rows []core.WorkspaceView) []core
 	if interactive {
 		// Cache-first terminal output; JSON still emits exactly once, after bounded refresh.
 		p := humanPresentation(s.Out)
-		preview := workspaceTable(p, plan.Rows, s.App.Cwd, s.ShowStages, s.ShowPRs, s.ShowChecks)
+		preview := workspaceTable(p, plan.Cached, s.App.Cwd, s.ShowStages, s.ShowPRs, s.ShowChecks)
 		_, _ = fmt.Fprintln(s.Out, preview)
-		refreshed := service.Refresh(ctx, plan)
-		if s.ShowPRs {
-			refreshed = s.App.WithReviewLinks(ctx, refreshed, s.RefreshPRs)
-		}
+		refreshed := plan.Refresh(ctx)
 		lines := lipgloss.Height(preview)
 		// Move only over the preview, never clear the user's scrollback.
 		_, _ = fmt.Fprintf(s.Out, "\x1b[%dA\r\x1b[J", lines)
 		return refreshed
 	}
-	rows = service.Refresh(ctx, plan)
-	if s.ShowPRs {
-		rows = s.App.WithReviewLinks(ctx, rows, s.RefreshPRs)
-	}
-	return rows
+	return plan.Refresh(ctx)
 }
 
 // Only terminal output emits OSC 8 links; JSON retains GitHub's URL as data.
@@ -86,6 +74,9 @@ func primaryPR(info *core.PRInfo) (core.PullRequest, bool) {
 }
 
 func ciLabel(info *core.PRInfo) string {
+	if info != nil && info.CIState == core.MetadataNone {
+		return ""
+	}
 	pr, matched := primaryPR(info)
 	if !matched {
 		if info == nil {
@@ -96,7 +87,10 @@ func ciLabel(info *core.PRInfo) string {
 		}
 		switch info.Lookup {
 		case "fresh", "cached", "not_github", "not_inspected":
-			return ""
+			if info.Lookup == "fresh" || info.Lookup == "cached" {
+				return ""
+			}
+			return "—"
 		case "loading":
 			return "↻"
 		default:
@@ -161,6 +155,9 @@ func ciPresentation(p presentation, info *core.PRInfo) string {
 func prLabel(info *core.PRInfo) string {
 	if info == nil {
 		return "unknown"
+	}
+	if info.PRState == core.MetadataNone {
+		return ""
 	}
 	if len(info.Matches) > 0 {
 		pr := info.Matches[0]

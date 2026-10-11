@@ -34,6 +34,23 @@ func TestPRLinkIsLimitedToTerminalOutputAndClosesWhenTruncated(t *testing.T) {
 	}
 }
 
+func TestAbsentMetadataLabelsDistinguishFreshStaleAndFailedLookups(t *testing.T) {
+	for _, test := range []struct {
+		info   core.PRInfo
+		pr, ci string
+	}{
+		{core.PRInfo{Lookup: "fresh", PRState: core.MetadataNone, CIState: core.MetadataNone}, "", ""},
+		{core.PRInfo{Lookup: "stale", PRState: core.MetadataNone, CIState: core.MetadataNone}, "", ""},
+		{core.PRInfo{Lookup: "cached", Error: "offline", PRState: core.MetadataNone, CIState: core.MetadataNone}, "", ""},
+		{core.PRInfo{Lookup: "unavailable", Error: "offline", PRState: core.MetadataUnavailable, CIState: core.MetadataUnavailable}, "unavailable", "?"},
+		{core.PRInfo{Lookup: "loading", PRState: core.MetadataLoading, CIState: core.MetadataLoading}, "loading…", "↻"},
+	} {
+		if pr, ci := prLabel(&test.info), ciLabel(&test.info); pr != test.pr || ci != test.ci {
+			t.Fatalf("%+v: got %q/%q, want %q/%q", test.info, pr, ci, test.pr, test.ci)
+		}
+	}
+}
+
 func TestPRGlyphTracksDraftOpenClosedAndMergedState(t *testing.T) {
 	p := humanPresentation(&bytes.Buffer{})
 	p.Links = true

@@ -4,7 +4,7 @@ WTF_PILOT_BINARY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)/bin/wtf
 wtf-pilot() {
     local subcommand="${1,,}" argument destination
     case "$subcommand" in
-        list|ls|switch|sw|w)
+        list|ls)
             if [[ -t 0 && -t 1 ]]; then
                 for argument in "$@"; do
                     case "${argument,,}" in

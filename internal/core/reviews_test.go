@@ -106,6 +106,24 @@ func reviewTestRows(root string) []WorkspaceView {
 	return []WorkspaceView{{Workspace: Workspace{Path: root}, GitHub: &PRInfo{Matches: []PullRequest{{URL: "https://github.com/owner/repo/pull/1"}}}}}
 }
 
+func TestReviewRefreshSharesTransientFailureAcrossRowsButRetriesNextObservation(t *testing.T) {
+	a := New(t.TempDir(), t.TempDir(), nil)
+	calls := 0
+	a.Reviews = fakeReviewClient{resolve: func(context.Context, string, string) ReviewResolution {
+		calls++
+		return ReviewResolution{Provider: "github", Code: "linear_lookup_timeout", CheckedAt: time.Now().UTC()}
+	}}
+	rows := append(reviewTestRows(a.Cwd), reviewTestRows(a.Cwd)...)
+	first := a.WithReviewLinks(t.Context(), rows, true)
+	if calls != 1 || first[0].GitHub.Matches[0].Review.Code != "linear_lookup_timeout" || first[1].GitHub.Matches[0].Review.Code != "linear_lookup_timeout" {
+		t.Fatal("duplicate rows repeated a forced provider lookup")
+	}
+	a.WithReviewLinks(t.Context(), rows, false)
+	if calls != 2 {
+		t.Fatal("transient failure was persisted or repeated within the next observation")
+	}
+}
+
 func TestReviewRefreshPreservesPreviousBrowserSnapshot(t *testing.T) {
 	a := New(t.TempDir(), t.TempDir(), nil)
 	a.Reviews = fakeReviewClient{resolve: func(context.Context, string, string) ReviewResolution {

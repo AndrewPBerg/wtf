@@ -1,96 +1,71 @@
 # wtf setup
 
-Run project setup in the current worktree.
+Create local WTF configuration in the current directory:
 
-## Usage
-
-```bash
-wtf setup              # full setup (symlink env files + install)
-wtf setup --copy-env   # copy env files instead of symlinking + install
-wtf setup --env        # only handle env files
-wtf setup --env --copy-env  # only copy env files
-wtf setup --install    # only run package install
-wtf setup shell        # configure shell integration (one-time)
+```sh
+wtf setup
+wtf setup --json
+wtf setup teardown
 ```
 
-## What It Does
+No repository or workspace registration is required. Run this at the project root
+where you want the configuration to live.
 
-1. **Handles env files** from the main worktree (`.env`, `.env.local`, `.env.development`, `.env.development.local` -- only files that exist in the main worktree), symlinking by default or copying with `--copy-env`
-2. **Auto-detects the package manager** from lockfiles and runs install
-
-No config file needed. This is the same setup that runs automatically after `wtf new` and `wtf news`.
-
-## Package Manager Detection
-
-WTF detects the package manager by checking for lockfiles in priority order:
-
-| Lockfile              | Command                           |
-|-----------------------|-----------------------------------|
-| `pnpm-lock.yaml`      | `pnpm install`                    |
-| `bun.lockb`           | `bun install`                     |
-| `yarn.lock`           | `yarn install`                    |
-| `package-lock.json`   | `npm install`                     |
-| `uv.lock`             | `uv sync`                         |
-| `poetry.lock`         | `poetry install`                  |
-| `requirements.txt`    | `pip install -r requirements.txt` |
-| `go.sum`              | `go mod download`                 |
-| `Cargo.lock`          | `cargo build`                     |
-| `Gemfile.lock`        | `bundle install`                  |
-| `composer.lock`       | `composer install`                |
-| `pom.xml`             | `mvn install`                     |
-| `build.gradle(.kts)`  | `gradle build`                    |
-| `packages.lock.json`  | `dotnet restore`                  |
-| `mix.lock`            | `mix deps.get`                    |
-| `Package.resolved`    | `swift package resolve`           |
-
-First match wins. If no lockfile is found, the install step is skipped.
-
-## Examples
-
-```bash
-# Re-run setup in current worktree
-$ wtf setup
-✔ Setup complete
-
-# Only install packages
-$ wtf setup --install
-✔ Ran pnpm install
-
-# Only symlink env files
-$ wtf setup --env
-✔ .env symlinked
-
-# Only copy env files for an isolated agent worktree
-$ wtf setup --env --copy-env
-✔ .env copied
+```text
+.wtf/
+├── .gitignore
+├── schema.json
+├── config.toml
+├── hooks/
+└── tasks/
 ```
 
-## Shell Integration
+The generated `.wtf/.gitignore` contains only:
 
-Shell integration is configured via `wtf setup shell`:
-
-```bash
-$ wtf setup shell
-Detected shell: zsh
-RC file: /home/user/.zshrc
-Will add: eval "$(wtf init zsh)"
-Proceed? [y/N] y
-✔ Added to /home/user/.zshrc. Restart your shell or run: source /home/user/.zshrc
-✔ Tab completions included automatically via wtf init
+```gitignore
+*
 ```
 
-This single line handles both the shell wrapper (for `wtf sw` / `wtf news` to `cd` automatically) and tab completions for all commands.
+Everything inside `.wtf`, including its ignore file, stays local and untracked.
+Git ignore rules do not untrack files already committed to a repository.
+Existing ignore rules and other scaffold files are preserved when setup is rerun.
 
-If already configured:
+The initial configuration selects the local generated schema:
 
-```bash
-$ wtf setup shell
-✔ Shell integration already configured in /home/user/.zshrc
-✔ Tab completions included automatically via wtf init
+```toml
+#:schema ./schema.json
+
+version = 1
 ```
 
-## Jujutsu (jj)
+`version` identifies the configuration format. The generated schema supplies
+editor completion, descriptions, and validation for the installed command tree;
+it is not a replacement for runtime validation. See [config-schema.md](config-schema.md).
 
-Setup is identical for jj workspaces, and is the main reason to pair wtf with jj:
-because jj honors `.gitignore`, a new workspace has no `.env` and no installed
-dependencies until wtf links and installs them. See [jj.md](jj.md).
+Both `hooks/` and `tasks/` start completely empty. Setup creates no Lua files and
+selects no entrypoint. Setup introduces no task-file loader or new task execution
+contract.
+
+Setup creates missing files and directories and reports existing ones as preserved.
+It never overwrites project edits, executes Lua, installs dependencies, or registers
+a workspace. Conflicting files, directories, or symlinks produce an error. If a run
+fails, completed files remain available and rerunning setup fills in missing files.
+
+Human output lists created and preserved paths. JSON returns one versioned envelope
+with `data.path`, `data.created`, and `data.existing`; the lists use paths relative
+to the current directory. Help and argument errors follow the shared CLI contract.
+
+After editing your hooks, `wtf new .` registers and prepares a JJ workspace.
+See [hooks.md](hooks.md) for the current hook contract.
+
+`wtf setup teardown` removes the entire `.wtf/` directory from the current
+directory after a yes/no confirmation. No is selected by default. Use arrow keys
+or y/n to select, then Enter to confirm; Esc cancels. All custom files inside
+`.wtf/` are included in removal. Workspace registration and shared state remain.
+Cleanup works even if the local configuration is invalid and runs no hooks.
+Symlink targets are never removed.
+
+JSON and redirected output return a `confirmation_required` error without
+deleting anything. A missing `.wtf/` succeeds without prompting. Teardown JSON
+includes `data.path` and `data.status` (`confirmation_required`, `cancelled`,
+`not_configured`, or `removed`).

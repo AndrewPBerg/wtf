@@ -19,7 +19,7 @@ end } }`)
 	if err != nil || first.Code != "already_initialized" || first.ID != anchor.ID || first.Owned || first.Stages["prepare"].Status != "succeeded" {
 		t.Fatalf("initialize existing: %+v %v", first, err)
 	}
-	child, err := a.NewWorkspace(ctx, "feature", "@", "ChildValue")
+	child, err := a.NewWorkspace(ctx, "../feature", "@", "ChildValue")
 	if err != nil || !child.Owned || child.ID == anchor.ID || child.Stages["prepare"].Status != "succeeded" || child.Stages["prepare"].Reused {
 		t.Fatalf("new did not initialize an independent owned workspace: %+v %v", child, err)
 	}
@@ -33,8 +33,7 @@ end } }`)
 			t.Fatalf("initialization arguments or context incorrect: %q %v", args, err)
 		}
 	}
-	childApp := New(child.Path, a.Home, a.Out)
-	repeated, err := childApp.Initialize(ctx, "ChildValue")
+	repeated, err := a.NewWorkspace(ctx, child.Path, "", "ChildValue")
 	if err != nil || repeated.ID != child.ID || !repeated.Owned || !repeated.Stages["prepare"].Reused {
 		t.Fatalf("reinitialization lost ownership or setup reuse: %+v %v", repeated, err)
 	}
@@ -57,7 +56,7 @@ func TestFailedNewInitializationCanResumeThroughInit(t *testing.T) {
  ctx:stage("after", {"sh", "-c", "touch after.count"})
 end } }`)
 	ctx := context.Background()
-	child, err := a.NewWorkspace(ctx, "retry", "@")
+	child, err := a.NewWorkspace(ctx, "../retry", "@")
 	if err == nil || child.ID == "" || !child.Owned || child.Stages["prepare"].Status != "succeeded" || child.Stages["verify"].Status != "failed" {
 		t.Fatalf("new did not retain failed initialization: %+v %v", child, err)
 	}
@@ -67,8 +66,7 @@ end } }`)
 	if err := os.WriteFile(filepath.Join(child.Path, "fixed.count"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	childApp := New(child.Path, a.Home, a.Out)
-	retried, err := childApp.Initialize(ctx)
+	retried, err := a.NewWorkspace(ctx, "../retry", "")
 	if err != nil || retried.ID != child.ID || !retried.Owned || retried.Status != "ready" || !retried.Stages["prepare"].Reused || retried.Stages["after"].Status != "succeeded" {
 		t.Fatalf("init did not resume new's failed setup: %+v %v", retried, err)
 	}

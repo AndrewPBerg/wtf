@@ -33,20 +33,21 @@ type Problem struct {
 
 // Session binds command flags, output and the workspace application.
 type Session struct {
-	App        *core.App
-	Out        io.Writer
-	Err        io.Writer
-	JSON       bool
-	ShowStages bool
-	ShowPRs    bool
-	ShowChecks bool
-	RefreshPRs bool
-	SelectPath bool
-	Data       any
-	Command    string
-	Emitted    bool
-	Ran        bool
-	Root       *cobra.Command
+	App           *core.App
+	Out           io.Writer
+	Err           io.Writer
+	JSON          bool
+	ShowStages    bool
+	ShowPRs       bool
+	ShowChecks    bool
+	RefreshPRs    bool
+	SelectPath    bool
+	Data          any
+	Command       string
+	Emitted       bool
+	Ran           bool
+	Root          *cobra.Command
+	DefaultsError error
 }
 
 func (s *Session) emit(err error) error {
@@ -137,9 +138,25 @@ func helpData(c *cobra.Command) any {
 // New constructs the WTF command tree.
 func New(app *core.App, out, errOut io.Writer) *Session {
 	s := &Session{App: app, Out: out, Err: errOut}
-	root := &cobra.Command{Use: "wtf", Short: "Opinionated JJ workspace management", Long: "WorkTreeForge: opinionated JJ workspace management for Omarchy.", SilenceErrors: true, SilenceUsage: true}
+	root := &cobra.Command{Use: "wtf", Short: "Opinionated JJ workspace management", Long: "WorkTreeForge: opinionated JJ workspace management for Omarchy, Zed, and Linear Workflows.", SilenceErrors: true, SilenceUsage: true}
 	root.Args = cobra.NoArgs
-	root.PersistentPreRunE = func(c *cobra.Command, _ []string) error { return s.applyDefaults(c) }
+	var showVersion bool
+	root.PersistentPreRunE = func(c *cobra.Command, _ []string) error {
+		if showVersion || c.Name() == "version" {
+			return nil
+		}
+		err := s.applyDefaults(c)
+		if c.CommandPath() == "wtf setup teardown" {
+			// Local cleanup remains available even when its config is broken.
+			return nil
+		}
+		if c.Name() == "doctor" {
+			// Diagnostics must remain usable when configuration is broken.
+			s.DefaultsError = err
+			return nil
+		}
+		return err
+	}
 	s.Root = root
 	root.AddGroup(
 		&cobra.Group{ID: "essentials", Title: "Essentials"},
@@ -155,6 +172,7 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 	root.SetOut(out)
 	root.SetErr(errOut)
 	root.PersistentFlags().BoolVarP(&s.JSON, "json", "j", false, "Emit one versioned JSON result; never prompt")
+	root.Flags().BoolVarP(&showVersion, "version", "v", false, "Show the installed WTF version")
 	root.SetHelpFunc(func(c *cobra.Command, _ []string) {
 		s.Command = c.CommandPath()
 		s.Data = helpData(c)
@@ -163,19 +181,39 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 		}
 	})
 	root.RunE = func(c *cobra.Command, _ []string) error {
+		if showVersion {
+			s.Command = "wtf version"
+			s.Data = map[string]string{"version": Version}
+			return nil
+		}
 		s.Command = c.CommandPath()
 		s.Data = helpData(c)
 		return nil
 	}
-	root.AddCommand(s.command("init [-- HOOK_ARGS...]", "Initializes workspace and runs project hooks", "Register the current JJ repository and workspace, then run its configured init override. new uses this same registration and preparation lifecycle after creating a workspace. Repeated init preserves identity and lets reusable stages verify completed work. JSON registration codes are initialized or already_initialized; hook failures remain errors with retained stage records. Project arguments must follow --. Example: wtf init --json -- --compose.", initializationArgs, func(c *cobra.Command, args []string) (any, error) { return app.Initialize(c.Context(), args...) }))
-	var from string
-	n := s.command("new NAME [-- HOOK_ARGS...]", "Create a workspace and run project hooks", "Create an owned sibling JJ workspace. --from defaults to trunk(). The explicitly registered Lua override can check/block creation and delegate once to the default. Arguments after -- reach request.args unchanged; project scripts interpret them. Stages run serially; failures retain completed work. Example: wtf new agent-a -f @ -- --compose.", namedHookArgs, func(c *cobra.Command, args []string) (any, error) {
-		return app.NewWorkspace(c.Context(), args[0], from, args[1:]...)
+	var from, message string
+	n := s.command("new PATH [-- HOOK_ARGS...]", "Create or prepare a workspace at a destination path", "Resolve PATH relative to the current directory (absolute paths also work). An existing JJ workspace root is registered and prepared; a missing path creates an owned JJ workspace at that exact location, named after its basename. --from defaults to trunk() and only applies to creation. Existing directories that are not workspace roots are rejected. Both modes run the init override; only creation runs the new override, which may block before mutation. Repeated calls preserve identity, ownership and reusable stages. JSON registration codes are initialized or already_initialized. Project arguments after -- keep their case. Examples: wtf new .; wtf new ../agent-a -f @ -- --compose.", pathHookArgs, func(c *cobra.Command, args []string) (any, error) {
+		options := core.NewWorkspaceOptions{}
+		if c.Flags().Changed("message") {
+			options.Message = &message
+		}
+		return app.NewWorkspaceWithOptions(c.Context(), args[0], from, options, args[1:]...)
 	})
-	n.Flags().StringVarP(&from, "from", "f", "trunk()", "JJ parent revision for the new workspace")
+	n.Flags().StringVarP(&from, "from", "f", "trunk()", "JJ parent revision when creating a missing destination")
+	n.Flags().StringVarP(&message, "message", "m", "", "Workspace description shown below the selected row in list and remove; empty clears it")
 	root.AddCommand(n)
+	setup := s.command("setup", "Create local WTF configuration, hooks and tasks directories", "Create .wtf in the current directory with config.toml, the generated editor schema, and completely empty hooks and tasks directories. Its .gitignore contains only * so all scaffold files stay local and untracked. Existing files are preserved; repeated setup fills in missing files. Does not run hooks, install dependencies or register a workspace. No repository is required. Use setup teardown to remove the local .wtf directory after a yes/no confirmation. Examples: wtf setup; wtf setup --json; wtf setup teardown.", cobra.NoArgs, func(c *cobra.Command, _ []string) (any, error) {
+		schema, err := ConfigurationSchema(root)
+		if err != nil {
+			return nil, err
+		}
+		return app.Setup(c.Context(), schema)
+	})
+	setup.AddCommand(s.command("teardown", "Remove local WTF configuration after confirmation", "Remove the entire .wtf directory and its contents from the current directory after an interactive yes/no confirmation, defaulting to No. Works even with broken configuration. Does not run hooks or change workspace registration, source outside .wtf, or shared state. Symlink targets are never removed. JSON and redirected output report confirmation_required without deleting anything; a missing .wtf is a successful no-op. Example: wtf setup teardown.", cobra.NoArgs, func(c *cobra.Command, _ []string) (any, error) {
+		return s.teardownSetup(c.Context())
+	}))
+	root.AddCommand(setup)
 	var global, here, all bool
-	list := s.command("list [NAME]", "Browse and switch workspaces", "Browse active workspaces with arrow keys; Enter selects, Esc cancels. The view paginates to your terminal size. list, ls, switch, sw and w are the same command. An optional NAME resolves a workspace directly.\n\nInside a repository, show its workspaces; from a parent directory, show repositories beneath it. --global includes all registered repositories, --all includes removed records.\n\n--hook adds local stages, not CI. --pr adds GitHub PR status; each invocation performs a bounded live lookup. JSON and redirected output never prompt. With shell integration, selection changes your directory.\n\nExamples:\n  wtf list\n  wtf sw -p\n  wtf ls --all --json", cobra.MaximumNArgs(1), func(c *cobra.Command, args []string) (any, error) {
+	list := s.command("list [NAME]", "Browse and switch workspaces", "Browse active workspaces with arrow keys; Enter selects, Esc cancels. The view paginates to your terminal size. list and ls are the same command. An optional NAME resolves a workspace directly.\n\nInside a repository, show its workspaces; from a parent directory, show repositories beneath it. --global includes all registered repositories, --all includes removed records.\n\n--hook adds local stages, not CI. --pr adds GitHub PR status; each invocation performs a bounded live lookup. JSON and redirected output never prompt. With shell integration, selection changes your directory.\n\nExamples:\n  wtf list\n  wtf ls -p\n  wtf ls --all --json", cobra.MaximumNArgs(1), func(c *cobra.Command, args []string) (any, error) {
 		rows, e := app.List(c.Context(), global, here)
 		if e != nil {
 			return rows, e
@@ -217,7 +255,7 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 		}
 		return rows, nil
 	})
-	list.Aliases = []string{"ls", "switch", "sw", "w"}
+	list.Aliases = []string{"ls"}
 	list.Flags().BoolVar(&global, "global", false, "List all registered repositories")
 	list.Flags().BoolVar(&here, "here", false, "Only the current managed workspace")
 	list.Flags().BoolVarP(&all, "all", "a", false, "Include removed workspace records; active workspaces are shown by default")
@@ -228,12 +266,12 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 	list.Flags().BoolVar(&s.RefreshPRs, "refresh", false, "Request live PR metadata (already automatic with --pr)")
 	list.MarkFlagsMutuallyExclusive("global", "here")
 	root.AddCommand(list)
-	rm := s.command("remove NAME", "Remove a workspace and its owned resources", "Invoke the target workspace's remove override before native removal. Refuses current/adopted workspaces, identity mismatch, remaining external claims and changed source files. Failures retain cleanup state. Example: wtf remove agent-a --json.", cobra.ExactArgs(1), func(c *cobra.Command, args []string) (any, error) { return app.Remove(c.Context(), args[0]) })
+	rm := s.command("remove [NAME]", "Select and remove workspaces and their owned resources", "Open an inline multi-select cleanup picker. Space toggles a workspace; f toggles force mode to discard remaining source changes; a selects clean workspaces verified in main/master; Enter reviews, then confirms removal. Current and adopted workspaces are protected. Changes outside main/master block removal unless force mode is enabled in the picker. Integration uses local JJ ancestry or a fresh merged GitHub PR with an exact matching head and main/master base. Local bookmarks and remote bookmarks reflect their last fetched state. Normal JJ snapshotting captures on-disk changes during inspection.\n\nAn explicit NAME removes one workspace directly. JSON and redirected output with no NAME report cleanup candidates without removing them. Teardown hooks and identity/resource checks are revalidated for each removal. Failures retain cleanup state.\n\nExamples:\n  wtf remove\n  wtf rm agent-a --json\n  wtf remove --json", cobra.MaximumNArgs(1), func(c *cobra.Command, args []string) (any, error) { return s.remove(c.Context(), args) })
 	rm.Aliases = []string{"rm"}
 	root.AddCommand(rm)
 	root.AddCommand(s.command("run TASK [ARGS...]", "Run a project task", "Run an argv-based TOML task in the current managed workspace, recording its result. Arguments after -- are forwarded literally. Tasks do not reuse results by default. Example: wtf run test -- tests/auth.", cobra.MinimumNArgs(1), func(c *cobra.Command, args []string) (any, error) { return app.Task(c.Context(), args[0], args[1:]) }))
-	root.AddCommand(s.command("validate", "Check project configuration", "Parse strict config and compile the Lua file without executing it. Does not run hooks, register workspaces or snapshot JJ state. Example: wtf validate --json.", cobra.NoArgs, func(c *cobra.Command, _ []string) (any, error) { return app.Validate(c.Context()) }))
-	doctor := s.command("doctor", "Inspect CLI readiness and workspace health", "Check JJ installation and user identity, GitHub authentication, and the repository's Codex Linear MCP connection and workspace identity. Inspect retained workspace stages, claims and failures. Checks are bounded; remote authentication may contact GitHub and Linear. Does not install tools, start project services or run project hooks. Missing JJ prerequisites or unhealthy workspace state return a nonzero exit status; optional GitHub/Linear warnings do not. Example: wtf doctor --here --json.", cobra.NoArgs, func(c *cobra.Command, _ []string) (any, error) { return app.Doctor(c.Context()) })
+	doctor := s.command("doctor", "Check configuration, tools and workspace health", "Report configuration, tool readiness and workspace health independently, including before workspace registration. Parse strict TOML and compile the selected Lua entrypoint without executing it. Check JJ identity, GitHub authentication and the repository's Codex Linear MCP connection. Inspect retained workspace stages, claims and identity. Checks are bounded; authentication may contact GitHub and Linear. Does not run hooks, register workspaces, snapshot JJ state or repair anything. Invalid configuration, required JJ prerequisites or unhealthy workspace state fail; unregistered workspaces and optional GitHub/Linear warnings do not. Example: wtf doctor --json.", cobra.NoArgs, func(c *cobra.Command, _ []string) (any, error) { return app.Doctor(c.Context(), s.DefaultsError) })
+	doctor.Aliases = []string{"doc"}
 	doctor.Flags().Bool("here", true, "Inspect the current managed workspace")
 	root.AddCommand(doctor)
 	hooks := s.group("hook", "Inspect or invoke named hooks")
@@ -282,7 +320,7 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 	root.CompletionOptions.DisableDefaultCmd = true
 	for _, command := range root.Commands() {
 		switch command.Name() {
-		case "init", "list", "new", "remove":
+		case "list", "new", "remove":
 			command.GroupID = "essentials"
 		case "hook", "run":
 			command.GroupID = "hooks"

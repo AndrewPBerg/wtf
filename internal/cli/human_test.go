@@ -42,12 +42,12 @@ func TestHumanListIsReadableAndKeepsMetadataInJSONOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	for _, want := range []string{"Workspaces", "WORKSPACE", "PATH", "auth", "experiment", "●", "../experiment"} {
+	for _, want := range []string{"Workspaces", "WORKSPACE", "AGE", "auth", "experiment", "●"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q: %s", want, text)
 		}
 	}
-	for _, unwanted := range []string{"LOCAL", "✓", "hook failed", "current workspace", "full records", "CHECKS", "STAGES", "1/1", "private-uuid", "fingerprint", "repository_id", "\x1b[", "\"ok\""} {
+	for _, unwanted := range []string{"PATH", "../experiment", "LOCAL", "✓", "hook failed", "current workspace", "full records", "CHECKS", "STAGES", "1/1", "private-uuid", "fingerprint", "repository_id", "\x1b[", "\"ok\""} {
 		if strings.Contains(text, unwanted) {
 			t.Fatalf("human output leaked %q: %s", unwanted, text)
 		}

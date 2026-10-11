@@ -29,6 +29,7 @@ type PullRequest struct {
 	Draft           bool   `json:"isDraft"`
 	Branch          string `json:"headRefName"`
 	Head            string `json:"headRefOid"`
+	Base            string `json:"baseRefName"`
 	CrossRepository bool   `json:"isCrossRepository"`
 	Owner           struct {
 		Login string `json:"login"`
@@ -97,8 +98,21 @@ func summarizeChecks(head string, raw json.RawMessage) (*CheckSummary, error) {
 	return summary, nil
 }
 
+// MetadataState separates absence from provider freshness and failures.
+type MetadataState string
+
+const (
+	MetadataPresent       MetadataState = "present"
+	MetadataNone          MetadataState = "none"
+	MetadataLoading       MetadataState = "loading"
+	MetadataUnavailable   MetadataState = "unavailable"
+	MetadataNotApplicable MetadataState = "not_applicable"
+)
+
 // PRInfo is a workspace PR observation, including lookup failures.
 type PRInfo struct {
+	PRState    MetadataState `json:"pr_state"`
+	CIState    MetadataState `json:"ci_state"`
 	Repository string        `json:"repository,omitempty"`
 	Lookup     string        `json:"lookup"`
 	CheckedAt  *time.Time    `json:"checked_at,omitempty"`
@@ -106,6 +120,34 @@ type PRInfo struct {
 	Truncated  bool          `json:"truncated,omitempty"`
 	Error      string        `json:"error,omitempty"`
 }
+
+func (info *PRInfo) setMetadataStates() {
+	info.PRState, info.CIState = MetadataUnavailable, MetadataUnavailable
+	if len(info.Matches) > 0 {
+		info.PRState = MetadataPresent
+		pr := info.Matches[0]
+		if pr.Checks != nil && pr.Checks.Head == pr.Head {
+			info.CIState = MetadataPresent
+			if pr.Checks.Total == 0 && pr.Checks.Failed+pr.Checks.Pending+pr.Checks.Passed+pr.Checks.Skipped+pr.Checks.Cancelled+pr.Checks.Unknown == 0 && !pr.Checks.Truncated {
+				info.CIState = MetadataNone
+			}
+		}
+		return
+	}
+	switch info.Lookup {
+	case "fresh", "cached", "stale":
+		// A retained empty observation is still empty; Lookup/Error describe
+		// its age or a failed refresh separately.
+		if info.CheckedAt != nil {
+			info.PRState, info.CIState = MetadataNone, MetadataNone
+		}
+	case "loading":
+		info.PRState, info.CIState = MetadataLoading, MetadataLoading
+	case "not_github", "not_inspected":
+		info.PRState, info.CIState = MetadataNotApplicable, MetadataNotApplicable
+	}
+}
+
 type prRevision struct {
 	Commit    string   `json:"commit"`
 	Bookmarks []string `json:"bookmarks"`
@@ -151,7 +193,7 @@ func (client GHClient) List(ctx context.Context, repository string) ([]PullReque
 			}
 		}
 	}
-	cmd := exec.CommandContext(ctx, binary, "pr", "list", "--repo", repository, "--state", "all", "--limit", "200", "--json", "number,title,url,state,isDraft,headRefName,headRefOid,headRepositoryOwner,isCrossRepository,statusCheckRollup")
+	cmd := exec.CommandContext(ctx, binary, "pr", "list", "--repo", repository, "--state", "all", "--limit", "200", "--json", "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,headRepositoryOwner,isCrossRepository,statusCheckRollup")
 	var data bytes.Buffer
 	cmd.Stdout = &data
 	cmd.Stderr = io.Discard
@@ -199,7 +241,13 @@ type PRService struct {
 }
 
 // GitHubService constructs the repository PR service.
-func (a *App) GitHubService() *PRService { return &PRService{a.Home, GHClient{}, time.Now, a.Out} }
+func (a *App) GitHubService() *PRService {
+	client := a.PRs
+	if client == nil {
+		client = GHClient{}
+	}
+	return &PRService{a.Home, client, time.Now, a.Out}
+}
 
 var githubSlug = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 
@@ -426,6 +474,9 @@ func applyPRs(rows []WorkspaceView, groups []prGroup, now time.Time, finished bo
 		} else if g.Refresh && g.Error == "" {
 			info.Lookup = "fresh"
 		}
+	}
+	for _, row := range out {
+		row.GitHub.setMetadataStates()
 	}
 	return out
 }

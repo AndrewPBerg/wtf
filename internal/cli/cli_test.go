@@ -102,13 +102,13 @@ func TestJSONSuccessFailuresAndHookOutputIsolation(t *testing.T) {
 	}
 	a := core.New(root, filepath.Join(dir, "home"), nil)
 	initializationID := ""
-	success := [][]string{{"init"}, {"init"}, {"list"}, {"ls"}, {"list", "--here"}, {"list", "--global"}, {"switch", "default"}, {"sw", "default"}, {"w", "default"}, {"validate"}, {"doctor"}, {"hook"}, {"hook", "list"}, {"hook", "run", "prepare"}, {"run", "test"}, {"ports"}, {"ports", "list"}, {"ports", "claim", "web", "--port", "3000"}, {"ports", "release", "web"}, {"version"}, {"new", "agent-a", "--from", "@"}, {"remove", "agent-a"}}
+	success := [][]string{{"NeW", "."}, {"new", "."}, {"list"}, {"ls"}, {"list", "--here"}, {"list", "--global"}, {"ls", "default"}, {"doctor"}, {"hook"}, {"hook", "list"}, {"hook", "run", "prepare"}, {"run", "test"}, {"ports"}, {"ports", "list"}, {"ports", "claim", "web", "--port", "3000"}, {"ports", "release", "web"}, {"version"}, {"new", "../agent-a", "--from", "@"}, {"remove", "agent-a"}}
 	for _, args := range success {
 		result, code, logs := invoke(t, a, append(args, "--json")...)
 		if code != 0 || !result.OK {
 			t.Fatalf("success %v: %+v logs=%s", args, result, logs)
 		}
-		if args[0] == "init" {
+		if len(args) == 2 && args[1] == "." {
 			encoded, err := json.Marshal(result.Data)
 			if err != nil {
 				t.Fatal(err)
@@ -132,7 +132,7 @@ func TestJSONSuccessFailuresAndHookOutputIsolation(t *testing.T) {
 			}
 		}
 	}
-	failures := [][]string{{"new"}, {"hook", "run", "missing"}, {"hook", "run", "fail"}, {"run", "missing"}, {"ports", "claim", "bad", "--port", "70000"}, {"remove", "default"}, {"switch", "missing"}, {"doctor"}}
+	failures := [][]string{{"new"}, {"hook", "run", "missing"}, {"hook", "run", "fail"}, {"run", "missing"}, {"ports", "claim", "bad", "--port", "70000"}, {"remove", "default"}, {"ls", "missing"}, {"doctor"}}
 	for _, command := range []string{"list", "ls"} {
 		for _, all := range []bool{false, true} {
 			args := []string{command, "--json"}
@@ -166,6 +166,63 @@ func TestJSONSuccessFailuresAndHookOutputIsolation(t *testing.T) {
 		result, code, _ := invoke(t, a, append(args, "--json")...)
 		if code == 0 || result.OK || result.Error == nil || result.Error.Code == "" {
 			t.Fatalf("failure %v: %+v", args, result)
+		}
+	}
+}
+
+func TestBareCommandShowsHelpWithoutRegistration(t *testing.T) {
+	a := core.New(t.TempDir(), t.TempDir(), nil)
+	result, code, _ := invoke(t, a, "--json")
+	if code != 0 || !result.OK || result.Command != "wtf" {
+		t.Fatalf("bare command failed: %+v", result)
+	}
+	data, ok := result.Data.(map[string]any)
+	if !ok || data["commands"] == nil || data["usage"] != "wtf" {
+		t.Fatalf("bare command did not return help: %+v", result.Data)
+	}
+	encoded, err := json.Marshal(data["commands"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"name":"init"`) || strings.Contains(string(encoded), "Deprecated:") {
+		t.Fatalf("removed init is still advertised: %s", encoded)
+	}
+	if entries, err := os.ReadDir(a.Home); err != nil || len(entries) != 0 {
+		t.Fatalf("bare command registered state: %+v %v", entries, err)
+	}
+}
+
+func TestInitIsNotACommand(t *testing.T) {
+	a := core.New(t.TempDir(), t.TempDir(), nil)
+	root := New(a, &bytes.Buffer{}, &bytes.Buffer{}).Root
+	for _, command := range root.Commands() {
+		if commandMatches(command, "init") {
+			t.Fatal("init still exists in the command tree")
+		}
+	}
+	for _, args := range [][]string{{"init", "--json"}, {"InIt", "-J"}} {
+		result, code, _ := invoke(t, a, args...)
+		if code == 0 || result.OK || result.Error == nil || result.Error.Code != "invalid_arguments" {
+			t.Fatalf("removed command accepted: %v %+v", args, result)
+		}
+	}
+}
+
+func TestListHasOnlyLsAlias(t *testing.T) {
+	a := core.New(t.TempDir(), t.TempDir(), nil)
+	result, code, _ := invoke(t, a, "LS", "--json", "--help")
+	if code != 0 || result.Command != "wtf list" {
+		t.Fatalf("ls no longer resolves list: %+v", result)
+	}
+	data := result.Data.(map[string]any)
+	aliases, err := json.Marshal(data["aliases"])
+	if err != nil || string(aliases) != `["ls"]` {
+		t.Fatalf("unexpected list aliases: %s %v", aliases, err)
+	}
+	for _, alias := range []string{"switch", "sw", "w", "sww", "SWITCH", "Sw", "W"} {
+		result, code, _ := invoke(t, a, alias, "--json")
+		if code == 0 || result.OK || result.Error == nil || result.Error.Code != "invalid_arguments" {
+			t.Fatalf("removed alias %s accepted: %+v", alias, result)
 		}
 	}
 }

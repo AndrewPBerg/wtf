@@ -15,19 +15,20 @@ import (
 
 // Runtime owns a restricted Lua hook interpreter and workspace context.
 type Runtime struct {
-	App        *App
-	Repo       Repo
-	Workspace  Workspace
-	L          *lua.LState
-	Context    context.Context
-	Cancel     context.CancelFunc
-	CTX        *lua.LTable
-	Hooks      *lua.LTable
-	Overrides  *lua.LTable
-	ModuleRoot string
-	Modules    map[string]lua.LValue
-	Loading    map[string]bool
-	Request    *lua.LTable
+	App         *App
+	Repo        Repo
+	Workspace   Workspace
+	L           *lua.LState
+	Context     context.Context
+	Cancel      context.CancelFunc
+	CTX         *lua.LTable
+	Hooks       *lua.LTable
+	Overrides   *lua.LTable
+	ModuleRoot  string
+	Modules     map[string]lua.LValue
+	Loading     map[string]bool
+	Request     *lua.LTable
+	Destination string
 }
 
 func (a *App) runtime(ctx context.Context, r Repo, w Workspace) (*Runtime, error) {
@@ -105,6 +106,9 @@ func (r *Runtime) request(name, from string, args []string) *lua.LTable {
 	request := r.L.NewTable()
 	request.RawSetString("name", lua.LString(name))
 	request.RawSetString("from", lua.LString(from))
+	if r.Destination != "" {
+		request.RawSetString("path", lua.LString(r.Destination))
+	}
 	argv := r.L.NewTable()
 	for _, arg := range args {
 		argv.Append(lua.LString(arg))
@@ -144,6 +148,9 @@ func (r *Runtime) Override(op, name, from string, def func(string, string) (Work
 		req := L.CheckTable(1)
 		n := asString(req.RawGetString("name"))
 		f := asString(req.RawGetString("from"))
+		if op == "new" && asString(req.RawGetString("path")) != r.Destination {
+			return r.raise(L, Fail("identity_mismatch", "New overrides cannot change the destination path"))
+		}
 		if (op == "remove" || op == "init") && n != name {
 			return r.raise(L, Fail("identity_mismatch", "Init/remove overrides cannot change the target identity"))
 		}

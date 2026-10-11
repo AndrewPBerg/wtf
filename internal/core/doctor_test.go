@@ -142,3 +142,126 @@ func TestDoctorOptionalAuthFailurePreservesWorkspaceHealth(t *testing.T) {
 		t.Fatalf("doctor changed registry: %v", err)
 	}
 }
+
+func isolateDoctorTools(t *testing.T, a *App) {
+	t.Helper()
+	jj, err := exec.LookPath("jj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	if err := os.Symlink(jj, filepath.Join(bin, "jj")); err != nil {
+		t.Fatal(err)
+	}
+	if bash, err := exec.LookPath("bash"); err == nil {
+		if err := os.Symlink(bash, filepath.Join(bin, "bash")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin)
+	a.Reviews = fakeReviewClient{diagnose: func(context.Context, string) ReviewResolution {
+		return ReviewResolution{Status: "ready", Code: "linear_ready"}
+	}}
+}
+
+func TestDoctorValidatesBeforeRegistrationWithoutExecutingLuaOrMutatingJJ(t *testing.T) {
+	a, r, anchor := fixture(t)
+	config(t, anchor.Path, `error("doctor must not execute this module")`)
+	if err := os.Remove(filepath.Join(r.Store, "state.json")); err != nil {
+		t.Fatal(err)
+	}
+	isolateDoctorTools(t, a)
+	before, err := output(t.Context(), anchor.Path, "op", "log", "--limit", "1", "--no-graph", "-T", "id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	health, err := a.Doctor(t.Context())
+	if err != nil || health.Configuration.Status != "ready" || health.WorkspaceCheck.Status != "unregistered" || len(health.Tools) != 3 || health.Workspace.ID != "" {
+		t.Fatalf("unregistered diagnostics failed: %+v %v", health, err)
+	}
+	if _, err := os.Stat(filepath.Join(r.Store, "state.json")); !os.IsNotExist(err) {
+		t.Fatalf("doctor registered state: %v", err)
+	}
+	after, err := output(t.Context(), anchor.Path, "op", "log", "--limit", "1", "--no-graph", "-T", "id")
+	if err != nil || before != after {
+		t.Fatalf("doctor mutated JJ: %s -> %s %v", before, after, err)
+	}
+}
+
+func TestDoctorReportsConfigurationToolsAndWorkspaceFailuresTogether(t *testing.T) {
+	a, r, anchor := fixture(t)
+	config(t, anchor.Path, `return {broken syntax`)
+	if err := r.Update(t.Context(), anchor.ID, func(w *Workspace) { w.Stages["prepare"] = Stage{Status: "failed"}; w.LastError = "Preparation failed" }); err != nil {
+		t.Fatal(err)
+	}
+	isolateDoctorTools(t, a)
+	before, err := os.ReadFile(filepath.Join(r.Store, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	health, err := a.Doctor(t.Context())
+	if ErrorCode(err) != "invalid_hook" || health.Configuration.Status != "failed" || health.WorkspaceCheck.Status != "failed" || health.Workspace.ID != anchor.ID || len(health.Issues) < 3 || len(health.Tools) != 3 {
+		t.Fatalf("checks hid another failure: %+v %v", health, err)
+	}
+	after, err := os.ReadFile(filepath.Join(r.Store, "state.json"))
+	if err != nil || string(before) != string(after) {
+		t.Fatalf("doctor mutated state: %v", err)
+	}
+}
+
+func TestDoctorMissingJJStillValidatesRootConfigurationFromSubdirectory(t *testing.T) {
+	a, _, anchor := fixture(t)
+	config(t, anchor.Path, `return {}`)
+	if err := os.WriteFile(filepath.Join(anchor.Path, ".wtf", "config.toml"), []byte("version = ["), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(anchor.Path, "sub")
+	if err := os.Mkdir(sub, 0700); err != nil {
+		t.Fatal(err)
+	}
+	a.Cwd = sub
+	t.Setenv("PATH", t.TempDir())
+	health, err := a.Doctor(t.Context())
+	if ErrorCode(err) != "unhealthy_prerequisites" || health.Configuration.Code != "invalid_config" || health.Configuration.Status != "failed" || health.Tools[0].Code != "jj_missing" || health.WorkspaceCheck.Status != "unavailable" {
+		t.Fatalf("missing JJ hid configuration: %+v %v", health, err)
+	}
+}
+
+func TestDoctorDistinguishesMissingAndMalformedHookConfiguration(t *testing.T) {
+	for _, tc := range []struct {
+		name, code, status, message string
+		directory                   bool
+		files                       map[string]string
+		fails                       bool
+	}{
+		{name: "no directory", code: "wtf_directory_missing", status: "not_configured", message: "No .wtf directory found"},
+		{name: "no TOML", directory: true, code: "configuration_missing", status: "not_configured", message: "No .wtf/config.toml found"},
+		{name: "no Lua", directory: true, files: map[string]string{"config.toml": "version=1\n"}, code: "hooks_not_configured", status: "ready", message: "no Lua hook entrypoint configured"},
+		{name: "malformed TOML", directory: true, files: map[string]string{"config.toml": "version=["}, code: "invalid_config", status: "failed", fails: true},
+		{name: "missing Lua file", directory: true, files: map[string]string{"config.toml": "version=1\nlua='missing.lua'\n"}, code: "hook_missing", status: "failed", message: "missing.lua", fails: true},
+		{name: "malformed Lua", directory: true, files: map[string]string{"config.toml": "version=1\nlua='hooks.lua'\n", "hooks.lua": "return {broken syntax"}, code: "invalid_hook", status: "failed", fails: true},
+		{name: "valid Lua", directory: true, files: map[string]string{"config.toml": "version=1\nlua='hooks.lua'\n", "hooks.lua": `error("must not execute")`}, code: "configuration_valid", status: "ready", message: "Lua entrypoint syntax are valid"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _, anchor := fixture(t)
+			if tc.directory {
+				if err := os.Mkdir(filepath.Join(anchor.Path, ".wtf"), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for path, content := range tc.files {
+				if err := os.WriteFile(filepath.Join(anchor.Path, ".wtf", path), []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			isolateDoctorTools(t, a)
+			health, err := a.Doctor(t.Context())
+			if (err != nil) != tc.fails || health.Configuration.Code != tc.code || health.Configuration.Status != tc.status || !strings.Contains(health.Configuration.Message, tc.message) {
+				t.Fatalf("wrong configuration report: %+v %v", health, err)
+			}
+			if tc.code != "configuration_valid" && strings.Contains(health.Configuration.Message, "Lua entrypoint syntax are valid") {
+				t.Fatal("claimed to validate absent or malformed Lua")
+			}
+		})
+	}
+}

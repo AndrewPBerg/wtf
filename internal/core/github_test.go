@@ -97,6 +97,46 @@ func TestPRFailureRetainsStaleCacheAndDoesNotInventNoPR(t *testing.T) {
 		t.Fatalf("error became no PR %+v", row.GitHub)
 	}
 }
+
+func TestPREmptyAssociationHasExplicitAbsenceStates(t *testing.T) {
+	now := time.Now()
+	rows := []WorkspaceView{{Workspace: Workspace{Name: "new", Status: "ready"}, RepositoryID: "r", Exists: true}}
+	for _, stale := range []bool{false, true} {
+		checked := now
+		if stale {
+			checked = now.Add(-time.Hour)
+		}
+		group := prGroup{ID: "r", Repository: "owner/repo", Cached: &prCacheEntry{Repository: "owner/repo", CheckedAt: checked}, Snapshot: map[string]prSnapshot{"new": {Commit: "unpublished"}}}
+		info := applyPRs(rows, []prGroup{group}, now, false)[0].GitHub
+		if info.PRState != MetadataNone || info.CIState != MetadataNone {
+			t.Fatalf("empty observation became unknown: %+v", info)
+		}
+		// Failure without an observation must never claim absence.
+		group.Cached, group.Error = nil, "offline"
+		info = applyPRs(rows, []prGroup{group}, now, true)[0].GitHub
+		if info.PRState != MetadataUnavailable || info.CIState != MetadataUnavailable {
+			t.Fatalf("failed lookup invented absence: %+v", info)
+		}
+	}
+}
+
+func TestCIMetadataStateDistinguishesNoChecksFromMissingObservation(t *testing.T) {
+	for _, test := range []struct {
+		checks *CheckSummary
+		want   MetadataState
+	}{
+		{nil, MetadataUnavailable},
+		{&CheckSummary{Head: "head"}, MetadataNone},
+		{&CheckSummary{Head: "head", Total: 1, Pending: 1}, MetadataPresent},
+		{&CheckSummary{Head: "old"}, MetadataUnavailable},
+	} {
+		info := &PRInfo{Matches: []PullRequest{{Head: "head", Checks: test.checks}}}
+		info.setMetadataStates()
+		if info.PRState != MetadataPresent || info.CIState != test.want {
+			t.Fatalf("wrong states: %+v", info)
+		}
+	}
+}
 func TestPRPrepareSkipsNetworkForFreshCache(t *testing.T) {
 	a, r, w := fixture(t)
 	if _, e := output(context.Background(), r.Root, "git", "remote", "add", "origin", "https://github.com/owner/repo.git"); e != nil {

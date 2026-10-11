@@ -1,15 +1,12 @@
 package core
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -56,48 +53,13 @@ func runReviewBridge(ctx context.Context, root, prURL string, doctor bool) Revie
 	if doctor {
 		r.Provider, r.Status = "linear", "unavailable"
 	}
-	if ctx.Err() != nil {
-		r.Code = "review_lookup_cancelled"
-		return r
-	}
-	bounded, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-	node, err := doctorBinary(bounded, root, "node")
-	if err != nil {
-		r.Code = "node_missing"
-		return r
-	}
-	file, err := os.CreateTemp("", "wtf-review-*.mjs")
-	if err != nil {
-		r.Code = "review_adapter_unavailable"
-		return r
-	}
-	defer func() { _ = os.Remove(file.Name()) }()
-	_, err = file.Write(reviewBridgeSource)
-	closeErr := file.Close()
-	if err != nil || closeErr != nil {
-		r.Code = "review_adapter_unavailable"
-		return r
-	}
-	args := []string{file.Name(), "--repo", root, "--timeout-ms", "5000"}
+	arguments := []string{"--pr", prURL}
 	if doctor {
-		args = append(args, "--doctor", "true")
-	} else {
-		args = append(args, "--pr", prURL)
+		arguments = []string{"--doctor", "true"}
 	}
-	cmd := exec.CommandContext(bounded, node, args...)
-	cmd.Dir = root
-	cmd.Stdin = nil
-	var data bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &data, io.Discard
-	configureCommand(cmd)
-	runErr := cmd.Run() // Failed diagnostics still return a structured JSON result.
-	finishCommand(cmd)
-	if bounded.Err() != nil {
-		r.Code = "linear_lookup_timeout"
-		if ctx.Err() == context.Canceled {
-			r.Code = "review_lookup_cancelled"
-		}
+	data, runErr, code := invokeReviewAdapter(ctx, root, arguments, nil)
+	if code != "" {
+		r.Code = code
 		return r
 	}
 	var result struct {
@@ -115,7 +77,7 @@ func runReviewBridge(ctx context.Context, root, prURL string, doctor bool) Revie
 			Slug string `json:"slug"`
 		} `json:"workspace"`
 	}
-	if err := json.Unmarshal(data.Bytes(), &result); err != nil || result.Reason == "" {
+	if err := json.Unmarshal(data, &result); err != nil || result.Reason == "" {
 		r.Code = "invalid_review_adapter_response"
 		return r
 	}
@@ -170,48 +132,116 @@ func (a *App) WithReviewLinks(ctx context.Context, rows []WorkspaceView, force b
 	changed := false
 	updates := map[string]reviewCacheEntry{}
 	invalidated := map[string]time.Time{}
-	for _, row := range rows {
+	observations := map[string]reviewCacheEntry{}
+	type target struct {
+		key    string
+		lookup ReviewLookup
+	}
+	pending := []target{}
+	queued := map[string]bool{}
+	roots := map[string]string{}
+	scopes := map[string]string{}
+	rowRoots := make([]string, len(rows))
+	for index, row := range rows {
 		if row.GitHub == nil || len(row.GitHub.Matches) == 0 {
 			continue
 		}
-		root := row.Path
-		if repo, err := Discover(bounded, row.Path); err == nil {
-			if state, err := repo.Load(); err == nil {
-				root = state.Anchor
+		root, known := roots[row.Path]
+		if !known {
+			root = row.RepositoryPath
+			if root == "" {
+				root = row.Path
+				if repo, err := Discover(bounded, row.Path); err == nil {
+					if state, err := repo.Load(); err == nil {
+						root = state.Anchor
+					}
+				}
 			}
+			roots[row.Path] = root
 		}
-		for i, pr := range row.GitHub.Matches {
-			key := reviewScope(root) + "\n" + pr.URL
+		rowRoots[index] = root
+		scope, known := scopes[root]
+		if !known {
+			scope = reviewScope(root)
+			scopes[root] = scope
+		}
+		for _, pr := range row.GitHub.Matches {
+			key := scope + "\n" + pr.URL
+			if _, exists := observations[key]; exists || queued[key] {
+				continue
+			}
 			entry, exists := cache.Entries[key]
+			if exists {
+				verified := normalizeReview(root, pr.URL, entry.Result)
+				if verified.Code != entry.Result.Code || verified.Provider != entry.Result.Provider {
+					exists = false
+				}
+			}
 			ttl := time.Minute
 			if entry.Result.Provider == "linear" {
 				ttl = 5 * time.Minute
 			}
 			age := time.Since(entry.Result.CheckedAt)
-			if !exists || force || entry.Result.CheckedAt.IsZero() || age < 0 || age >= ttl {
-				entry = reviewCacheEntry{Result: a.reviewClient().Resolve(bounded, root, pr.URL)}
-				if bounded.Err() == nil {
-					changed = true
-					if entry.Result.Code == "review_found" || entry.Result.Code == "review_not_found" {
-						cache.Entries[key], updates[key] = entry, entry
-					} else {
-						delete(cache.Entries, key)
-						invalidated[key] = time.Now().UTC()
-					}
+			if exists && !force && !entry.Result.CheckedAt.IsZero() && age >= 0 && age < ttl {
+				observations[key] = entry
+			} else {
+				queued[key] = true
+				pending = append(pending, target{key, ReviewLookup{Root: root, URL: pr.URL}})
+			}
+		}
+	}
+	store := func(item target, result ReviewResolution) {
+		result = normalizeReview(item.lookup.Root, item.lookup.URL, result)
+		entry := reviewCacheEntry{Result: result}
+		observations[item.key] = entry
+		if bounded.Err() == nil {
+			changed = true
+			if result.Code == "review_found" || result.Code == "review_not_found" {
+				updates[item.key] = entry
+			} else {
+				invalidated[item.key] = time.Now().UTC()
+			}
+		}
+	}
+	client := a.reviewClient()
+	if batch, ok := client.(ReviewBatchClient); ok {
+		groups := map[string][]target{}
+		order := []string{}
+		for _, item := range pending {
+			scope := reviewConnectionScope(item.lookup.Root)
+			if _, exists := groups[scope]; !exists {
+				order = append(order, scope)
+			}
+			groups[scope] = append(groups[scope], item)
+		}
+		// Compatible groups run sequentially: never more than one app-server.
+		for _, scope := range order {
+			items := groups[scope]
+			lookups := make([]ReviewLookup, len(items))
+			for i, item := range items {
+				lookups[i] = item.lookup
+			}
+			results := batch.ResolveBatch(bounded, lookups)
+			for i, item := range items {
+				result := ReviewResolution{URL: item.lookup.URL, Provider: "github", Code: "invalid_review_batch_response", CheckedAt: time.Now().UTC()}
+				if len(results) == len(items) {
+					result = results[i]
 				}
+				store(item, result)
 			}
-			result := entry.Result
-			expected := result.ExpectedWorkspace
-			if expected == "" {
-				expected = expectedReviewWorkspace(root)
-			}
-			// Never attach a cached destination from the wrong configured account.
-			if result.Provider == "linear" && (!validLinearReview(result.URL, result.Workspace) || result.Workspace != expected || result.WorkspaceID == "") {
-				result.URL, result.Provider, result.Code = pr.URL, "github", "workspace_mismatch"
-			}
-			if result.Provider != "linear" {
-				result.URL = pr.URL
-			}
+		}
+	} else {
+		for _, item := range pending {
+			store(item, client.Resolve(bounded, item.lookup.Root, item.lookup.URL))
+		}
+	}
+	for index, row := range rows {
+		if row.GitHub == nil {
+			continue
+		}
+		root := rowRoots[index]
+		for i, pr := range row.GitHub.Matches {
+			result := normalizeReview(root, pr.URL, observations[scopes[root]+"\n"+pr.URL].Result)
 			row.GitHub.Matches[i].Review = &result
 		}
 	}
@@ -239,6 +269,23 @@ func (a *App) WithReviewLinks(ctx context.Context, rows []WorkspaceView, force b
 		}
 	}
 	return rows
+}
+
+func normalizeReview(root, prURL string, result ReviewResolution) ReviewResolution {
+	expected := result.ExpectedWorkspace
+	if expected == "" {
+		expected = expectedReviewWorkspace(root)
+	}
+	if result.Provider == "linear" && (!validLinearReview(result.URL, result.Workspace) || result.Workspace != expected || result.WorkspaceID == "") {
+		result.Provider, result.Code = "github", "workspace_mismatch"
+	}
+	if result.Provider != "linear" {
+		result.URL, result.Provider = prURL, "github"
+		if result.Code == "review_found" {
+			result.Code = "invalid_review_adapter_response"
+		}
+	}
+	return result
 }
 
 type reviewCache struct {

@@ -6,18 +6,34 @@ wrapping, and recorded command stages. The first real hook is intentionally smal
 
 ```sh
 GOMAXPROCS=1 go build -p 1 -o bin/wtf-pilot ./cmd/wtf
-./bin/wtf-pilot init --json
-./bin/wtf-pilot new agent-a --from @ --json
+./bin/wtf-pilot new . --json
+./bin/wtf-pilot new ../agent-a --from @ --json
 ```
 
-`init` runs its configured operation override, which delegates registration to
-`default(request)` and then runs project preparation. `new` creates a JJ workspace and uses that same registration
-and preparation lifecycle. A first registration returns `code: initialized`;
+`new PATH` resolves a destination relative to the current directory, or accepts an
+absolute path. `new .` registers and prepares the current JJ workspace. An existing
+workspace root is prepared in place; a missing path creates a workspace at that
+exact location, named after its basename. `--from` applies only to creation.
+Bare `wtf` shows help. `new PATH` is the public entry point for workspace creation
+and preparation; initialization is an internal lifecycle phase.
+
+`wtf setup` creates a local `.wtf/config.toml`, generated editor schema, and
+completely empty `hooks/` and `tasks/` directories in the current directory.
+Its `.gitignore` contains only `*`, so everything inside stays
+local and untracked. Existing files are preserved. Setup runs no hooks or
+dependency installs and does not register a workspace. See [setup](docs/setup.md).
+
+Both modes run the configured Lua `init` override, which delegates registration to
+`default(request)` and then runs project preparation. Only creation runs the Lua
+`new` override first; its `request.path` is the fixed absolute destination.
+A first registration or creation returns `code: initialized`;
 repeating it returns `code: already_initialized` and preserves identity and
 ownership. Reusable stages check whether completed preparation can be kept.
 Preparation failures remain errors and retain the workspace and completed stages;
-run `init` inside that workspace to retry. Project options follow `--` for both
-commands, for example `wtf init -- --compose --test`.
+repeat `new PATH` to retry. Existing native workspaces retain their names and
+ownership, so registration never makes them removable. Existing files, ordinary
+directories, and directories inside a workspace are rejected. Project options
+follow `--`, for example `wtf new . -- --compose --test`.
 
 The project selects [.wtf/hooks/init.lua](.wtf/hooks/init.lua) explicitly:
 
@@ -51,25 +67,41 @@ the entrypoint's returned table registers hooks and overrides. Run a hook again
 from the child to inspect reuse:
 
 ```sh
-cd ../agent-a--wtf-v1-hook-pilot--wtf
+cd ../agent-a
 /path/to/wtf-pilot hook run prepare --json
 /path/to/wtf-pilot doctor --here --json
 /path/to/wtf-pilot run test --json
 ```
 
 Every command accepts `--help` and `--json`, including JSON help and argument errors.
+`wtf doctor` combines configuration validation, tool readiness and workspace health.
+It reports each area independently and checks configuration before registration,
+without executing hooks or changing state. There is no separate `validate` command.
 JSON stdout contains exactly one versioned result. Hook messages and subprocess
 output go to stderr. Help and config validation never execute hooks.
 
-Human-readable output is the default. `list`, `ls`, `switch`, `sw`, and `w` are
-one command: on a terminal, they open an inline Bubble Tea workspace browser
+Human-readable output is the default. `list` and its only alias, `ls`, open
+an inline Bubble Tea workspace browser on a terminal
 below your prompt, with one horizontal row per workspace. Arrow keys move,
 Enter selects, and Esc cancels. Pages resize with the terminal, capped at ten
 rows; page counts and page-key hints appear only when multiple pages are needed.
 The workspace count and page indicator share help's caption in the top border.
 Up/Down and k/j wrap between the first and last workspace.
+Numeric prefixes repeat j/k motions: `4j` moves down four rows and `4k` moves
+up four rows, wrapping through the list. `gg` goes to the top of the current
+page and `G` to its bottom, including a partial final page. Left/Right and
+PageUp/PageDown keep their existing page navigation.
+Workspace names are terminal hyperlinks to Zed in list and remove: hover to see the absolute
+destination and Ctrl-click (or your terminal's link gesture) to open that workspace
+folder. This requires Zed's `zed://` URL handler. Missing and removed paths have
+no link; redirected output stays plain.
 JSON and piped output never prompt. An optional workspace name resolves its path
 directly through any alias.
+
+With JJ 0.46+, `new` inherits JJ's native Git worktree colocation when its source
+workspace is colocated and `git.colocate = true`. Zed reads that workspace's real
+Git metadata. Existing non-colocated workspaces are not converted by opening a
+link; inspect them with `jj git colocation status` from the workspace folder.
 
 For selection to change your current Bash directory, source the local wrapper:
 
@@ -81,15 +113,27 @@ wtf-pilot sw -p
 
 The binary itself returns a selected path; the wrapper performs `cd`. It keeps
 help, JSON, redirected output, and cancellation from changing directories.
-It does not replace your installed `wtf` or edit shell startup files.
+The development wrapper does not replace your installed `wtf` or edit shell startup files.
+
+For the installed binary, install and source the Bash navigation wrapper:
+
+```sh
+install -Dm644 scripts/wtf.bash ~/.local/share/wtf/wtf.bash
+source ~/.local/share/wtf/wtf.bash
+wtf ls
+```
+
+Source that installed file from your personal Bash configuration so new terminals
+also enter the selected workspace. Existing aliases such as `f='wtf'` use the same
+function. `command wtf` invokes the underlying CLI directly.
 
 `list` shows active workspaces;
 `--all` (`-a`) includes removed records. A dot marks the current workspace.
-Local lifecycle state remains in JSON and `doctor`. Nearby paths are relative to the current
-directory (`.` for the workspace root); distant paths use `~` where possible.
+Local lifecycle state and full workspace paths remain in JSON and `doctor`.
+The workspace name carries the editor link, so there is no separate PATH column.
 `list --hook` (or `list -k`) adds local **Stages**:
 successful recorded stages / total recorded stages, not GitHub Actions checks.
-JSON always includes full stage records. Long paths shorten with an ellipsis; narrow
+JSON always includes full stage records. Long names shorten with an ellipsis; narrow
 terminals use a stacked layout. Use `-j` for complete records. Colors come from
 Omarchy's active `colors.toml` on each invocation; theme switches apply immediately.
 Redirected output and `NO_COLOR` remain unstyled. Human help uses the same shared
@@ -109,6 +153,17 @@ This is a repository invariant in [AGENTS.md](AGENTS.md), backed by a test that
 registers a new nested command and verifies inherited behavior.
 
 ## Optional command features
+
+List and remove show an `AGE` column. Age is time since
+first WTF registration, using whole seconds (`S`), minutes (`M`), hours (`H`), days
+(`D`), or weeks (`W`). Reinitializing a workspace preserves that time. Older records
+without a timestamp show `?`; no migration or inferred age is applied. JSON includes
+the UTC `created_at` timestamp when known.
+
+`wtf new hello_world -m "hello this me testing"` saves an optional workspace
+description. List and remove display it below the highlighted row. A repeated
+`new PATH` preserves it; `new PATH -m TEXT` updates it, and `-m ""` clears it.
+JSON exposes the description as `message` when nonempty.
 
 ```sh
 ./bin/wtf-pilot list -p          # GitHub PRs: draft/open/merged/closed
@@ -182,8 +237,8 @@ counts. Cancelled/skipped checks use `⊘`, and unknown or incomplete observatio
 use `?`. No PR or no checks leaves a blank cell. Clicking a CI count opens the
 PR's Checks tab. Counts describe GitHub's rollup for the published PR head;
 local hook stages remain separate. JSON includes the head and all category counts.
-Use `--checks=false` to hide CI, or `--pr=false --checks=false` to disable both
-GitHub views.
+Use `--checks=false` to hide CI. `--pr=false --checks=false` disables remote
+metadata views. Both flags support inherited `[commands.list]` TOML defaults.
 Every list invocation with PRs enabled checks GitHub. The interactive browser
 displays cached/pending results immediately, then lazily updates the frame with
 the live response. It rechecks automatically every 15 seconds while open.
@@ -229,7 +284,7 @@ The checked-in module also registers `guard`, `start`, `test`, `stop`, and `remo
 Its optional Compose recipe provisions an isolated Redis service:
 
 ```sh
-./bin/wtf-pilot new sandbox -f @ -- --compose --test
+./bin/wtf-pilot new ../sandbox -f @ -- --compose --test
 ```
 
 Raw hook arguments after `--` reach `request.args`; project Lua decides their

@@ -31,6 +31,9 @@ func projectHooks(root string, config Config) (hookPackage, error) {
 func validateHookPackage(root string, config Config) error {
 	pkg, e := projectHooks(root, config)
 	if e != nil {
+		if os.IsNotExist(e) {
+			return Fail("hook_missing", "Configured Lua hook entrypoint is missing: "+config.Lua)
+		}
 		return e
 	}
 	if pkg.Entry == "" {

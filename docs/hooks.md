@@ -1,5 +1,9 @@
 # Project hook modules
 
+This page describes the current pilot. The planned v1.1 Lua substrate and recipes
+are tracked in the [roadmap](roadmap.md#v11--hooks) and
+[v1.1 hooks plan](v1.1-hooks-plan.md); proposed APIs there are not yet supported.
+
 Hooks are explicit project code. TOML selects one entrypoint; its returned table
 registers functions. A file named `new.lua` has no effect on its own.
 
@@ -41,7 +45,7 @@ return {
 An implementation may be inline or imported from any project module. `require`
 resolves relative to the selected entrypoint's directory, caches each module within
 one invocation, and rejects escaping paths and dependency cycles. It does not load
-native libraries or system Lua modules. `validate` compiles the entrypoint without
+native libraries or system Lua modules. `doctor` compiles the entrypoint without
 executing it; imported modules are checked when explicitly loaded. Unused files
 remain unused.
 
@@ -64,16 +68,21 @@ newly created workspaces already have an identity in their context. A blocking
 init override before `default` leaves an unregistered workspace unregistered;
 when reached through `new`, it preserves the created workspace for retry.
 
-`wtf init` dispatches the `init` operation override. Its default registers an
-existing workspace, preserving identity and ownership. `new` calls that operation
-after native creation, using the created workspace's configuration and identity.
-Preparation failures retain completed stages; retry through `init` in that workspace.
+`wtf new PATH` dispatches the `init` operation override for an existing workspace
+root, preserving identity and ownership. A missing path runs the `new` override
+before native creation, then the `init` override using the created workspace's
+configuration and identity. The creation request includes `name` (the destination
+basename), `from`, and `path` (the fixed absolute destination). The `new` override
+may change the native name or revision before delegation, but cannot redirect
+the destination. Initialization is internal to `new PATH`; the Lua `init`
+operation remains the shared preparation hook.
+Preparation failures retain completed stages; repeat `new PATH` to retry.
 Repeated initialization preserves ownership and lets stage reuse checks decide
 which work can be retained. With no `init` override, registration is enough.
 
 ```sh
-wtf new feature -f @ -- --compose --test
-wtf init -- --compose --test
+wtf new ../feature -f @ -- --compose --test
+wtf new . -- --compose --test
 wtf hook run inspect -- --anything ValueCase
 ```
 
@@ -99,7 +108,7 @@ ports, UUID-named projects, ownership labels, and bounded container resources.
 Docker provisioning and environment policy stay entirely in project Lua/YAML.
 
 ```sh
-./bin/wtf-pilot new sandbox -f @ -- --compose --test
+./bin/wtf-pilot new ../sandbox -f @ -- --compose --test
 ```
 
 From the printed workspace path, using the pilot binary's absolute path:

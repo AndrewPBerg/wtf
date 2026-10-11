@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func (a *App) create(ctx context.Context, r Repo, name, from string) (Workspace, error) {
+func (a *App) create(ctx context.Context, r Repo, path, name, from string, options NewWorkspaceOptions) (Workspace, error) {
 	if e := CheckName(name); e != nil {
 		return Workspace{}, e
 	}
@@ -24,8 +24,18 @@ func (a *App) create(ctx context.Context, r Repo, name, from string) (Workspace,
 	if e != nil {
 		return Workspace{}, e
 	}
-	path := filepath.Join(filepath.Dir(s.Anchor), name+"--"+filepath.Base(s.Anchor))
-	w := Workspace{id, name, path, true, "creating", map[string]Stage{}, ""}
+	native, e := NativeWorkspaces(ctx, r.Root)
+	if e != nil {
+		return Workspace{}, e
+	}
+	if _, exists := native[name]; exists {
+		return Workspace{}, Fail("workspace_exists", "JJ workspace "+name+" already exists; choose a different destination basename")
+	}
+	now := time.Now().UTC()
+	w := Workspace{ID: id, Name: name, Path: path, Owned: true, Status: "creating", Stages: map[string]Stage{}, CreatedAt: &now}
+	if options.Message != nil {
+		w.Message = *options.Message
+	}
 	e = r.Edit(ctx, func(s *State) error {
 		for _, old := range s.Workspaces {
 			if old.Status != "removed" && (old.Name == name || old.Path == path) {
@@ -60,8 +70,69 @@ func (a *App) create(ctx context.Context, r Repo, name, from string) (Workspace,
 	return w, e
 }
 
-// NewWorkspace creates a JJ workspace and runs shared initialization hooks.
-func (a *App) NewWorkspace(ctx context.Context, name, from string, args ...string) (Workspace, error) {
+// NewWorkspace prepares an existing workspace root or creates one at the exact
+// destination path. Relative paths resolve from the invoking directory.
+func (a *App) NewWorkspace(ctx context.Context, path, from string, args ...string) (Initialization, error) {
+	return a.NewWorkspaceWithOptions(ctx, path, from, NewWorkspaceOptions{}, args...)
+}
+
+// NewWorkspaceOptions contains optional metadata changes. A nil message preserves
+// an existing description; an explicitly empty message clears it.
+type NewWorkspaceOptions struct {
+	Message *string
+}
+
+// NewWorkspaceWithOptions creates or prepares a workspace with optional metadata.
+func (a *App) NewWorkspaceWithOptions(ctx context.Context, path, from string, options NewWorkspaceOptions, args ...string) (Initialization, error) {
+	if options.Message != nil && strings.ContainsRune(*options.Message, 0) {
+		return Initialization{}, Fail("invalid_message", "Workspace messages cannot contain NUL characters")
+	}
+	if path == "" || strings.ContainsRune(path, 0) {
+		return Initialization{}, Fail("invalid_path", "A workspace destination path is required")
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(a.Cwd, path)
+	}
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return Initialization{}, err
+	}
+	info, err := os.Stat(path)
+	if err == nil {
+		if !info.IsDir() {
+			return Initialization{}, Fail("path_exists", "Destination exists and is not a JJ workspace directory")
+		}
+		r, err := Discover(ctx, path)
+		if err != nil {
+			return Initialization{}, err
+		}
+		if !samePath(path, r.Root) {
+			return Initialization{}, Fail("not_workspace_root", "Destination must be a JJ workspace root, not a directory inside one")
+		}
+		target := *a
+		target.Cwd = r.Root
+		w, err := r.Workspace(ctx)
+		if err != nil && ErrorCode(err) != "not_registered" && ErrorCode(err) != "unmanaged_workspace" {
+			return Initialization{}, err
+		}
+		return target.initializeOperation(ctx, r, w, false, options, args...)
+	}
+	if !os.IsNotExist(err) {
+		return Initialization{}, err
+	}
+	// A dangling symlink is an occupied destination too.
+	if _, err := os.Lstat(path); err == nil || !os.IsNotExist(err) {
+		return Initialization{}, Fail("path_exists", "Destination already exists or cannot be inspected")
+	}
+	w, err := a.createWorkspace(ctx, path, from, options, args...)
+	return Initialization{Workspace: w, Code: "initialized"}, err
+}
+
+func (a *App) createWorkspace(ctx context.Context, path, from string, options NewWorkspaceOptions, args ...string) (Workspace, error) {
+	name := filepath.Base(path)
+	if err := CheckName(name); err != nil {
+		return Workspace{}, err
+	}
 	r, e := Discover(ctx, a.Cwd)
 	if e != nil {
 		return Workspace{}, e
@@ -74,6 +145,7 @@ func (a *App) NewWorkspace(ctx context.Context, name, from string, args ...strin
 		return Workspace{}, e
 	}
 	defer rt.Close()
+	rt.Destination = path
 	var w Workspace
 	var unlock func()
 	created := false
@@ -87,7 +159,7 @@ func (a *App) NewWorkspace(ctx context.Context, name, from string, args ...strin
 			return w, Fail("default_already_called", "Default creation can only be called once per operation")
 		}
 		var e error
-		w, e = a.create(ctx, r, name, from)
+		w, e = a.create(ctx, r, path, name, from, options)
 		if e != nil {
 			return w, e
 		}
@@ -98,7 +170,7 @@ func (a *App) NewWorkspace(ctx context.Context, name, from string, args ...strin
 		}
 		child := *a
 		child.Cwd = w.Path
-		initialized, err := child.initializeOperation(rt.Context, Repo{w.Path, r.Store}, w, true, args...)
+		initialized, err := child.initializeOperation(rt.Context, Repo{w.Path, r.Store}, w, true, options, args...)
 		w, e = initialized.Workspace, err
 		rt.Bind(w)
 		return w, e
@@ -123,7 +195,7 @@ func (a *App) NewWorkspace(ctx context.Context, name, from string, args ...strin
 
 // New already owns the workspace lock; direct init acquires it once identity is known.
 // Both operations dispatch the init override, whose default registers that identity.
-func (a *App) initializeOperation(ctx context.Context, r Repo, w Workspace, locked bool, args ...string) (Initialization, error) {
+func (a *App) initializeOperation(ctx context.Context, r Repo, w Workspace, locked bool, options NewWorkspaceOptions, args ...string) (Initialization, error) {
 	code := "initialized"
 	if w.ID != "" {
 		code = "already_initialized"
@@ -179,6 +251,12 @@ func (a *App) initializeOperation(ctx context.Context, r Repo, w Workspace, lock
 				}
 				locked = true
 			}
+			if options.Message != nil {
+				if err := r.Update(rt.Context, w.ID, func(w *Workspace) { w.Message = *options.Message }); err != nil {
+					return w, err
+				}
+				w.Message = *options.Message
+			}
 			rt.Bind(w)
 			delegated = true
 			return w, nil
@@ -210,6 +288,16 @@ func (a *App) initializeOperation(ctx context.Context, r Repo, w Workspace, lock
 
 // Remove tears down and removes an owned workspace after safety checks.
 func (a *App) Remove(ctx context.Context, name string) (Workspace, error) {
+	return a.RemoveWithOptions(ctx, name, RemovalOptions{})
+}
+
+// RemovalOptions controls whether remaining source changes may be discarded.
+type RemovalOptions struct {
+	Force bool
+}
+
+// RemoveWithOptions retains identity, ownership, and lifecycle checks in force mode.
+func (a *App) RemoveWithOptions(ctx context.Context, name string, options RemovalOptions) (Workspace, error) {
 	r, e := Discover(ctx, a.Cwd)
 	if e != nil {
 		return Workspace{}, e
@@ -232,6 +320,9 @@ func (a *App) Remove(ctx context.Context, name string) (Workspace, error) {
 		return w, e
 	}
 	defer unlock()
+	if e = a.checkRemovalChanges(ctx, r, w, options.Force); e != nil {
+		return w, e
+	}
 	target := Repo{w.Path, r.Store}
 	rt, e := a.runtime(ctx, target, w)
 	if e != nil {
@@ -255,15 +346,8 @@ func (a *App) Remove(ctx context.Context, name string) (Workspace, error) {
 				return w, Fail("cleanup_required", "Teardown must release external resource claims before removal")
 			}
 		}
-		if _, e = output(ctx, w.Path, "status"); e != nil {
+		if e = a.checkRemovalChanges(ctx, r, w, options.Force); e != nil {
 			return w, e
-		}
-		diff, e := output(ctx, w.Path, "diff", "--summary")
-		if e != nil {
-			return w, e
-		}
-		if diff != "" {
-			return w, Fail("workspace_has_changes", "Workspace contains changes; preserve them before removal")
 		}
 		if _, e = output(ctx, r.Root, "workspace", "forget", w.Name); e != nil {
 			return w, e
@@ -354,57 +438,112 @@ func (a *App) Hook(ctx context.Context, name string, args ...string) (Workspace,
 	return r.Select(w.ID)
 }
 
-// Health contains workspace stages, resource claims and tool diagnostics.
+// DiagnosticCheck reports one independently inspected area.
+type DiagnosticCheck struct {
+	Code    string `json:"code"`
+	Status  string `json:"status"`
+	Message string `json:"message"`
+	Remedy  string `json:"remedy,omitempty"`
+}
+
+// Health contains independent configuration, workspace and tool diagnostics.
 type Health struct {
-	Workspace Workspace   `json:"workspace"`
-	Claims    []Claim     `json:"claims"`
-	Issues    []string    `json:"issues"`
-	Tools     []ToolCheck `json:"tools"`
+	Workspace      Workspace       `json:"workspace"`
+	Claims         []Claim         `json:"claims"`
+	Issues         []string        `json:"issues"`
+	Tools          []ToolCheck     `json:"tools"`
+	Configuration  DiagnosticCheck `json:"configuration"`
+	WorkspaceCheck DiagnosticCheck `json:"workspace_check"`
 }
 
 // Doctor checks tool readiness and current workspace health without repairing it.
-func (a *App) Doctor(ctx context.Context) (Health, error) {
+func (a *App) Doctor(ctx context.Context, configurationErrors ...error) (Health, error) {
 	h := Health{Claims: []Claim{}, Issues: []string{}, Tools: doctorTools(ctx, a.Cwd, doctorBinary, probeDoctor)}
 	h.Tools = append(h.Tools, a.linearToolCheck(ctx))
+	var first error
+	record := func(err error) {
+		if err != nil {
+			h.Issues = append(h.Issues, err.Error())
+			if first == nil {
+				first = err
+			}
+		}
+	}
 	for _, check := range h.Tools {
 		if check.Required && check.Status != "ready" {
-			h.Issues = append(h.Issues, check.Message)
+			record(Fail("unhealthy_prerequisites", check.Message))
 		}
 	}
-	if len(h.Issues) > 0 {
-		return h, Fail("unhealthy_prerequisites", strings.Join(h.Issues, "; "))
+	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	r, discoveryErr := Discover(bounded, a.Cwd)
+	root := doctorConfigRoot(a.Cwd)
+	if discoveryErr == nil {
+		root = r.Root
 	}
-	r, e := Discover(ctx, a.Cwd)
-	if e != nil {
-		return h, e
-	}
-	w, e := r.Workspace(ctx)
-	if e != nil {
-		return h, e
-	}
-	claims, e := r.Claims(w)
-	if e != nil {
-		return h, e
-	}
-	h.Workspace, h.Claims = w, claims
-	if _, e = LoadConfig(w.Path); e != nil {
-		h.Issues = append(h.Issues, e.Error())
-	}
-	if w.Owned {
-		if e = verifyIdentity(ctx, r, w); e != nil {
-			h.Issues = append(h.Issues, e.Error())
+	h.Configuration = DiagnosticCheck{Code: "configuration_valid", Status: "ready", Message: "Configuration and Lua entrypoint syntax are valid"}
+	configuration, configErr := LoadConfig(root)
+	if configErr == nil && configuration.Lua == "" {
+		h.Configuration = DiagnosticCheck{Code: "hooks_not_configured", Status: "ready", Message: "TOML configuration is valid; no Lua hook entrypoint configured"}
+		directory := filepath.Join(root, ".wtf")
+		if _, err := os.Stat(directory); os.IsNotExist(err) {
+			h.Configuration = DiagnosticCheck{Code: "wtf_directory_missing", Status: "not_configured", Message: "No .wtf directory found; no configuration found for hooks"}
+		} else if _, err := os.Stat(filepath.Join(directory, "config.toml")); os.IsNotExist(err) {
+			h.Configuration = DiagnosticCheck{Code: "configuration_missing", Status: "not_configured", Message: "No .wtf/config.toml found; no configuration found for hooks"}
 		}
 	}
-	for name, st := range w.Stages {
-		if st.Status != "succeeded" {
-			h.Issues = append(h.Issues, fmt.Sprintf("stage %s is %s", name, st.Status))
+	for _, err := range append([]error{configErr}, configurationErrors...) {
+		if err != nil {
+			if h.Configuration.Status != "failed" {
+				h.Configuration.Code = ErrorCode(err)
+				h.Configuration.Message = err.Error()
+			} else {
+				h.Configuration.Message += "; " + err.Error()
+			}
+			h.Configuration.Status, h.Configuration.Remedy = "failed", "Fix the reported TOML settings or Lua entrypoint and run wtf doctor again"
+			record(err)
 		}
 	}
-	if w.LastError != "" {
-		h.Issues = append(h.Issues, w.LastError)
+	h.WorkspaceCheck = DiagnosticCheck{Code: "workspace_ready", Status: "ready", Message: "Workspace identity and retained state are healthy"}
+	if discoveryErr != nil {
+		h.WorkspaceCheck = DiagnosticCheck{Code: ErrorCode(discoveryErr), Status: "unavailable", Message: discoveryErr.Error()}
+		record(discoveryErr)
+	} else {
+		w, err := r.Workspace(bounded)
+		if err != nil {
+			h.WorkspaceCheck = DiagnosticCheck{Code: ErrorCode(err), Status: "failed", Message: err.Error()}
+			if ErrorCode(err) == "not_registered" || ErrorCode(err) == "unmanaged_workspace" {
+				h.WorkspaceCheck.Status, h.WorkspaceCheck.Remedy = "unregistered", "Run wtf new . to register and prepare this workspace"
+			} else {
+				record(err)
+			}
+		} else {
+			h.Workspace = w
+			start := len(h.Issues)
+			claims, err := r.Claims(w)
+			if err == nil {
+				h.Claims = claims
+			} else {
+				record(err)
+			}
+			if w.Owned {
+				record(verifyIdentity(bounded, r, w))
+			}
+			for name, stage := range w.Stages {
+				if stage.Status != "succeeded" {
+					record(Fail("unhealthy_workspace", fmt.Sprintf("stage %s is %s", name, stage.Status)))
+				}
+			}
+			if w.LastError != "" {
+				record(Fail("unhealthy_workspace", w.LastError))
+			}
+			if len(h.Issues) > start {
+				h.WorkspaceCheck.Code, h.WorkspaceCheck.Status, h.WorkspaceCheck.Message = "unhealthy_workspace", "failed", strings.Join(h.Issues[start:], "; ")
+			}
+		}
 	}
-	if len(h.Issues) > 0 {
-		return h, Fail("unhealthy_workspace", strings.Join(h.Issues, "; "))
+	if first != nil {
+		return h, Fail(ErrorCode(first), strings.Join(h.Issues, "; "))
 	}
 	return h, nil
 }

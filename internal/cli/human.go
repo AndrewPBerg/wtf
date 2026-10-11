@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/AndrewPBerg/wtf/internal/core"
 	"github.com/charmbracelet/lipgloss"
@@ -16,30 +17,54 @@ import (
 
 func (s *Session) human(out io.Writer, err error) error {
 	p := humanPresentation(out)
+	data := s.Data
+	if initialized, ok := data.(core.Initialization); ok {
+		data = initialized.Workspace
+	}
 	if err != nil {
 		if _, e := fmt.Fprintln(out, p.Bad.Bold(true).Render("Error")+"  "+plain(err.Error())); e != nil {
 			return e
 		}
-		if w, ok := s.Data.(core.Workspace); ok && w.ID != "" {
+		if w, ok := data.(core.Workspace); ok && w.ID != "" {
 			_, e := fmt.Fprintln(out, p.Muted.Render("Workspace: ")+plain(w.Path))
 			return e
 		}
 		if h, ok := s.Data.(core.Health); ok {
-			_, e := fmt.Fprintln(out, doctorToolsText(p, h.Tools))
+			_, e := fmt.Fprintln(out, doctorHealthText(p, h))
+			return e
+		}
+		if result, ok := s.Data.(removalResult); ok {
+			_, e := fmt.Fprintln(out, removalReport(p, result))
 			return e
 		}
 		return nil
 	}
 	text := ""
-	switch data := s.Data.(type) {
+	switch data := data.(type) {
+	case core.SetupTeardownResult:
+		switch data.Status {
+		case "removed":
+			text = p.Good.Render("✓ WTF configuration removed")
+		case "not_configured":
+			text = p.Muted.Render("No .wtf directory to remove.")
+		default:
+			text = p.Muted.Render("Teardown cancelled; .wtf preserved.")
+		}
+		text += "\n" + p.Muted.Render(shortPath(data.Path))
+	case core.SetupResult:
+		text = p.Good.Render("✓ WTF configuration ready") + "\n" + p.Muted.Render(shortPath(data.Path))
+		for _, path := range data.Created {
+			text += "\n  " + p.Good.Render("Created") + "  " + p.Text.Render(plain(path))
+		}
+		for _, path := range data.Existing {
+			text += "\n  " + p.Muted.Render("Preserved") + "  " + p.Text.Render(plain(path))
+		}
+	case removalResult:
+		text = removalReport(p, data)
+	case []core.RemovalCandidate:
+		text = newRemovalPicker(data, s.App.Cwd, p).View() + "\n" + p.Muted.Render("Use wtf remove in a terminal to select, or wtf remove NAME.")
 	case []core.WorkspaceView:
 		text = workspaceTable(p, data, s.App.Cwd, s.ShowStages, s.ShowPRs, s.ShowChecks)
-	case core.Initialization:
-		message := "Workspace registered"
-		if data.Code == "already_initialized" {
-			message = "Already initialized"
-		}
-		text = p.Title.Render(message) + "  " + p.Text.Render(plain(data.Name)) + "\n" + p.Muted.Render(shortPath(data.Path))
 	case core.Workspace:
 		verb := "Workspace ready"
 		if data.Status == "removed" {
@@ -65,8 +90,7 @@ func (s *Session) human(out io.Writer, err error) error {
 			text += p.Muted.Render(" · reused")
 		}
 	case core.Health:
-		text = p.Good.Render("✓ Workspace healthy") + "  " + p.Title.Render(plain(data.Workspace.Name)) + "\n" + p.Muted.Render(fmt.Sprintf("%d stages · %d resource claims", len(data.Workspace.Stages), len(data.Claims)))
-		text += "\n\n" + doctorToolsText(p, data.Tools)
+		text = doctorHealthText(p, data)
 	case core.Config:
 		text = p.Good.Render("✓ Configuration valid")
 		if data.Lua != "" {
@@ -196,9 +220,10 @@ func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string,
 		headers = append(headers, "CI")
 		widths = append(widths, 6)
 	}
-	headers = append(headers, "PATH")
-	widths = append(widths, 6)
-	pathColumn := len(headers) - 1
+	ageColumn := len(headers)
+	headers = append(headers, "AGE")
+	widths = append(widths, 5)
+	now := time.Now()
 	for _, w := range workspaces {
 		marker := ""
 		if w.Exists && w.Status != "removed" && currentPath(w.Path, cwd) {
@@ -218,7 +243,7 @@ func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string,
 		if len(w.Stages) > 0 {
 			stages = fmt.Sprintf("%d/%d", passed, len(w.Stages))
 		}
-		row := []string{marker, plain(w.Name)}
+		row := []string{marker, workspaceLinkPresentation(p, w, w.Name)}
 		if showStages {
 			row = append(row, stages)
 		}
@@ -228,7 +253,7 @@ func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string,
 		if showChecks {
 			row = append(row, ciPresentation(p, w.GitHub))
 		}
-		rows = append(rows, append(row, listPath(w.Path, cwd)))
+		rows = append(rows, append(row, workspaceAge(w.CreatedAt, now)))
 		states = append(states, status)
 	}
 	width := min(p.Width-1, 140) // Reserve a cell to avoid terminal-edge wrapping.
@@ -241,21 +266,19 @@ func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string,
 		if showChecks {
 			widths[ciColumn] = max(widths[ciColumn], min(lipgloss.Width(row[ciColumn])+2, 22))
 		}
-		widths[pathColumn] = max(widths[pathColumn], min(lipgloss.Width(row[pathColumn])+2, 70))
+		widths[ageColumn] = max(widths[ageColumn], lipgloss.Width(row[ageColumn])+2)
 	}
 	borders := len(headers) + 1
-	used := borders
-	for column, cellWidth := range widths {
-		if column != pathColumn {
-			used += cellWidth
-		}
+	tableWidth := borders
+	for _, cellWidth := range widths {
+		tableWidth += cellWidth
 	}
-	if width < 70 || width-used < 10 {
+	if width < 70 || tableWidth > width {
 		lines := []string{ansi.Truncate(title, max(width, 1), "…")}
 		for _, row := range rows {
-			detail := ""
+			detail := "age " + row[ageColumn]
 			if showStages {
-				detail = "stages " + row[2]
+				detail += " · stages " + row[2]
 			}
 			if showPRs {
 				detail += " · PR " + row[prColumn]
@@ -265,16 +288,9 @@ func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string,
 			}
 			lines = append(lines,
 				p.Title.Render(ansi.Truncate(strings.TrimSpace(row[0]+" "+row[1]), max(width, 1), "…")),
-				p.Text.Render(ansi.Truncate(detail, max(width, 1), "…")),
-				p.Muted.Render(ansi.Truncate(row[pathColumn], max(width, 1), "…")), "")
+				p.Text.Render(ansi.Truncate(detail, max(width, 1), "…")), "")
 		}
 		return strings.TrimRight(strings.Join(lines, "\n"), "\n")
-	}
-	// Include both outer edges and every column separator in the width budget.
-	widths[pathColumn] = min(widths[pathColumn], width-used)
-	tableWidth := borders
-	for _, cellWidth := range widths {
-		tableWidth += cellWidth
 	}
 	for _, row := range rows {
 		for column := range row {
@@ -299,8 +315,6 @@ func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string,
 					if workspaces[row].GitHub != nil && workspaces[row].GitHub.Error != "" {
 						style = p.Warning
 					}
-				case column == pathColumn:
-					style = p.Muted
 				}
 			}
 			return style.Padding(0, 1).Width(widths[column]).Height(1)

@@ -1,7 +1,47 @@
-# WTF V1 — Direction
+# WTF Roadmap — V1 and v1.1 Hooks
 
-> Review draft · Proposed commands, schemas, and APIs below are illustrative.
-> This is a new direction, not an implementation plan or a released contract.
+> Planning document · v1.1 is the planned hooks release. Proposed APIs are
+> illustrative, not shipped contracts. The V1 direction below includes earlier
+> design sketches; [docs/hooks.md](hooks.md) describes the current pilot.
+
+## v1.1 — Hooks
+
+Make the Lua-facing substrate useful enough that a project can express workspace
+behavior in roughly 10–100 lines. Go provides workspace identity, file and
+environment operations, execution, ownership, and authenticated provider reads.
+Lua chooses sources, commands, ordering, allocation policy, and application wiring.
+
+The release is driven by three recipes:
+
+1. Copy or symlink selected environment files from an explicit source workspace,
+   preserve existing destinations, and optionally pass string environment settings
+   directly to commands. File and directory symlinks are first-class requirements.
+2. Prepare dependencies for multiple language components using project-selected
+   tools, with recorded progress and repairable failures.
+3. Read GitHub PR/check/review data and Linear issue/review data through existing
+   host-managed integrations, returning ordinary Lua data for project decisions.
+
+Delivery order: agree the API conventions and recipe stories → local file/env
+operations → command execution → existing provider reads → dogfood and
+publish the supported API. Existing pilot behavior is the starting point, not
+evidence that these expanded capabilities are complete.
+
+Command execution means running a tool with argv, cwd, and environment settings.
+The pilot's stages add a name, progress record, and optional reuse checks to that
+command. Lua supplies the sequence. Resource/port claim design remains open and
+can proceed separately from the other API surfaces.
+
+Acceptance requires readable recipes, explicit hook registration, recoverable
+failure/cancellation, correct account routing, bounded provider pagination, and
+the shared help/JSON contract. Provider reads must distinguish unavailable,
+unassociated, and missing results; credentials and environment values stay out of
+host-generated records and diagnostics.
+
+See the [v1.1 hooks plan](v1.1-hooks-plan.md) for proposed API surfaces, delivery
+slices, acceptance criteria, and remaining design decisions. The plan does not
+change current runtime behavior.
+
+## V1 foundation and direction
 
 WTF is a small Go workspace manager with a CLI and Charm/Bubble Tea navigation.
 It connects repositories, workspaces, PRs, and owned resources. JJ owns local
@@ -17,16 +57,15 @@ installation, standalone Git worktree management, and a required daemon are outs
 ## One command surface, three views
 
 ```sh
-wtf init                              # opt this repository into WTF
+wtf new .                             # register and prepare this workspace
 wtf list                              # alias: ls
 wtf ports list
-wtf new auth --from 'trunk()'          # automatically invokes a configured new override
+wtf new ../auth --from 'trunk()'       # create at the exact destination, then prepare
 wtf run test -- tests/auth
 wtf hook list
 wtf hook run prepare                  # manual invocation of a named hook
-wtf validate                          # configuration and hook declarations
-wtf doctor                            # observed registry and runtime health
-wtf switch auth                       # aliases: sw, w; shell integration enters it
+wtf doctor                            # configuration, tools and workspace health
+wtf ls auth                           # alias of list; shell integration enters it
 wtf remove auth                       # alias: rm; explicit workspace target
 ```
 
@@ -129,29 +168,28 @@ Project configuration and local runtime state:
 alita_core/
 └── .wtf/
     ├── config.toml
-    └── hooks.lua
+    └── hooks/
+        ├── init.lua                 explicit registration
+        ├── prepare.lua
+        └── create.lua
 
 ~/.wtf/                               # local repository index and runtime state
 ```
 
 ```toml
 version = 1
+lua = "hooks/init.lua"
 
 [tasks.test]
 command = ["uv", "run", "pytest"]
 
 [tasks.check]
 command = ["task", "check"]
-
-[hooks.prepare]
-command = ["uv", "run", "python", "scripts/workspace_prepare.py"]
-
-[hooks.start]
-lua = "hooks.lua:start"
-
-[overrides.new]
-lua = "hooks.lua:new"
 ```
+
+The entrypoint returns a table with `hooks` and `overrides` sections; project modules
+are imported explicitly. Filenames never register behavior. See
+[the current module contract](hooks.md).
 
 ```text
 wtf run test -- tests/auth
@@ -175,14 +213,16 @@ Without an override, the normal operation runs unchanged.
 
 ```lua
 return {
-  new = function(ctx, request, default)
-    -- Project policy can change inputs before delegating.
-    request.from = request.from or "trunk()"
+  overrides = {
+    new = function(ctx, request, default)
+      -- Project policy can change inputs before delegating.
+      request.from = request.from or "trunk()"
 
-    local workspace = default(request) -- native creation + ownership record
-    ctx.hooks:run("prepare", workspace)
-    return workspace
-  end,
+      local workspace = default(request) -- native creation + ownership record
+      ctx:hook("prepare", request)
+      return workspace
+    end,
+  },
 }
 ```
 
@@ -193,9 +233,10 @@ CLI / TUI / agent → app.new(request)
                        └── otherwise           → default(request)
 ```
 
-Overrides may wrap or replace behavior; ownership validation remains in core
-primitives. A preparation failure preserves the created workspace and reports what
-failed. External-script delegation needs a protocol; the Lua shape above is conceptual.
+The pilot requires overrides to delegate to the core exactly once; ownership
+validation remains in core primitives. A preparation failure preserves the created
+workspace and reports what failed. External-script delegation needs a protocol;
+the Lua shape above is conceptual.
 
 ### Compose stages in project code
 
@@ -217,15 +258,17 @@ function stages.start(ctx, workspace)
 end
 
 return {
-  new = function(ctx, request, default)
-    local workspace = default(request)
-    stages.prepare(ctx, workspace)
-    stages.start(ctx, workspace)
-    if ctx.hooks:exists("verify") then
-      ctx.hooks:run("verify", workspace)
-    end
-    return workspace
-  end,
+  overrides = {
+    new = function(ctx, request, default)
+      local workspace = default(request)
+      stages.prepare(ctx, workspace)
+      stages.start(ctx, workspace)
+      if ctx.hooks:exists("verify") then
+        ctx.hooks:run("verify", workspace)
+      end
+      return workspace
+    end,
+  },
 }
 ```
 
@@ -242,24 +285,26 @@ Illustrative Lua API; embedding versus a CLI-backed module remains open:
 local wtf = require("wtf")
 
 return {
-  start = function(ctx)
-    -- Project policy, reusable as an add-on.
-    local port = 3000
-    while true do
-      if not wtf.net.listening(port) then
-        local claim, err = ctx.ports:claim("frontend", "127.0.0.1", port)
-        if claim then break end
-        if err.kind ~= "conflict" then error(err.message) end
+  hooks = {
+    start = function(ctx)
+      -- Project policy, reusable as an add-on.
+      local port = 3000
+      while true do
+        if not wtf.net.listening(port) then
+          local claim, err = ctx.ports:claim("frontend", "127.0.0.1", port)
+          if claim then break end
+          if err.kind ~= "conflict" then error(err.message) end
+        end
+        port = port + 1
+        if port > 65535 then error("No port available") end
       end
-      port = port + 1
-      if port > 65535 then error("No port available") end
-    end
 
-    return ctx.processes:start("frontend", {
-      command = { "bun", "run", "dev", "--port", tostring(port) },
-      ready = { command = { "./scripts/check-frontend-ready", tostring(port) } },
-    })
-  end,
+      return ctx.processes:start("frontend", {
+        command = { "bun", "run", "dev", "--port", tostring(port) },
+        ready = { command = { "./scripts/check-frontend-ready", tostring(port) } },
+      })
+    end,
+  },
 }
 ```
 
@@ -319,8 +364,8 @@ agent B → new → prepare → isolated service ready → test → teardown
 ```
 
 ```sh
-wtf new agent-a --json           # override delegates creation, then runs stages
-wtf new agent-b --json           # independent workspace; caller controls concurrency
+wtf new ../agent-a --json        # override delegates creation, then runs stages
+wtf new ../agent-b --json        # independent workspace; caller controls concurrency
 wtf hook run test --json         # project tests against this workspace's services
 wtf doctor --here --json         # completed/failed stages and owned resources
 wtf remove agent-a --json        # teardown override, then default removal

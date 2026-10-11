@@ -1,10 +1,11 @@
 # wtf completion
 
-Generate shell completion scripts for wtf commands.
+Legacy completion documentation. The current V1 CLI does not expose a completion
+command. See the [README](../README.md) for Bash navigation integration.
 
 ## Recommended Setup
 
-Completions are **included automatically** when you use `eval "$(wtf init)"` in your shell profile (see [init.md](init.md)). You don't need this command unless you want file-based completions.
+The legacy CLI supported file-based completion scripts as described below.
 
 ## Usage
 
@@ -49,4 +50,4 @@ Several commands provide context-aware tab completions:
 | `wtf new`   | Remote branches; `--pr` completes open PRs       |
 | `wtf clean` | Merged/stale worktrees with reason (merged/prunable) |
 
-These work automatically with `eval "$(wtf init)"` — no extra configuration needed.
+These completion features describe the legacy CLI, not the current V1 command tree.

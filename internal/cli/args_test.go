@@ -24,8 +24,10 @@ func TestMixedCaseCommandsAliasesAndFlags(t *testing.T) {
 		{"LS", "--JSON", "--HELP"},
 		{"LIST", "--HOOK", "-J", "--HELP"},
 		{"LS", "-KJ", "--HELP"},
-		{"Sw", "--JsOn", "--hElP"},
+		{"Ls", "--JsOn", "--hElP"},
 		{"RM", "--JsOn", "--HELP"},
+		{"SeTuP", "--JsOn", "--HeLp"},
+		{"SeTuP", "TeArDoWn", "-J", "--HeLp"},
 	} {
 		result, code, _ := invoke(t, a, args...)
 		if code != 0 || !result.OK {
@@ -93,6 +95,7 @@ func TestMiddlewarePreservesFlagValuesAndChildArguments(t *testing.T) {
 		args, want []string
 		json       bool
 	}{
+		{[]string{"NeW", "../MiXeD/PathCase", "-F", "Main@Origin", "-J", "--", "--Compose", "ValueCase"}, []string{"new", "../MiXeD/PathCase", "-f", "Main@Origin", "-j", "--", "--Compose", "ValueCase"}, true},
 		{[]string{"NeW", "MiXeD", "--FrOm", "Main@Origin", "--JsOn"}, []string{"new", "MiXeD", "--from", "Main@Origin", "--json"}, true},
 		{[]string{"NeW", "MiXeD", "-FMain@Origin", "-J"}, []string{"new", "MiXeD", "-fMain@Origin", "-j"}, true},
 		{[]string{"NeW", "MiXeD", "-F", "Main@Origin", "-J"}, []string{"new", "MiXeD", "-f", "Main@Origin", "-j"}, true},

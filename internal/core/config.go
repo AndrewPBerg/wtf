@@ -170,6 +170,7 @@ func luaWorkspace(state *lua.LState, w Workspace) *lua.LTable {
 	t.RawSetString("name", lua.LString(w.Name))
 	t.RawSetString("path", lua.LString(w.Path))
 	t.RawSetString("status", lua.LString(w.Status))
+	t.RawSetString("message", lua.LString(w.Message))
 	return t
 }
 func asString(v lua.LValue) string {

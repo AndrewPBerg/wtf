@@ -74,6 +74,9 @@ type Workspace struct {
 	Status    string           `json:"status"`
 	Stages    map[string]Stage `json:"stages"`
 	LastError string           `json:"last_error,omitempty"`
+	// CreatedAt is the first WTF registration time, absent for legacy records.
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	Message   string     `json:"message,omitempty"`
 }
 
 // Claim records a resource identity owned by a workspace.
@@ -112,6 +115,7 @@ type App struct {
 	Home    string
 	Out     io.Writer
 	Reviews ReviewClient
+	PRs     PRClient
 }
 
 // New constructs a workspace application.

@@ -41,7 +41,7 @@ func TestModulesRegisterExplicitlyAndForwardRequests(t *testing.T) {
  ctx:require(request.args[1]=="--MiXeD" and request.args[2]=="ValueCase","Arguments changed")
  ctx:stage("after",{"sh","-c","touch after.count"}) end`,
 	})
-	child, e := a.NewWorkspace(context.Background(), "explicit", "@", "--MiXeD", "ValueCase")
+	child, e := a.NewWorkspace(context.Background(), "../explicit", "@", "--MiXeD", "ValueCase")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -67,7 +67,7 @@ func TestGuardBlocksBeforeWorkspaceMutation(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	child, e := a.NewWorkspace(context.Background(), "blocked", "@")
+	child, e := a.NewWorkspace(context.Background(), "../blocked", "@")
 	if ErrorCode(e) != "hook_blocked" || child.ID != "" {
 		t.Fatalf("guard failed %+v %v", child, e)
 	}
@@ -75,7 +75,7 @@ func TestGuardBlocksBeforeWorkspaceMutation(t *testing.T) {
 	if e != nil || string(before) != string(after) {
 		t.Fatal("blocked hook mutated registry")
 	}
-	if _, e = os.Stat(filepath.Join(filepath.Dir(w.Path), "blocked--"+filepath.Base(w.Path))); !os.IsNotExist(e) {
+	if _, e = os.Stat(filepath.Join(filepath.Dir(w.Path), "blocked")); !os.IsNotExist(e) {
 		t.Fatal("blocked hook created directory")
 	}
 }
@@ -110,7 +110,7 @@ func TestCaughtHostErrorDoesNotReplaceLaterScriptError(t *testing.T) {
  local ok,err=pcall(function() ctx:block("first") end)
  assert(not ok and err.code=="hook_blocked" and err.message=="first")
  error("later script failure") end}}`})
-	_, e := a.NewWorkspace(context.Background(), "error-context", "@")
+	_, e := a.NewWorkspace(context.Background(), "../error-context", "@")
 	if ErrorCode(e) != "hook_failed" || !strings.Contains(e.Error(), "later script failure") {
 		t.Fatalf("stale error leaked: %v", e)
 	}
@@ -125,7 +125,7 @@ func TestUnconfiguredDirectoryDoesNotEnableHooks(t *testing.T) {
 	if e := os.WriteFile(filepath.Join(dir, "new.lua"), []byte(`error("must not run")`), 0600); e != nil {
 		t.Fatal(e)
 	}
-	child, e := a.NewWorkspace(context.Background(), "barebones", "@")
+	child, e := a.NewWorkspace(context.Background(), "../barebones", "@")
 	if e != nil || child.Status != "ready" {
 		t.Fatalf("filename enabled override: %+v %v", child, e)
 	}

@@ -197,14 +197,14 @@ func TestImplicitOverrideDelegatesCreationAndTeardown(t *testing.T) {
  new=function(ctx, req, default) local w=default(req); ctx:stage("prepare", {"sh","-c","touch prepared.count"}); ctx:claim("fixture","service", w.id); return w end,
  remove=function(ctx, req, default) ctx:stage("teardown", {"sh","-c","touch stopped.count"});ctx:release("fixture","service");return default(req) end
 } }`)
-	child, e := a.NewWorkspace(context.Background(), "agent-a", "@")
+	child, e := a.NewWorkspace(context.Background(), "../agent-a", "@")
 	if e != nil {
 		t.Fatal(e)
 	}
 	if _, e = os.Stat(filepath.Join(child.Path, "prepared.count")); e != nil {
 		t.Fatal(e)
 	}
-	claims, e := r.Claims(child)
+	claims, e := r.Claims(child.Workspace)
 	if e != nil || len(claims) != 1 {
 		t.Fatalf("claims %+v %v", claims, e)
 	}
@@ -218,14 +218,14 @@ func TestImplicitOverrideDelegatesCreationAndTeardown(t *testing.T) {
 	if _, e = os.Stat(child.Path); !os.IsNotExist(e) {
 		t.Fatalf("directory remained: %v", e)
 	}
-	claims, e = r.Claims(child)
+	claims, e = r.Claims(child.Workspace)
 	if e != nil || len(claims) != 0 {
 		t.Fatalf("claims remain %+v %v", claims, e)
 	}
 }
 func TestRemovalRefusesWrongIdentityAndChangedSource(t *testing.T) {
 	a, _, _ := fixture(t)
-	child, e := a.NewWorkspace(context.Background(), "protected", "@")
+	child, e := a.NewWorkspace(context.Background(), "../protected", "@")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -289,14 +289,14 @@ func TestInputTraversalAndInvalidReuseRejected(t *testing.T) {
 func TestHookCannotCallDefaultTwice(t *testing.T) {
 	a, _, w := fixture(t)
 	config(t, w.Path, `return {overrides={new=function(ctx,req,default) default(req);default(req) end}}`)
-	child, e := a.NewWorkspace(context.Background(), "once", "@")
+	child, e := a.NewWorkspace(context.Background(), "../once", "@")
 	if ErrorCode(e) != "default_already_called" {
 		t.Fatalf("expected guard %v", e)
 	}
 	if child.ID == "" {
 		t.Fatal("lost created identity")
 	}
-	if !strings.Contains(child.Path, "once--") {
+	if !strings.HasSuffix(child.Path, "/once") {
 		t.Fatal(child.Path)
 	}
 }

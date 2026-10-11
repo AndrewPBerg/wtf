@@ -25,6 +25,22 @@ type ToolCheck struct {
 
 type doctorProbe func(context.Context, string, string, ...string) (string, error)
 
+// Locate project configuration even when JJ cannot execute or has no identity.
+func doctorConfigRoot(cwd string) string {
+	dir, err := filepath.Abs(cwd)
+	if err != nil {
+		return cwd
+	}
+	for root := dir; ; root = filepath.Dir(root) {
+		if info, err := os.Stat(filepath.Join(root, ".jj")); err == nil && info.IsDir() {
+			return root
+		}
+		if filepath.Dir(root) == root {
+			return dir
+		}
+	}
+}
+
 // Keep subprocess output private: authentication commands can include account
 // details. Diagnostics use fixed messages and never return child output.
 func probeDoctor(ctx context.Context, dir, binary string, args ...string) (string, error) {

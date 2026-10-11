@@ -1,135 +1,49 @@
-# wtf sw
+# wtf list / ls
 
-Switch to a worktree by branch name (fuzzy substring match), or list all worktrees interactively when called with no arguments.
+Browse registered JJ workspaces and select one by name. `ls` is the only alias
+of `list`.
 
-## Usage
-
-```bash
-wtf sw [query] [-g|--global] [--prs]
-wtf swg [query] [--prs]
+```sh
+wtf ls
+wtf ls AgentCase
+wtf ls --global
+wtf ls --here --json
 ```
 
-## Flags
+On a terminal, the command opens an inline workspace picker. Arrow keys move,
+Enter selects, and Esc cancels. With the Bash navigation wrapper loaded, selection
+changes the current shell's directory. JSON and redirected output never prompt.
 
-| Flag              | Description                                    |
-|-------------------|------------------------------------------------|
-| `-g`, `--global`  | Search across all registered repos             |
-| `-p`, `--prs`     | Show PR status for each worktree (list mode)   |
+Use `j`/`k` to move down/up, or a numeric prefix such as `4j` or `4k` to
+move several rows. Row movement wraps through the list. `gg` selects the first
+row of the current page; `G` selects its last row. Left/Right, `h`/`l` (also
+`H`/`L`), and PageUp/PageDown move between pages. Other keys cancel a pending
+numeric prefix or unfinished `gg` motion.
 
-`swg` is a shortcut for `sw -g`.
+When the scope includes several repositories, each page contains workspaces from
+one repository. The caption shows its name, workspace count, and position among
+repositories. Large repositories get several pages. Left/Right moves through all
+pages; Tab/Shift-Tab jumps to the next/previous repository. Row movement still
+wraps through the entire scoped list, and metadata refreshes retain your selection.
 
-Since a subprocess can't change the parent shell's directory, `wtf sw` prints the path. Use `wtf setup shell` for automatic configuration, or see `wtf init --help` for manual setup.
-
-```bash
-# Automatic setup (recommended — includes tab completions)
-wtf setup shell
-
-# Or manually add to ~/.bashrc or ~/.zshrc
-eval "$(wtf init bash)"
+```sh
+install -Dm644 scripts/wtf.bash ~/.local/share/wtf/wtf.bash
+source ~/.local/share/wtf/wtf.bash
+wtf ls
 ```
 
-## No Arguments — Interactive Picker
+| Flag | Meaning |
+|---|---|
+| `--global` | Include all registered repositories |
+| `--here` | Show the current workspace |
+| `--all`, `-a` | Include removed records |
+| `--hook`, `-k` | Include recorded local stages |
+| `--pr`, `-p` | Show PR links (enabled by default) |
+| `--checks` | Show CI checks (enabled by default) |
+| `--json`, `-j` | Emit one versioned JSON result |
 
-When called with no arguments, `wtf sw` launches an interactive worktree picker:
+Inside a repository, listing shows its workspaces. From a parent directory, it
+shows registered repositories beneath that directory. Register and prepare a
+workspace with `wtf new .`; create one with `wtf new PATH`.
 
-- Navigate with **j/k** or **up/down** arrows
-- Press **Enter** to switch to the highlighted worktree
-- Press **q**, **Esc**, or **Ctrl+C** to cancel
-
-When output is piped (non-TTY), a static table is printed instead.
-
-```bash
-# Interactive picker
-$ wtf sw
-Select a worktree to switch to (enter=select, q=cancel)
-
-▸ main *          /code/myrepo             abc1234
-  feature/auth    /code/myrepo--feat-auth  def4567
-
-# Interactive global picker
-$ wtf swg
-Select a worktree to switch to (enter=select, q=cancel)
-
-▸ main *          /code/myrepo     abc1234  (myrepo)
-  feature/auth    /code/other      def4567  (other)
-
-# Non-interactive (piped) — static table
-$ wtf sw | head
-BRANCH        PATH                          HEAD
-main *        /code/myrepo                  abc1234
-feature/auth  /code/myrepo--feature-auth    def4567
-```
-
-## With Arguments — Matching Behavior
-
-- **One match**: prints the worktree path
-- **Multiple matches**: lists matching branches and errors
-- **No match**: errors with fuzzy suggestions ("Did you mean?")
-
-## Examples
-
-```bash
-# Substring match
-$ wtf sw auth
-/code/myrepo--feature-auth
-
-# With shell wrapper (cd's automatically)
-$ wtf sw auth
-Switched to /code/myrepo--feature-auth
-
-# Search across all registered repos
-$ wtf sw -g auth
-/home/user/code/myrepo--feature-auth
-
-# Same, using the shortcut command
-$ wtf swg auth
-/home/user/code/myrepo--feature-auth
-
-# No match — shows suggestions
-$ wtf sw atuh
-error: no worktree found matching atuh
-
-Did you mean?
-  → feature/auth
-```
-
-## PR status (`--prs`)
-
-When `--prs` is set (list mode, no arguments), an additional PR column shows the associated pull request for each worktree branch:
-
-```bash
-$ wtf sw --prs
-BRANCH        PATH                          HEAD      PR
-main *        /code/myrepo                  abc1234
-feature/auth  /code/myrepo--feature-auth    def4567   #42 Add authentication ✔
-fix/login     /code/myrepo--fix-login       ghi7890   #43 Fix login bug ○
-```
-
-PR numbers are clickable hyperlinks (like commit hashes). Review status icons:
-- `✔` approved
-- `✖` changes requested
-- `○` review pending
-- `draft` for draft PRs
-
-PR data uses lazy loading for instant results. Cached data is displayed immediately, while fresh data is fetched in the background. Requires `gh` or `glab` CLI for authentication.
-
-## Commit hyperlinks
-
-In table output, commit hashes are rendered as clickable hyperlinks (using OSC 8 terminal escape sequences). Clicking a commit hash opens the commit on GitHub or GitLab.
-
-## Global mode
-
-In global mode, the current repo is highlighted with a green `▸` indicator. Column widths are aligned consistently across all repos.
-
-## Auto-registration
-
-Repos are automatically registered in `~/.wtf/repos.json` whenever you run any `wtf` command inside a git repo. There is no manual registration step — just use `wtf` in your repos and `wtf sw --global` will find them.
-
-Stale entries (deleted repos or non-git directories) are automatically pruned when `--global` is used.
-
-## Jujutsu (jj)
-
-In a jj repo the query matches a **workspace name** (or any bookmark pointing at its
-working-copy commit), and the listing shows `WORKSPACE`, `BOOKMARK`, and `CHANGE`
-columns. In a colocated repo, a miss under one backend reports a match under the
-other. See [jj.md](jj.md).
+See the [README](../README.md) for presentation and shell integration details.

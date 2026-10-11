@@ -85,8 +85,8 @@ func TestFutureCommandDefaultsAreGenericAndHelpDoesNotLoadBrokenConfig(t *testin
 }
 func TestInvalidSelectedDefaultIsStructuredError(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
-	writeDefaults(t, filepath.Join(home, "config.toml"), "[commands.version]\nnot-a-flag=true\n")
-	result, code, _ := invoke(t, core.New(root, home, nil), "version", "-j")
+	writeDefaults(t, filepath.Join(home, "config.toml"), "[commands.list]\nnot-a-flag=true\n")
+	result, code, _ := invoke(t, core.New(root, home, nil), "list", "-j")
 	if code == 0 || result.Error == nil || result.Error.Code != "invalid_config" {
 		t.Fatalf("invalid config not reported %+v", result)
 	}
