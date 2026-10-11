@@ -20,6 +20,7 @@ const prTTL = 2 * time.Minute
 const prLimit = 200
 const prWorkers = 3
 
+// PullRequest contains GitHub state, checks and its resolved review link.
 type PullRequest struct {
 	Number          int    `json:"number"`
 	Title           string `json:"title"`
@@ -96,6 +97,7 @@ func summarizeChecks(head string, raw json.RawMessage) (*CheckSummary, error) {
 	return summary, nil
 }
 
+// PRInfo is a workspace PR observation, including lookup failures.
 type PRInfo struct {
 	Repository string        `json:"repository,omitempty"`
 	Lookup     string        `json:"lookup"`
@@ -124,11 +126,16 @@ type prCache struct {
 	Version      int                     `json:"version"`
 	Repositories map[string]prCacheEntry `json:"repositories"`
 }
+
+// PRClient fetches pull requests for a GitHub repository.
 type PRClient interface {
 	List(context.Context, string) ([]PullRequest, error)
 }
+
+// GHClient fetches PR metadata through the installed GitHub CLI.
 type GHClient struct{ Binary string }
 
+// List fetches PR state and checks for the repository.
 func (client GHClient) List(ctx context.Context, repository string) ([]PullRequest, error) {
 	binary := client.Binary
 	if binary == "" {
@@ -175,11 +182,15 @@ type prGroup struct {
 	Refresh              bool
 	Error                string
 }
+
+// PRPlan groups workspace observations for a bounded refresh.
 type PRPlan struct {
 	Groups       []prGroup
 	Rows         []WorkspaceView
 	NeedsRefresh bool
 }
+
+// PRService loads, associates and caches GitHub PR observations.
 type PRService struct {
 	Home   string
 	Client PRClient
@@ -187,6 +198,7 @@ type PRService struct {
 	Log    io.Writer
 }
 
+// GitHubService constructs the repository PR service.
 func (a *App) GitHubService() *PRService { return &PRService{a.Home, GHClient{}, time.Now, a.Out} }
 
 var githubSlug = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
@@ -280,6 +292,8 @@ func (s *PRService) save(ctx context.Context, updates map[string]prCacheEntry) e
 	}
 	return writeAtomic(filepath.Join(s.Home, "github-pr-cache.json"), c)
 }
+
+// Prepare plans a refresh using local identity and cached observations.
 func (s *PRService) Prepare(ctx context.Context, rows []WorkspaceView, force bool) PRPlan {
 	plan := PRPlan{Rows: append([]WorkspaceView{}, rows...)}
 	groups := map[string]*prGroup{}
@@ -415,6 +429,8 @@ func applyPRs(rows []WorkspaceView, groups []prGroup, now time.Time, finished bo
 	}
 	return out
 }
+
+// Refresh fetches planned PR observations with bounded concurrency.
 func (s *PRService) Refresh(ctx context.Context, plan PRPlan) []WorkspaceView {
 	bounded, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()

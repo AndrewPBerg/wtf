@@ -13,6 +13,7 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
+// Runtime owns a restricted Lua hook interpreter and workspace context.
 type Runtime struct {
 	App        *App
 	Repo       Repo
@@ -72,7 +73,11 @@ func (a *App) runtime(ctx context.Context, r Repo, w Workspace) (*Runtime, error
 	complete = true
 	return rt, nil
 }
+
+// Close cancels hook execution and closes the Lua interpreter.
 func (r *Runtime) Close() { r.Cancel(); r.L.Close() }
+
+// Bind sets the current registered workspace in the hook context.
 func (r *Runtime) Bind(w Workspace) {
 	r.Workspace = w
 	if project, ok := r.CTX.RawGetString("project").(*lua.LTable); ok {
@@ -86,7 +91,7 @@ func (r *Runtime) Bind(w Workspace) {
 	}
 	r.CTX.RawSetString("workspace", luaWorkspace(r.L, w))
 }
-func (r *Runtime) raise(L *lua.LState, e error) int { return luaError(L, e) }
+func (r *Runtime) raise(state *lua.LState, e error) int { return luaError(state, e) }
 func (r *Runtime) operationError(e error) error {
 	if cause := hostError(e); cause != nil {
 		return cause
@@ -107,6 +112,8 @@ func (r *Runtime) request(name, from string, args []string) *lua.LTable {
 	request.RawSetString("args", argv)
 	return request
 }
+
+// Run invokes a registered project hook.
 func (r *Runtime) Run(name string, args ...string) error {
 	return r.runHook(name, r.request(r.Workspace.Name, "", args))
 }
@@ -123,6 +130,8 @@ func (r *Runtime) runHook(name string, request *lua.LTable) error {
 	}
 	return nil
 }
+
+// Override invokes an explicit lifecycle override or its default operation.
 func (r *Runtime) Override(op, name, from string, def func(string, string) (Workspace, error), args ...string) error {
 	fn := r.Overrides.RawGetString(op)
 	if fn == lua.LNil {
@@ -150,7 +159,7 @@ func (r *Runtime) Override(op, name, from string, def func(string, string) (Work
 	}
 	return nil
 }
-func (r *Runtime) requireWorkspace(L *lua.LState) error {
+func (r *Runtime) requireWorkspace(_ *lua.LState) error {
 	if r.Workspace.ID == "" {
 		return Fail("workspace_required", "Call default creation before workspace-specific stages")
 	}
@@ -342,6 +351,8 @@ func (r *Runtime) install() {
 		return 1
 	}))
 }
+
+// Hooks lists registered hooks and overrides without invoking them.
 func (a *App) Hooks(ctx context.Context) (map[string][]string, error) {
 	r, e := Discover(ctx, a.Cwd)
 	if e != nil {
@@ -354,7 +365,7 @@ func (a *App) Hooks(ctx context.Context) (map[string][]string, error) {
 	defer rt.Close()
 	result := map[string][]string{"hooks": {}, "overrides": {}}
 	for name, t := range map[string]*lua.LTable{"hooks": rt.Hooks, "overrides": rt.Overrides} {
-		t.ForEach(func(k, v lua.LValue) { result[name] = append(result[name], k.String()) })
+		t.ForEach(func(k, _ lua.LValue) { result[name] = append(result[name], k.String()) })
 		sort.Strings(result[name])
 	}
 	return result, nil

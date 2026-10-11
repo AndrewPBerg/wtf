@@ -47,7 +47,7 @@ func TestFutureCommandsInheritMiddlewareWithoutCustomCaseLogic(t *testing.T) {
 	var path string
 	var enabled bool
 	leaf := s.command("leaf [ARGS...]", "Future command", "A command registered after middleware setup.", cobra.ArbitraryArgs,
-		func(c *cobra.Command, args []string) (any, error) {
+		func(_ *cobra.Command, args []string) (any, error) {
 			return map[string]any{"path": path, "enabled": enabled, "argv": args}, nil
 		})
 	leaf.Aliases = []string{"leaf-alias"}

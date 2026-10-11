@@ -289,16 +289,17 @@ func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string,
 				style = p.Title
 			} else if row >= 0 && row < len(states) {
 				state := states[row]
-				if state == "removed" {
+				switch {
+				case state == "removed":
 					style = p.Muted
-				} else if column == 0 {
+				case column == 0:
 					style = p.Title
-				} else if column == prColumn {
+				case column == prColumn:
 					style = p.Title
 					if workspaces[row].GitHub != nil && workspaces[row].GitHub.Error != "" {
 						style = p.Warning
 					}
-				} else if column == pathColumn {
+				case column == pathColumn:
 					style = p.Muted
 				}
 			}

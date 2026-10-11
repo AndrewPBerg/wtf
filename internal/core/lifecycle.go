@@ -59,6 +59,8 @@ func (a *App) create(ctx context.Context, r Repo, name, from string) (Workspace,
 	e = r.Update(ctx, id, func(old *Workspace) { old.Status = "ready" })
 	return w, e
 }
+
+// NewWorkspace creates a JJ workspace and runs shared initialization hooks.
 func (a *App) NewWorkspace(ctx context.Context, name, from string, args ...string) (Workspace, error) {
 	r, e := Discover(ctx, a.Cwd)
 	if e != nil {
@@ -206,6 +208,7 @@ func (a *App) initializeOperation(ctx context.Context, r Repo, w Workspace, lock
 	return Initialization{Workspace: updated, Code: code}, err
 }
 
+// Remove tears down and removes an owned workspace after safety checks.
 func (a *App) Remove(ctx context.Context, name string) (Workspace, error) {
 	r, e := Discover(ctx, a.Cwd)
 	if e != nil {
@@ -316,6 +319,8 @@ func verifyIdentity(ctx context.Context, r Repo, w Workspace) error {
 	}
 	return nil
 }
+
+// Hook runs a named hook under the current workspace lock.
 func (a *App) Hook(ctx context.Context, name string, args ...string) (Workspace, error) {
 	r, e := Discover(ctx, a.Cwd)
 	if e != nil {
@@ -349,6 +354,7 @@ func (a *App) Hook(ctx context.Context, name string, args ...string) (Workspace,
 	return r.Select(w.ID)
 }
 
+// Health contains workspace stages, resource claims and tool diagnostics.
 type Health struct {
 	Workspace Workspace   `json:"workspace"`
 	Claims    []Claim     `json:"claims"`
@@ -356,6 +362,7 @@ type Health struct {
 	Tools     []ToolCheck `json:"tools"`
 }
 
+// Doctor checks tool readiness and current workspace health without repairing it.
 func (a *App) Doctor(ctx context.Context) (Health, error) {
 	h := Health{Claims: []Claim{}, Issues: []string{}, Tools: doctorTools(ctx, a.Cwd, doctorBinary, probeDoctor)}
 	h.Tools = append(h.Tools, a.linearToolCheck(ctx))

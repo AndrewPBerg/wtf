@@ -13,8 +13,10 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// Version identifies the installed WTF build.
 var Version = "v1-pilot"
 
+// Envelope is the versioned JSON command result.
 type Envelope struct {
 	Version int      `json:"version"`
 	Command string   `json:"command"`
@@ -22,10 +24,14 @@ type Envelope struct {
 	Data    any      `json:"data"`
 	Error   *Problem `json:"error"`
 }
+
+// Problem is a stable command error code and message.
 type Problem struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
+
+// Session binds command flags, output and the workspace application.
 type Session struct {
 	App        *core.App
 	Out        io.Writer
@@ -69,7 +75,7 @@ func (s *Session) command(use, short, long string, args cobra.PositionalArgs, fn
 	return c
 }
 func (s *Session) group(use, short string) *cobra.Command {
-	c := s.command(use, short, short+". Use a subcommand; --json --help returns structured help.", cobra.NoArgs, func(c *cobra.Command, args []string) (any, error) { s.Data = helpData(c); return s.Data, nil })
+	c := s.command(use, short, short+". Use a subcommand; --json --help returns structured help.", cobra.NoArgs, func(c *cobra.Command, _ []string) (any, error) { s.Data = helpData(c); return s.Data, nil })
 	return c
 }
 func helpData(c *cobra.Command) any {
@@ -127,11 +133,13 @@ func helpData(c *cobra.Command) any {
 	}
 	return map[string]any{"usage": usage, "description": description, "flags": c.LocalFlags().FlagUsages() + c.InheritedFlags().FlagUsages(), "text": c.UsageString(), "commands": commands, "sections": sections, "options": options, "aliases": c.Aliases}
 }
+
+// New constructs the WTF command tree.
 func New(app *core.App, out, errOut io.Writer) *Session {
 	s := &Session{App: app, Out: out, Err: errOut}
 	root := &cobra.Command{Use: "wtf", Short: "Opinionated JJ workspace management", Long: "WorkTreeForge: opinionated JJ workspace management for Omarchy.", SilenceErrors: true, SilenceUsage: true}
 	root.Args = cobra.NoArgs
-	root.PersistentPreRunE = func(c *cobra.Command, args []string) error { return s.applyDefaults(c) }
+	root.PersistentPreRunE = func(c *cobra.Command, _ []string) error { return s.applyDefaults(c) }
 	s.Root = root
 	root.AddGroup(
 		&cobra.Group{ID: "essentials", Title: "Essentials"},
@@ -147,14 +155,14 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 	root.SetOut(out)
 	root.SetErr(errOut)
 	root.PersistentFlags().BoolVarP(&s.JSON, "json", "j", false, "Emit one versioned JSON result; never prompt")
-	root.SetHelpFunc(func(c *cobra.Command, args []string) {
+	root.SetHelpFunc(func(c *cobra.Command, _ []string) {
 		s.Command = c.CommandPath()
 		s.Data = helpData(c)
 		if e := s.emit(nil); e != nil {
 			_, _ = fmt.Fprintln(errOut, e)
 		}
 	})
-	root.RunE = func(c *cobra.Command, args []string) error {
+	root.RunE = func(c *cobra.Command, _ []string) error {
 		s.Command = c.CommandPath()
 		s.Data = helpData(c)
 		return nil
@@ -224,16 +232,16 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 	rm.Aliases = []string{"rm"}
 	root.AddCommand(rm)
 	root.AddCommand(s.command("run TASK [ARGS...]", "Run a project task", "Run an argv-based TOML task in the current managed workspace, recording its result. Arguments after -- are forwarded literally. Tasks do not reuse results by default. Example: wtf run test -- tests/auth.", cobra.MinimumNArgs(1), func(c *cobra.Command, args []string) (any, error) { return app.Task(c.Context(), args[0], args[1:]) }))
-	root.AddCommand(s.command("validate", "Check project configuration", "Parse strict config and compile the Lua file without executing it. Does not run hooks, register workspaces or snapshot JJ state. Example: wtf validate --json.", cobra.NoArgs, func(c *cobra.Command, args []string) (any, error) { return app.Validate(c.Context()) }))
-	doctor := s.command("doctor", "Inspect CLI readiness and workspace health", "Check JJ installation and user identity, GitHub authentication, and the repository's Codex Linear MCP connection and workspace identity. Inspect retained workspace stages, claims and failures. Checks are bounded; remote authentication may contact GitHub and Linear. Does not install tools, start project services or run project hooks. Missing JJ prerequisites or unhealthy workspace state return a nonzero exit status; optional GitHub/Linear warnings do not. Example: wtf doctor --here --json.", cobra.NoArgs, func(c *cobra.Command, args []string) (any, error) { return app.Doctor(c.Context()) })
+	root.AddCommand(s.command("validate", "Check project configuration", "Parse strict config and compile the Lua file without executing it. Does not run hooks, register workspaces or snapshot JJ state. Example: wtf validate --json.", cobra.NoArgs, func(c *cobra.Command, _ []string) (any, error) { return app.Validate(c.Context()) }))
+	doctor := s.command("doctor", "Inspect CLI readiness and workspace health", "Check JJ installation and user identity, GitHub authentication, and the repository's Codex Linear MCP connection and workspace identity. Inspect retained workspace stages, claims and failures. Checks are bounded; remote authentication may contact GitHub and Linear. Does not install tools, start project services or run project hooks. Missing JJ prerequisites or unhealthy workspace state return a nonzero exit status; optional GitHub/Linear warnings do not. Example: wtf doctor --here --json.", cobra.NoArgs, func(c *cobra.Command, _ []string) (any, error) { return app.Doctor(c.Context()) })
 	doctor.Flags().Bool("here", true, "Inspect the current managed workspace")
 	root.AddCommand(doctor)
 	hooks := s.group("hook", "Inspect or invoke named hooks")
-	hooks.AddCommand(s.command("list", "List configured hooks and overrides", "Load the hook module and list names. No hook function is invoked. Module declarations should be side-effect free. Example: wtf hook list --json.", cobra.NoArgs, func(c *cobra.Command, args []string) (any, error) { return app.Hooks(c.Context()) }))
+	hooks.AddCommand(s.command("list", "List configured hooks and overrides", "Load the hook module and list names. No hook function is invoked. Module declarations should be side-effect free. Example: wtf hook list --json.", cobra.NoArgs, func(c *cobra.Command, _ []string) (any, error) { return app.Hooks(c.Context()) }))
 	hooks.AddCommand(s.command("run NAME [-- HOOK_ARGS...]", "Run a named hook", "Invoke an explicitly registered project hook under its workspace lock. Arguments after -- reach request.args unchanged. Records stages and stops on failure. Example: wtf hook run test -- --verbose.", namedHookArgs, func(c *cobra.Command, args []string) (any, error) { return app.Hook(c.Context(), args[0], args[1:]...) }))
 	root.AddCommand(hooks)
 	ports := s.group("ports", "Manage workspace port claims")
-	ports.AddCommand(s.command("list", "List current workspace port claims", "Read claims, without checking listeners or choosing ports. Registry claims are not socket reservations. Example: wtf ports list --json.", cobra.NoArgs, func(c *cobra.Command, args []string) (any, error) {
+	ports.AddCommand(s.command("list", "List current workspace port claims", "Read claims, without checking listeners or choosing ports. Registry claims are not socket reservations. Example: wtf ports list --json.", cobra.NoArgs, func(c *cobra.Command, _ []string) (any, error) {
 		r, w, e := current(c.Context(), app)
 		if e != nil {
 			return nil, e
@@ -270,7 +278,7 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 		return map[string]string{"released": args[0]}, e
 	}))
 	root.AddCommand(ports)
-	root.AddCommand(s.command("version", "Show pilot version", "Show the local pilot version; does not update any installed binary. Example: wtf version --json.", cobra.NoArgs, func(c *cobra.Command, args []string) (any, error) { return map[string]string{"version": Version}, nil }))
+	root.AddCommand(s.command("version", "Show pilot version", "Show the local pilot version; does not update any installed binary. Example: wtf version --json.", cobra.NoArgs, func(_ *cobra.Command, _ []string) (any, error) { return map[string]string{"version": Version}, nil }))
 	root.CompletionOptions.DisableDefaultCmd = true
 	for _, command := range root.Commands() {
 		switch command.Name() {
@@ -294,6 +302,8 @@ func current(ctx context.Context, a *core.App) (core.Repo, core.Workspace, error
 	w, e := r.Workspace(ctx)
 	return r, w, e
 }
+
+// Execute runs a command and returns its process exit code.
 func (s *Session) Execute(ctx context.Context, args []string) int {
 	input := prepareInput(s.Root, args)
 	// This survives parse errors and does not mistake child argv or flag values for JSON.
@@ -320,6 +330,8 @@ func (s *Session) Execute(ctx context.Context, args []string) int {
 	}
 	return 0
 }
+
+// Execute runs a command and returns its process exit code.
 func Execute(ctx context.Context, args []string) int {
 	cwd, e := os.Getwd()
 	if e != nil {

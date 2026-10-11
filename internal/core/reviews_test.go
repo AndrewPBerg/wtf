@@ -25,7 +25,7 @@ func TestReviewLinksPreferLinearPreserveChecksAndCachePerRepository(t *testing.T
 	var calls atomic.Int32
 	now := time.Now().UTC()
 	a := New(t.TempDir(), t.TempDir(), nil)
-	a.Reviews = fakeReviewClient{resolve: func(_ context.Context, root, uri string) ReviewResolution {
+	a.Reviews = fakeReviewClient{resolve: func(_ context.Context, _, _ string) ReviewResolution {
 		calls.Add(1)
 		return ReviewResolution{Provider: "linear", URL: "https://linear.app/cascadinglabs/review/example", Code: "review_found", Workspace: "cascadinglabs", WorkspaceID: "cl-id", Server: "linear", CheckedAt: now}
 	}}

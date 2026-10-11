@@ -109,7 +109,7 @@ func (r *Runtime) registerPackage(pkg hookPackage) error {
 		return e
 	}
 	var bad string
-	r.Overrides.ForEach(func(k, v lua.LValue) {
+	r.Overrides.ForEach(func(k, _ lua.LValue) {
 		if !hookOperations[k.String()] {
 			bad = k.String()
 		}
@@ -122,17 +122,17 @@ func (r *Runtime) registerPackage(pkg hookPackage) error {
 
 // Host errors travel with the Lua error object, so caught errors do not pollute a
 // later unrelated failure. Scripts can inspect code/message through __index.
-func luaError(L *lua.LState, err error) int {
-	object := L.NewUserData()
+func luaError(state *lua.LState, err error) int {
+	object := state.NewUserData()
 	object.Value = err
-	meta := L.NewTable()
-	meta.RawSetString("__tostring", L.NewFunction(func(L *lua.LState) int { L.Push(lua.LString(err.Error())); return 1 }))
-	fields := L.NewTable()
+	meta := state.NewTable()
+	meta.RawSetString("__tostring", state.NewFunction(func(state *lua.LState) int { state.Push(lua.LString(err.Error())); return 1 }))
+	fields := state.NewTable()
 	fields.RawSetString("code", lua.LString(ErrorCode(err)))
 	fields.RawSetString("message", lua.LString(err.Error()))
 	meta.RawSetString("__index", fields)
-	L.SetMetatable(object, meta)
-	L.Error(object, 1)
+	state.SetMetatable(object, meta)
+	state.Error(object, 1)
 	return 0
 }
 func hostError(err error) error {

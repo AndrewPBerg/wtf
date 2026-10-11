@@ -16,13 +16,18 @@ import (
 	"time"
 )
 
+// Fault carries a stable application error code and message.
 type Fault struct {
 	Code    string
 	Message string
 }
 
-func (e *Fault) Error() string        { return e.Message }
+func (e *Fault) Error() string { return e.Message }
+
+// Fail constructs a coded application error.
 func Fail(code, message string) error { return &Fault{code, message} }
+
+// ErrorCode returns the application code or operation_failed for other errors.
 func ErrorCode(err error) string {
 	var f *Fault
 	if errors.As(err, &f) {
@@ -30,6 +35,8 @@ func ErrorCode(err error) string {
 	}
 	return "operation_failed"
 }
+
+// ID generates a random workspace or repository identifier.
 func ID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -40,6 +47,7 @@ func ID() (string, error) {
 
 var validName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$`)
 
+// CheckName validates a portable workspace, stage or task name.
 func CheckName(name string) error {
 	if !validName.MatchString(name) {
 		return Fail("invalid_name", "Use 1–80 letters, digits, dots, underscores or dashes")
@@ -47,6 +55,7 @@ func CheckName(name string) error {
 	return nil
 }
 
+// Stage records a project command result and its input fingerprint.
 type Stage struct {
 	Status      string     `json:"status"`
 	Fingerprint string     `json:"fingerprint"`
@@ -55,6 +64,8 @@ type Stage struct {
 	Error       string     `json:"error,omitempty"`
 	Reused      bool       `json:"reused"`
 }
+
+// Workspace is the durable identity and lifecycle record for a JJ workspace.
 type Workspace struct {
 	ID        string           `json:"id"`
 	Name      string           `json:"name"`
@@ -64,12 +75,16 @@ type Workspace struct {
 	Stages    map[string]Stage `json:"stages"`
 	LastError string           `json:"last_error,omitempty"`
 }
+
+// Claim records a resource identity owned by a workspace.
 type Claim struct {
 	Owner string `json:"owner"`
 	Kind  string `json:"kind"`
 	Name  string `json:"name"`
 	Value string `json:"value"`
 }
+
+// State is the repository registry of workspaces and resource claims.
 type State struct {
 	Version      int                  `json:"version"`
 	RepositoryID string               `json:"repository_id"`
@@ -77,15 +92,21 @@ type State struct {
 	Workspaces   map[string]Workspace `json:"workspaces"`
 	Claims       map[string]Claim     `json:"claims"`
 }
+
+// Repository locates an opted-in repository and its registry.
 type Repository struct {
 	ID    string `json:"id"`
 	Path  string `json:"path"`
 	Store string `json:"store"`
 }
+
+// Index is the global index of opted-in repositories.
 type Index struct {
 	Version      int                   `json:"version"`
 	Repositories map[string]Repository `json:"repositories"`
 }
+
+// App binds the current directory, registry home and subprocess output.
 type App struct {
 	Cwd     string
 	Home    string
@@ -93,12 +114,15 @@ type App struct {
 	Reviews ReviewClient
 }
 
+// New constructs a workspace application.
 func New(cwd, home string, out io.Writer) *App {
 	if out == nil {
 		out = io.Discard
 	}
 	return &App{Cwd: cwd, Home: home, Out: out}
 }
+
+// Home resolves the configured or default WTF registry home.
 func Home() (string, error) {
 	if h := os.Getenv("WTF_HOME"); h != "" {
 		return filepath.Abs(h)
@@ -109,6 +133,8 @@ func Home() (string, error) {
 	}
 	return filepath.Join(h, ".wtf-v1"), nil
 }
+
+// Exec runs a bounded child command with explicit environment overrides.
 func (a *App) Exec(ctx context.Context, dir string, argv []string, env map[string]string, timeout time.Duration, quiet bool) error {
 	if len(argv) == 0 {
 		return Fail("invalid_command", "Command argv must not be empty")
@@ -129,7 +155,8 @@ func (a *App) Exec(ctx context.Context, dir string, argv []string, env map[strin
 				filtered = append(filtered, s)
 			}
 		}
-		cmd.Env = append(filtered, prefix+v)
+		filtered = append(filtered, prefix+v)
+		cmd.Env = filtered
 	}
 	configureCommand(cmd)
 	if !quiet {
@@ -178,7 +205,7 @@ func writeAtomic(path string, v any) error {
 		return e
 	}
 	tmp := f.Name()
-	defer os.Remove(tmp)
+	defer func() { _ = os.Remove(tmp) }()
 	if e = f.Chmod(0600); e == nil {
 		_, e = f.Write(data)
 	}
@@ -199,7 +226,7 @@ func writeAtomic(path string, v any) error {
 	if e != nil {
 		return e
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 	return d.Sync()
 }
 func readJSON(path string, v any) error {

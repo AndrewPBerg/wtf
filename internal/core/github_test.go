@@ -18,15 +18,15 @@ type fakePRClient struct {
 func (f fakePRClient) List(ctx context.Context, repo string) ([]PullRequest, error) {
 	return f.call(ctx, repo)
 }
-func pr(number int, branch, head, state string) PullRequest {
-	return PullRequest{Number: number, Branch: branch, Head: head, State: state}
+func pr(number int, branch, head string) PullRequest {
+	return PullRequest{Number: number, Branch: branch, Head: head, State: "OPEN"}
 }
 func TestPRAssociationUsesBookmarksOrExactRevisionsNotWorkspaceNames(t *testing.T) {
 	snapshot := prSnapshot{Name: "feature", Commit: "local", Empty: true, Parents: []prRevision{{Commit: "published", Bookmarks: []string{"topic"}}}}
-	draft := pr(12, "topic", "published", "OPEN")
+	draft := pr(12, "topic", "published")
 	draft.Draft = true
-	wrong := pr(13, "feature", "unrelated", "OPEN")
-	fork := pr(14, "topic", "fork-head", "OPEN")
+	wrong := pr(13, "feature", "unrelated")
+	fork := pr(14, "topic", "fork-head")
 	fork.CrossRepository = true
 	fork.Owner.Login = "someone-else"
 	matches := associate(snapshot, []PullRequest{draft, wrong, fork}, "owner/repo")
@@ -46,7 +46,7 @@ func TestPRAssociationUsesBookmarksOrExactRevisionsNotWorkspaceNames(t *testing.
 }
 func TestPRRefreshIsConcurrentBoundedAndCachesResults(t *testing.T) {
 	var active, peak, calls atomic.Int32
-	client := fakePRClient{func(ctx context.Context, repo string) ([]PullRequest, error) {
+	client := fakePRClient{func(ctx context.Context, _ string) ([]PullRequest, error) {
 		n := active.Add(1)
 		defer active.Add(-1)
 		calls.Add(1)
@@ -60,7 +60,7 @@ func TestPRRefreshIsConcurrentBoundedAndCachesResults(t *testing.T) {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
-		return []PullRequest{pr(1, "topic", "published", "OPEN")}, nil
+		return []PullRequest{pr(1, "topic", "published")}, nil
 	}}
 	now := time.Now()
 	service := PRService{t.TempDir(), client, func() time.Time { return now }, io.Discard}
@@ -84,8 +84,8 @@ func TestPRRefreshIsConcurrentBoundedAndCachesResults(t *testing.T) {
 }
 func TestPRFailureRetainsStaleCacheAndDoesNotInventNoPR(t *testing.T) {
 	now := time.Now()
-	old := prCacheEntry{"owner/repo", now.Add(-time.Hour), []PullRequest{pr(4, "topic", "published", "OPEN")}}
-	service := PRService{t.TempDir(), fakePRClient{func(ctx context.Context, repo string) ([]PullRequest, error) { return nil, Fail("offline", "offline") }}, func() time.Time { return now }, io.Discard}
+	old := prCacheEntry{"owner/repo", now.Add(-time.Hour), []PullRequest{pr(4, "topic", "published")}}
+	service := PRService{t.TempDir(), fakePRClient{func(_ context.Context, _ string) ([]PullRequest, error) { return nil, Fail("offline", "offline") }}, func() time.Time { return now }, io.Discard}
 	plan := PRPlan{Groups: []prGroup{{ID: "r", Repository: "owner/repo", Cached: &old, Refresh: true, Snapshot: map[string]prSnapshot{"work": {Commit: "published"}}}}, Rows: []WorkspaceView{{Workspace: Workspace{Name: "work", Status: "ready"}, RepositoryID: "r", Exists: true}}}
 	row := service.Refresh(context.Background(), plan)[0]
 	if row.GitHub.Lookup != "stale" || row.GitHub.Error == "" || len(row.GitHub.Matches) != 1 {

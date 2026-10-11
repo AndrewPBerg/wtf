@@ -10,11 +10,13 @@ import (
 	"strings"
 )
 
+// Repo locates a JJ workspace and its shared WTF registry.
 type Repo struct {
 	Root  string
 	Store string
 }
 
+// Discover resolves the shared WTF registry for a JJ workspace.
 func Discover(ctx context.Context, dir string) (Repo, error) {
 	root, e := output(ctx, dir, "root", "--ignore-working-copy")
 	if e != nil {
@@ -38,6 +40,8 @@ func Discover(ctx context.Context, dir string) (Repo, error) {
 	}
 	return Repo{root, filepath.Join(p, "wtf-v1-pilot")}, nil
 }
+
+// Load reads and validates the repository registry.
 func (r Repo) Load() (State, error) {
 	var s State
 	e := readJSON(filepath.Join(r.Store, "state.json"), &s)
@@ -52,6 +56,8 @@ func (r Repo) Load() (State, error) {
 	}
 	return s, nil
 }
+
+// Edit updates the registry atomically under its lock.
 func (r Repo) Edit(ctx context.Context, fn func(*State) error) error {
 	if e := os.MkdirAll(r.Store, 0700); e != nil {
 		return e
@@ -70,7 +76,9 @@ func (r Repo) Edit(ctx context.Context, fn func(*State) error) error {
 	}
 	return writeAtomic(filepath.Join(r.Store, "state.json"), s)
 }
-func (r Repo) Workspace(ctx context.Context) (Workspace, error) {
+
+// Workspace finds the current registered workspace.
+func (r Repo) Workspace(_ context.Context) (Workspace, error) {
 	s, e := r.Load()
 	if e != nil {
 		return Workspace{}, e
@@ -82,6 +90,8 @@ func (r Repo) Workspace(ctx context.Context) (Workspace, error) {
 	}
 	return Workspace{}, Fail("unmanaged_workspace", "This JJ workspace is not registered; run wtf init here")
 }
+
+// Update changes one registered workspace under the registry lock.
 func (r Repo) Update(ctx context.Context, id string, fn func(*Workspace)) error {
 	return r.Edit(ctx, func(s *State) error {
 		w, ok := s.Workspaces[id]
@@ -93,6 +103,8 @@ func (r Repo) Update(ctx context.Context, id string, fn func(*Workspace)) error 
 		return nil
 	})
 }
+
+// LockWorkspace locks lifecycle operations for a workspace identity.
 func (r Repo) LockWorkspace(ctx context.Context, id string) (func(), error) {
 	dir := filepath.Join(r.Store, "locks")
 	if e := os.MkdirAll(dir, 0700); e != nil {
@@ -130,6 +142,8 @@ func (a *App) register(ctx context.Context, r Repo, s State) error {
 	i.Repositories[s.RepositoryID] = Repository{s.RepositoryID, s.Anchor, r.Store}
 	return writeAtomic(filepath.Join(a.Home, "repositories.json"), i)
 }
+
+// NativeWorkspaces lists JJ workspace names and their registered paths.
 func NativeWorkspaces(ctx context.Context, root string) (map[string]string, error) {
 	v, e := output(ctx, root, "workspace", "list", "--ignore-working-copy", "-T", `name ++ "\x1f" ++ self.root() ++ "\n"`)
 	if e != nil {
@@ -146,11 +160,13 @@ func NativeWorkspaces(ctx context.Context, root string) (map[string]string, erro
 	return m, nil
 }
 
+// Initialization reports a workspace identity and initialization outcome.
 type Initialization struct {
 	Workspace
 	Code string `json:"code"`
 }
 
+// Initialize registers the workspace and dispatches project initialization hooks.
 func (a *App) Initialize(ctx context.Context, args ...string) (Initialization, error) {
 	r, err := Discover(ctx, a.Cwd)
 	if err != nil {
@@ -163,6 +179,7 @@ func (a *App) Initialize(ctx context.Context, args ...string) (Initialization, e
 	return a.initializeOperation(ctx, r, w, false, args...)
 }
 
+// Init initializes the workspace and returns its durable record.
 func (a *App) Init(ctx context.Context) (Workspace, error) {
 	result, err := a.Initialize(ctx)
 	return result.Workspace, err
@@ -236,6 +253,7 @@ func (a *App) initialize(ctx context.Context, code *string) (Workspace, error) {
 	return w, nil
 }
 
+// WorkspaceView adds repository and remote observations to a workspace record.
 type WorkspaceView struct {
 	Workspace
 	RepositoryID string  `json:"repository_id"`
@@ -252,6 +270,8 @@ func views(s State) []WorkspaceView {
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
+
+// List lists opted-in workspaces in the selected repository scope.
 func (a *App) List(ctx context.Context, global, here bool) ([]WorkspaceView, error) {
 	if !global {
 		if r, e := Discover(ctx, a.Cwd); e == nil {
@@ -290,6 +310,8 @@ func (a *App) List(ctx context.Context, global, here bool) ([]WorkspaceView, err
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, nil
 }
+
+// Select resolves a workspace by ID, name or path.
 func (r Repo) Select(name string) (Workspace, error) {
 	s, e := r.Load()
 	if e != nil {
@@ -302,6 +324,8 @@ func (r Repo) Select(name string) (Workspace, error) {
 	}
 	return Workspace{}, Fail("workspace_missing", "No managed workspace matches "+name)
 }
+
+// Claim reserves a unique resource identity for a workspace.
 func (r Repo) Claim(ctx context.Context, w Workspace, kind, name, value string) (Claim, error) {
 	if e := CheckName(kind); e != nil {
 		return Claim{}, e
@@ -332,9 +356,13 @@ func (r Repo) Claim(ctx context.Context, w Workspace, kind, name, value string) 
 	})
 	return c, e
 }
+
+// Release releases a workspace-owned resource identity.
 func (r Repo) Release(ctx context.Context, w Workspace, kind, name string) error {
 	return r.Edit(ctx, func(s *State) error { delete(s.Claims, w.ID+":"+kind+":"+name); return nil })
 }
+
+// Claims lists a workspace's recorded resource claims.
 func (r Repo) Claims(w Workspace) ([]Claim, error) {
 	s, e := r.Load()
 	if e != nil {

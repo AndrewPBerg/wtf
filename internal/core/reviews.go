@@ -41,10 +41,12 @@ type ReviewClient interface {
 // NativeReviewClient uses the embedded adapter and Codex-owned MCP OAuth.
 type NativeReviewClient struct{}
 
+// Resolve finds a verified Linear review or retains the GitHub destination.
 func (NativeReviewClient) Resolve(ctx context.Context, root, prURL string) ReviewResolution {
 	return runReviewBridge(ctx, root, prURL, false)
 }
 
+// Diagnose checks the configured Linear connection and account identity.
 func (NativeReviewClient) Diagnose(ctx context.Context, root string) ReviewResolution {
 	return runReviewBridge(ctx, root, "", true)
 }

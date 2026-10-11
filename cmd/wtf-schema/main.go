@@ -30,7 +30,7 @@ func generate(path string) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(file.Name())
+	defer func() { _ = os.Remove(file.Name()) }()
 	if err = file.Chmod(0644); err == nil {
 		_, err = file.Write(data)
 	}

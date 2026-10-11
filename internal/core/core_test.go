@@ -178,11 +178,12 @@ func TestAtomicClaimsAcrossWorkspaces(t *testing.T) {
 	close(results)
 	ok, conflict := 0, 0
 	for e := range results {
-		if e == nil {
+		switch {
+		case e == nil:
 			ok++
-		} else if ErrorCode(e) == "claim_conflict" {
+		case ErrorCode(e) == "claim_conflict":
 			conflict++
-		} else {
+		default:
 			t.Fatal(e)
 		}
 	}

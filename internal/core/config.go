@@ -12,11 +12,14 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
+// Task defines a project command and its recorded inputs.
 type Task struct {
 	Command        []string `toml:"command" schema:"Command argv, executed directly without shell interpolation. Additional task arguments are appended literally." schema-required:"true" schema-min-items:"1"`
 	Inputs         []string `toml:"inputs" schema:"Project-relative files or directories included in the recorded stage fingerprint. Runtime checks reject escaping paths."`
 	TimeoutSeconds int      `toml:"timeout_seconds" schema:"Task timeout in seconds. Omitted or zero uses 120 seconds." schema-minimum:"0" schema-maximum:"3600" schema-default:"0"`
 }
+
+// Config contains project hooks, tasks and command defaults.
 type Config struct {
 	Version  int                       `toml:"version" schema:"WTF configuration format version." schema-required:"true" schema-const:"1"`
 	Lua      string                    `toml:"lua" schema:"Explicit Lua registration module relative to .wtf, such as hooks/init.lua. Filenames never register hooks; the returned hooks/overrides table does. Project modules may be imported with require."`
@@ -43,6 +46,8 @@ func relative(root, path string) (string, error) {
 	}
 	return real, nil
 }
+
+// LoadConfig loads and validates the project configuration.
 func LoadConfig(root string) (Config, error) {
 	c := Config{}
 	p := filepath.Join(root, ".wtf", "config.toml")
@@ -94,6 +99,8 @@ func taskTimeout(seconds int) time.Duration {
 	}
 	return time.Duration(seconds) * time.Second
 }
+
+// Validate checks configuration without executing project hooks.
 func (a *App) Validate(ctx context.Context) (Config, error) {
 	r, e := Discover(ctx, a.Cwd)
 	if e != nil {
@@ -105,6 +112,8 @@ func (a *App) Validate(ctx context.Context) (Config, error) {
 	}
 	return c, nil
 }
+
+// Task runs a configured task in the current workspace.
 func (a *App) Task(ctx context.Context, name string, args []string) (Stage, error) {
 	r, e := Discover(ctx, a.Cwd)
 	if e != nil {
@@ -130,7 +139,7 @@ func (a *App) Task(ctx context.Context, name string, args []string) (Stage, erro
 	cmd := append(append([]string{}, t.Command...), args...)
 	return a.Stage(ctx, r, w, "task-"+name, cmd, StageOptions{Inputs: t.Inputs, TimeoutSeconds: t.TimeoutSeconds})
 }
-func tableStrings(L *lua.LState, v lua.LValue) ([]string, error) {
+func tableStrings(_ *lua.LState, v lua.LValue) ([]string, error) {
 	t, ok := v.(*lua.LTable)
 	if !ok {
 		return nil, Fail("invalid_hook", "Expected an argv or input array")
@@ -155,8 +164,8 @@ func tableStrings(L *lua.LState, v lua.LValue) ([]string, error) {
 	}
 	return out, nil
 }
-func luaWorkspace(L *lua.LState, w Workspace) *lua.LTable {
-	t := L.NewTable()
+func luaWorkspace(state *lua.LState, w Workspace) *lua.LTable {
+	t := state.NewTable()
 	t.RawSetString("id", lua.LString(w.ID))
 	t.RawSetString("name", lua.LString(w.Name))
 	t.RawSetString("path", lua.LString(w.Path))
@@ -169,16 +178,18 @@ func asString(v lua.LValue) string {
 	}
 	return ""
 }
+
+// HookPath resolves the configured Lua module within the project.
 func (c Config) HookPath(root string) (string, error) {
 	if c.Lua == "" {
 		return "", Fail("hook_missing", "No Lua hook file configured")
 	}
 	return relative(filepath.Join(root, ".wtf"), c.Lua)
 }
-func checkSection(L *lua.LState, t *lua.LTable, key string) (*lua.LTable, error) {
+func checkSection(state *lua.LState, t *lua.LTable, key string) (*lua.LTable, error) {
 	v := t.RawGetString(key)
 	if v == lua.LNil {
-		return L.NewTable(), nil
+		return state.NewTable(), nil
 	}
 	section, ok := v.(*lua.LTable)
 	if !ok {

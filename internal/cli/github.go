@@ -49,33 +49,31 @@ func (s *Session) loadPRs(ctx context.Context, rows []core.WorkspaceView) []core
 // Only terminal output emits OSC 8 links; JSON retains GitHub's URL as data.
 func prPresentation(p presentation, info *core.PRInfo) string {
 	label := prLabel(info)
-	if !p.Links || info == nil || len(info.Matches) == 0 {
+	pr, matched := primaryPR(info)
+	if !p.Links || !matched {
 		return label
 	}
-	for _, pr := range info.Matches {
-		target := pr.URL
-		if pr.Review != nil && pr.Review.Provider == "linear" {
-			target = pr.Review.URL
-		}
-		parsed, err := url.Parse(target)
-		if err != nil || parsed.Scheme != "https" || (parsed.Host != "github.com" && parsed.Host != "linear.app") || parsed.User != nil || plain(target) != target {
-			return label
-		}
-		glyph, style := "\uf407", p.Warning
-		switch strings.ToUpper(pr.State) {
-		case "OPEN":
-			style = p.Good
-			if pr.Draft {
-				glyph, style = "\uf4dd", p.Muted
-			}
-		case "CLOSED":
-			glyph, style = "\uf4dc", p.Bad
-		case "MERGED":
-			glyph, style = "\uf419", p.Title
-		}
-		return ansi.SetHyperlink(target) + style.Render(glyph+" "+label) + ansi.ResetHyperlink()
+	target := pr.URL
+	if pr.Review != nil && pr.Review.Provider == "linear" {
+		target = pr.Review.URL
 	}
-	return label
+	parsed, err := url.Parse(target)
+	if err != nil || parsed.Scheme != "https" || (parsed.Host != "github.com" && parsed.Host != "linear.app") || parsed.User != nil || plain(target) != target {
+		return label
+	}
+	glyph, style := "\uf407", p.Warning
+	switch strings.ToUpper(pr.State) {
+	case "OPEN":
+		style = p.Good
+		if pr.Draft {
+			glyph, style = "\uf4dd", p.Muted
+		}
+	case "CLOSED":
+		glyph, style = "\uf4dc", p.Bad
+	case "MERGED":
+		glyph, style = "\uf419", p.Title
+	}
+	return ansi.SetHyperlink(target) + style.Render(glyph+" "+label) + ansi.ResetHyperlink()
 }
 
 func primaryPR(info *core.PRInfo) (core.PullRequest, bool) {

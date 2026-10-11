@@ -9,7 +9,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// Only declarative command defaults inherit; loading them never executes hooks.
+// CommandDefaults loads inherited declarative defaults without executing hooks.
 func (a *App) CommandDefaults(ctx context.Context, canonical func(string) (string, error)) (map[string]map[string]any, error) {
 	if ctx.Err() != nil {
 		return nil, Fail("command_cancelled", ctx.Err().Error())

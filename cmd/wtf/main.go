@@ -10,7 +10,11 @@ import (
 )
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	os.Exit(cli.Execute(ctx, os.Args[1:]))
+	return cli.Execute(ctx, os.Args[1:])
 }

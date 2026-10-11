@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+// StageOptions controls command inputs, reuse checks and execution limits.
 type StageOptions struct {
 	Inputs         []string          `json:"inputs"`
 	Check          []string          `json:"check"`
@@ -86,6 +87,8 @@ func fingerprint(ctx context.Context, root string, argv []string, o StageOptions
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
+
+// Stage runs and records a named project command, optionally reusing a verified result.
 func (a *App) Stage(ctx context.Context, r Repo, w Workspace, name string, argv []string, o StageOptions) (Stage, error) {
 	if e := CheckName(name); e != nil {
 		return Stage{}, e
