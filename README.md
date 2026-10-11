@@ -10,8 +10,8 @@ GOMAXPROCS=1 go build -p 1 -o bin/wtf-pilot ./cmd/wtf
 ./bin/wtf-pilot new agent-a --from @ --json
 ```
 
-`init` registers the current JJ repository and workspace, then runs the optional
-registered `init` hook. `new` creates a JJ workspace and uses that same registration
+`init` runs its configured operation override, which delegates registration to
+`default(request)` and then runs project preparation. `new` creates a JJ workspace and uses that same registration
 and preparation lifecycle. A first registration returns `code: initialized`;
 repeating it returns `code: already_initialized` and preserves identity and
 ownership. Reusable stages check whether completed preparation can be kept.
@@ -28,22 +28,24 @@ lua = "hooks/init.lua"
 
 ```lua
 return {
-  hooks = { init = require("initialize"), prepare = require("prepare") },
-  overrides = { new = require("new") },
+  hooks = { guard = require("guard"), prepare = require("prepare") },
+  overrides = { init = require("initialize") },
 }
 ```
 
 The imported implementation wraps the operation:
 
 ```lua
-new = function(ctx, request, default)
+init = function(ctx, request, default)
   ctx:hook("guard", request)
-  return default(request) -- native creation, then shared initialization
+  local workspace = default(request) -- registration, preserving existing identity
+  ctx:hook("prepare", request)
+  return workspace
 end
 ```
 
-The registered `init` hook calls `prepare` and any optional service/test stages.
-`default` creates and records the workspace, then initializes it. `prepare` prints a message and runs a
+The `init` override calls `prepare` and any optional service/test stages.
+`new` handles native creation before invoking that operation. `prepare` prints a message and runs a
 synchronous `workspace-check` stage. Filenames have no automatic behavior; only
 the entrypoint's returned table registers hooks and overrides. Run a hook again
 from the child to inspect reuse:
@@ -64,6 +66,7 @@ one command: on a terminal, they open an inline Bubble Tea workspace browser
 below your prompt, with one horizontal row per workspace. Arrow keys move,
 Enter selects, and Esc cancels. Pages resize with the terminal, capped at ten
 rows; page counts and page-key hints appear only when multiple pages are needed.
+The workspace count and page indicator share help's caption in the top border.
 JSON and piped output never prompt. An optional workspace name resolves its path
 directly through any alias.
 
@@ -203,7 +206,7 @@ job runner, durable process supervisor, or native Docker provider.
   module paths are rejected; external scripts use stage argv commands.
 - Hook execution is bounded to ten minutes and responds to cancellation. Individual
   stages default to 120 seconds, with an explicit maximum of 3600 seconds.
-- `new` and `remove` overrides currently must delegate to the core once.
+- `init`, `new`, and `remove` overrides currently must delegate to the core once.
 - Resource claim conflicts are checked within a repository; cross-repository
   leases and add-on loading are future work.
 - Removal verifies native JJ membership and the workspace marker, refuses changed

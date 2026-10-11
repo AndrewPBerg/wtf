@@ -75,6 +75,11 @@ func (a *App) runtime(ctx context.Context, r Repo, w Workspace) (*Runtime, error
 func (r *Runtime) Close() { r.Cancel(); r.L.Close() }
 func (r *Runtime) Bind(w Workspace) {
 	r.Workspace = w
+	if project, ok := r.CTX.RawGetString("project").(*lua.LTable); ok {
+		if state, err := r.Repo.Load(); err == nil {
+			project.RawSetString("id", lua.LString(state.RepositoryID))
+		}
+	}
 	if w.ID == "" {
 		r.CTX.RawSetString("workspace", lua.LNil)
 		return
@@ -105,7 +110,6 @@ func (r *Runtime) request(name, from string, args []string) *lua.LTable {
 func (r *Runtime) Run(name string, args ...string) error {
 	return r.runHook(name, r.request(r.Workspace.Name, "", args))
 }
-func (r *Runtime) HasHook(name string) bool { return r.Hooks.RawGetString(name) != lua.LNil }
 func (r *Runtime) runHook(name string, request *lua.LTable) error {
 	fn := r.Hooks.RawGetString(name)
 	if fn == lua.LNil {
@@ -131,8 +135,8 @@ func (r *Runtime) Override(op, name, from string, def func(string, string) (Work
 		req := L.CheckTable(1)
 		n := asString(req.RawGetString("name"))
 		f := asString(req.RawGetString("from"))
-		if op == "remove" && n != name {
-			return r.raise(L, Fail("identity_mismatch", "Remove overrides cannot change the target identity"))
+		if (op == "remove" || op == "init") && n != name {
+			return r.raise(L, Fail("identity_mismatch", "Init/remove overrides cannot change the target identity"))
 		}
 		w, e := def(n, f)
 		if e != nil {

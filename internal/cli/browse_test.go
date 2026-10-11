@@ -111,6 +111,9 @@ func TestBrowserSinglePageUsesHorizontalRowsWithoutPagination(t *testing.T) {
 	m := newBrowser(rows, "/repo/one", humanPresentation(&bytes.Buffer{}), false, false)
 	m.p.Width, m.height = 240, 60
 	view := m.View()
+	if !strings.HasPrefix(view, "╭─ Workspaces  2 ") {
+		t.Fatalf("workspace caption is not in the top border: %s", view)
+	}
 	if strings.Contains(view, "1/1") || strings.Contains(view, "page") || strings.Contains(view, "LOCAL") || strings.Contains(view, "✓") {
 		t.Fatalf("single page shows pagination: %s", view)
 	}

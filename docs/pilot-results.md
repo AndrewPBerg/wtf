@@ -67,7 +67,9 @@ Combined short JSON/help flags bypass shell navigation. All current pilot Go
 packages passed serial tests and vet; the local binary and command help were
 checked again. This is a local pilot checkpoint, not release certification.
 
-Initialization and creation now share registration and the optional `init` hook.
+Initialization and creation now share the `init` operation override, which delegates
+registration to core and runs project preparation. The recipe overrides `init`
+rather than `new`.
 Focused regressions exercise existing/created workspaces, independent preparation,
 argument forwarding, retained ownership, stage reuse, and retrying failed `new`
 preparation through `init`. Terminal JSON was verified without startup control

@@ -1,7 +1,6 @@
 -- Explicit registration: filenames have no special meaning.
 return {
   hooks = {
-	init = require("initialize"),
     guard = require("guard"),
     prepare = require("prepare"),
     start = require("start"),
@@ -9,7 +8,7 @@ return {
     stop = require("stop"),
   },
   overrides = {
-    new = require("new"),
+    init = require("initialize"),
     remove = require("remove"),
   },
 }

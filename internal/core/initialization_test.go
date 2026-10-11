@@ -9,7 +9,8 @@ import (
 
 func TestInitAndNewSharePreparationWithIndependentOwnershipAndReuse(t *testing.T) {
 	a, r, anchor := fixture(t)
-	config(t, anchor.Path, `return { hooks = { init = function(ctx, request)
+	config(t, anchor.Path, `return { overrides = { init = function(ctx, request, default)
+ default(request)
  ctx:stage("prepare", {"sh", "-c", "printf x >> prepare.count"}, {inputs={"input.txt"}, reuse=true})
  ctx:stage("arguments", {"sh", "-c", "printf '%s' \"$1\" > args.count", "sh", request.args[1] or ""})
 end } }`)
@@ -49,7 +50,8 @@ end } }`)
 
 func TestFailedNewInitializationCanResumeThroughInit(t *testing.T) {
 	a, _, anchor := fixture(t)
-	config(t, anchor.Path, `return { hooks = { init = function(ctx)
+	config(t, anchor.Path, `return { overrides = { init = function(ctx, request, default)
+ default(request)
  ctx:stage("prepare", {"sh", "-c", "printf x >> prepare.count"}, {inputs={"input.txt"}, reuse=true})
  ctx:stage("verify", {"sh", "-c", "test -f fixed.count"})
  ctx:stage("after", {"sh", "-c", "touch after.count"})
@@ -69,5 +71,45 @@ end } }`)
 	retried, err := childApp.Initialize(ctx)
 	if err != nil || retried.ID != child.ID || !retried.Owned || retried.Status != "ready" || !retried.Stages["prepare"].Reused || retried.Stages["after"].Status != "succeeded" {
 		t.Fatalf("init did not resume new's failed setup: %+v %v", retried, err)
+	}
+}
+
+func TestInitOverrideMustDelegateOnceAndPreserveItsTarget(t *testing.T) {
+	for _, test := range []struct{ name, body, code string }{
+		{"missing-default", "", "invalid_override"},
+		{"duplicate-default", "default(request); default(request)", "default_already_called"},
+		{"changed-target", `request.name="other"; default(request)`, "identity_mismatch"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			a, _, anchor := fixture(t)
+			config(t, anchor.Path, "return {overrides={init=function(ctx,request,default) "+test.body+" end}}")
+			result, err := a.Initialize(context.Background())
+			if ErrorCode(err) != test.code || result.ID != anchor.ID || result.Owned {
+				t.Fatalf("initialization override violated its contract: %+v %v", result, err)
+			}
+		})
+	}
+}
+
+func TestInitOverrideCanBlockBeforeFirstRegistration(t *testing.T) {
+	a, r, anchor := fixture(t)
+	if err := os.Remove(filepath.Join(r.Store, "state.json")); err != nil {
+		t.Fatal(err)
+	}
+	config(t, anchor.Path, `return {overrides={init=function(ctx,request,default) ctx:block("Not ready") end}}`)
+	result, err := a.Initialize(context.Background())
+	if ErrorCode(err) != "hook_blocked" || result.ID != "" {
+		t.Fatalf("pre-registration block failed: %+v %v", result, err)
+	}
+	if _, err := r.Load(); ErrorCode(err) != "not_registered" {
+		t.Fatalf("blocked init registered the workspace: %v", err)
+	}
+	config(t, anchor.Path, `return {overrides={init=function(ctx,request,default)
+ default(request)
+ ctx:require(ctx.project.id ~= nil and ctx.workspace.id ~= nil, "Missing registered context")
+end}}`)
+	result, err = a.Initialize(context.Background())
+	if err != nil || result.Code != "initialized" || result.ID == "" {
+		t.Fatalf("first registration did not bind identity: %+v %v", result, err)
 	}
 }

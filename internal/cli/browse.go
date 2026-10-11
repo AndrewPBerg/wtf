@@ -138,7 +138,7 @@ func (m browser) View() string {
 	if pages > 1 {
 		title += fmt.Sprintf(" · %d/%d", page+1, pages)
 	}
-	lines := []string{m.p.Title.Render(clip(title))}
+	lines := []string{}
 	header := "    " + cell("WORKSPACE", nameWidth) + "  "
 	if m.showPRs {
 		header += cell("PR", prWidth) + "  "
@@ -191,7 +191,7 @@ func (m browser) View() string {
 	}
 	content := strings.Join(lines, "\n")
 	if m.height < 7 || width < 12 {
-		return ansi.Truncate(strings.Join(strings.Fields(ansi.Strip(content)), " "), width, "…")
+		return ansi.Truncate(title+" "+strings.Join(strings.Fields(ansi.Strip(content)), " "), width, "…")
 	}
-	return m.p.Renderer.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(m.p.Muted.GetForeground()).Padding(0, 1).Width(inner + 2).Render(content)
+	return titledPanel(m.p, title, content, width)
 }

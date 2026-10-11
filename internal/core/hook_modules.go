@@ -14,7 +14,7 @@ import (
 type hookPackage struct{ Root, Entry string }
 
 var moduleName = regexp.MustCompile(`^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$`)
-var hookOperations = map[string]bool{"new": true, "remove": true}
+var hookOperations = map[string]bool{"init": true, "new": true, "remove": true}
 
 // The TOML entrypoint and its returned registration table are authoritative.
 // Directory names and filenames never register hooks or override operations.

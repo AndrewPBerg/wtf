@@ -9,7 +9,6 @@ registers functions. A file named `new.lua` has no effect on its own.
 └── hooks/
     ├── init.lua         registration
     ├── initialize.lua   shared init/new preparation
-    ├── new.lua          one possible implementation
     ├── guard.lua        project preflight policy
     ├── prepare.lua      workspace preparation
     ├── start.lua        optional services
@@ -30,12 +29,11 @@ lua = "hooks/init.lua"
 -- .wtf/hooks/init.lua
 return {
   hooks = {
-    init = require("initialize"),
     guard = require("guard"),
     prepare = require("prepare"),
   },
   overrides = {
-    new = require("new"),
+    init = require("initialize"),
   },
 }
 ```
@@ -47,28 +45,31 @@ native libraries or system Lua modules. `validate` compiles the entrypoint witho
 executing it; imported modules are checked when explicitly loaded. Unused files
 remain unused.
 
-## Check and block before creation
+## Override initialization
 
 ```lua
 return function(ctx, request, default)
   ctx:require(ctx:exists("go.mod"), "This project needs go.mod")
-  ctx:require(ctx:check({ "go", "version" }), "Install Go before creating a workspace")
+  ctx:require(ctx:check({ "go", "version" }), "Install Go before initializing a workspace")
 
-  return default(request) -- creates, then runs the registered init hook
+  local workspace = default(request) -- register or reuse the current identity
+  ctx:hook("prepare", request)
+  return workspace
 end
 ```
 
-Before `default`, `ctx.workspace` is nil and checks run in `ctx.project.path`.
-After delegation, checks and stages use the created workspace. `ctx:require(false,
-message)` or `ctx:block(message)` returns `hook_blocked`; before creation this
-leaves no new workspace, resource claim, or registry record.
+Before first registration, `ctx.workspace` is nil and checks use `ctx.project.path`.
+After delegation, checks and stages use the registered workspace. Existing and
+newly created workspaces already have an identity in their context. A blocking
+init override before `default` leaves an unregistered workspace unregistered;
+when reached through `new`, it preserves the created workspace for retry.
 
-`wtf init` registers an existing workspace and runs its optional `init` hook under
-the workspace lock. `new` runs the same registration and preparation lifecycle
+`wtf init` dispatches the `init` operation override. Its default registers an
+existing workspace, preserving identity and ownership. `new` calls that operation
 after native creation, using the created workspace's configuration and identity.
 Preparation failures retain completed stages; retry through `init` in that workspace.
 Repeated initialization preserves ownership and lets stage reuse checks decide
-which work can be retained. With no registered `init` hook, registration is enough.
+which work can be retained. With no `init` override, registration is enough.
 
 ```sh
 wtf new feature -f @ -- --compose --test

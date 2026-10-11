@@ -152,21 +152,15 @@ type Initialization struct {
 }
 
 func (a *App) Initialize(ctx context.Context, args ...string) (Initialization, error) {
-	code := "initialized"
-	w, err := a.initialize(ctx, &code)
-	if err == nil {
-		var r Repo
-		r, err = Discover(ctx, w.Path)
-		if err == nil {
-			var unlock func()
-			unlock, err = r.LockWorkspace(ctx, w.ID)
-			if err == nil {
-				defer unlock()
-				w, err = a.prepareInitialization(ctx, r, w, args...)
-			}
-		}
+	r, err := Discover(ctx, a.Cwd)
+	if err != nil {
+		return Initialization{}, err
 	}
-	return Initialization{Workspace: w, Code: code}, err
+	w, err := r.Workspace(ctx)
+	if err != nil && ErrorCode(err) != "not_registered" && ErrorCode(err) != "unmanaged_workspace" {
+		return Initialization{}, err
+	}
+	return a.initializeOperation(ctx, r, w, false, args...)
 }
 
 func (a *App) Init(ctx context.Context) (Workspace, error) {

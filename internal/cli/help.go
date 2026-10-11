@@ -37,11 +37,7 @@ func helpPresentation(p presentation, data map[string]any) string {
 		if width < 12 {
 			return p.Title.Render(wrap(title, inner)) + "\n" + content
 		}
-		body := p.Renderer.NewStyle().Border(lipgloss.RoundedBorder(), false, true, true, true).BorderForeground(p.Muted.GetForeground()).Padding(0, 1).Width(inner + 2).Render(content)
-		frameWidth := lipgloss.Width(body)
-		title = ansi.Truncate(plain(title), max(1, frameWidth-6), "…")
-		top := p.Muted.Render("╭─ ") + p.Title.Render(title) + p.Muted.Render(" "+strings.Repeat("─", max(0, frameWidth-lipgloss.Width(title)-5))+"╮")
-		return top + "\n" + body
+		return titledPanel(p, title, content, width)
 	}
 	sections := []string{panel(usage, intro)}
 	groups, _ := data["sections"].([]helpSection)

@@ -116,7 +116,7 @@
               "type": "boolean"
             }
           },
-          "description": "Register the current JJ repository and workspace, then run its optional init hook. new uses this same registration and preparation lifecycle after creating a workspace. Repeated init preserves identity and lets reusable stages verify completed work. JSON registration codes are initialized or already_initialized; hook failures remain errors with retained stage records. Project arguments must follow --. Example: wtf init --json -- --compose.",
+          "description": "Register the current JJ repository and workspace, then run its configured init override. new uses this same registration and preparation lifecycle after creating a workspace. Repeated init preserves identity and lets reusable stages verify completed work. JSON registration codes are initialized or already_initialized; hook failures remain errors with retained stage records. Project arguments must follow --. Example: wtf init --json -- --compose.",
           "patternProperties": {
             "^[jJ][sS][oO][nN]$": {
               "$ref": "#/properties/commands/definitions/init/definitions/json"

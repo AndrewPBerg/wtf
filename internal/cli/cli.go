@@ -75,7 +75,7 @@ func helpData(c *cobra.Command) any {
 	commands := []helpEntry{}
 	grouped := map[string][]helpEntry{}
 	for _, child := range c.Commands() {
-		if child.Hidden {
+		if child.Hidden || child.Name() == "help" {
 			continue
 		}
 		name := child.Name()
@@ -158,7 +158,7 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 		s.Data = helpData(c)
 		return nil
 	}
-	root.AddCommand(s.command("init [-- HOOK_ARGS...]", "Initialize this workspace with WTF", "Register the current JJ repository and workspace, then run its optional init hook. new uses this same registration and preparation lifecycle after creating a workspace. Repeated init preserves identity and lets reusable stages verify completed work. JSON registration codes are initialized or already_initialized; hook failures remain errors with retained stage records. Project arguments must follow --. Example: wtf init --json -- --compose.", initializationArgs, func(c *cobra.Command, args []string) (any, error) { return app.Initialize(c.Context(), args...) }))
+	root.AddCommand(s.command("init [-- HOOK_ARGS...]", "Initializes workspace and runs project hooks", "Register the current JJ repository and workspace, then run its configured init override. new uses this same registration and preparation lifecycle after creating a workspace. Repeated init preserves identity and lets reusable stages verify completed work. JSON registration codes are initialized or already_initialized; hook failures remain errors with retained stage records. Project arguments must follow --. Example: wtf init --json -- --compose.", initializationArgs, func(c *cobra.Command, args []string) (any, error) { return app.Initialize(c.Context(), args...) }))
 	var from string
 	n := s.command("new NAME [-- HOOK_ARGS...]", "Create a workspace and run project hooks", "Create an owned sibling JJ workspace. --from defaults to trunk(). The explicitly registered Lua override can check/block creation and delegate once to the default. Arguments after -- reach request.args unchanged; project scripts interpret them. Stages run serially; failures retain completed work. Example: wtf new agent-a -f @ -- --compose.", namedHookArgs, func(c *cobra.Command, args []string) (any, error) {
 		return app.NewWorkspace(c.Context(), args[0], from, args[1:]...)

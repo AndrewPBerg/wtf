@@ -96,11 +96,8 @@ func (a *App) NewWorkspace(ctx context.Context, name, from string, args ...strin
 		}
 		child := *a
 		child.Cwd = w.Path
-		code := "initialized"
-		w, e = child.initialize(rt.Context, &code)
-		if e == nil {
-			w, e = child.prepareInitialization(rt.Context, Repo{w.Path, r.Store}, w, args...)
-		}
+		initialized, err := child.initializeOperation(rt.Context, Repo{w.Path, r.Store}, w, true, args...)
+		w, e = initialized.Workspace, err
 		rt.Bind(w)
 		return w, e
 	}
@@ -122,16 +119,74 @@ func (a *App) NewWorkspace(ctx context.Context, name, from string, args ...strin
 	return w, e
 }
 
-// Both init and new use this preparation lifecycle while holding the workspace lock.
-// New reserves identity before native creation, then adopts that same owned record.
-func (a *App) prepareInitialization(ctx context.Context, r Repo, w Workspace, args ...string) (Workspace, error) {
+// New already owns the workspace lock; direct init acquires it once identity is known.
+// Both operations dispatch the init override, whose default registers that identity.
+func (a *App) initializeOperation(ctx context.Context, r Repo, w Workspace, locked bool, args ...string) (Initialization, error) {
+	code := "initialized"
+	if w.ID != "" {
+		code = "already_initialized"
+	}
+	var unlock func()
+	defer func() {
+		if unlock != nil {
+			unlock()
+		}
+	}()
+	if w.ID != "" && !locked {
+		var err error
+		unlock, err = r.LockWorkspace(ctx, w.ID)
+		if err != nil {
+			return Initialization{Workspace: w}, err
+		}
+		locked = true
+	}
+	name := w.Name
+	if name == "" {
+		native, err := NativeWorkspaces(ctx, r.Root)
+		if err != nil {
+			return Initialization{}, err
+		}
+		for candidate, path := range native {
+			if samePath(path, r.Root) {
+				name = candidate
+				break
+			}
+		}
+		if name == "" {
+			return Initialization{}, Fail("jj_failed", "Cannot identify current native workspace")
+		}
+	}
 	rt, err := a.runtime(ctx, r, w)
 	if err == nil {
 		defer rt.Close()
-		if !rt.HasHook("init") {
+		called, delegated := false, false
+		err = rt.Override("init", name, "", func(_, _ string) (Workspace, error) {
+			if called {
+				return w, Fail("default_already_called", "Default initialization can only be called once per operation")
+			}
+			called = true
+			var err error
+			w, err = a.initialize(rt.Context, &code)
+			if err != nil {
+				return w, err
+			}
+			if !locked {
+				unlock, err = r.LockWorkspace(rt.Context, w.ID)
+				if err != nil {
+					return w, err
+				}
+				locked = true
+			}
+			rt.Bind(w)
+			delegated = true
 			return w, nil
+		}, args...)
+		if err == nil && !delegated {
+			err = Fail("invalid_override", "Init overrides must delegate to default registration")
 		}
-		err = rt.Run("init", args...)
+	}
+	if w.ID == "" {
+		return Initialization{}, err
 	}
 	persist, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
@@ -142,13 +197,13 @@ func (a *App) prepareInitialization(ctx context.Context, r Repo, w Workspace, ar
 			w.Status, w.LastError = "ready", ""
 		}
 	}); saved != nil {
-		return w, saved
+		return Initialization{Workspace: w, Code: code}, saved
 	}
 	updated, saved := r.Select(w.ID)
 	if saved != nil {
-		return w, saved
+		return Initialization{Workspace: w, Code: code}, saved
 	}
-	return updated, err
+	return Initialization{Workspace: updated, Code: code}, err
 }
 
 func (a *App) Remove(ctx context.Context, name string) (Workspace, error) {
