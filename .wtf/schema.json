@@ -22,7 +22,7 @@
               "type": "boolean"
             }
           },
-          "description": "Read current workspace identity, retained stage results, claims and failures. Does not start services or run hooks. Unhealthy state returns structured data and a nonzero exit status. Example: wtf doctor --here --json.",
+          "description": "Check JJ installation and user identity, GitHub authentication, and the repository's Codex Linear MCP connection and workspace identity. Inspect retained workspace stages, claims and failures. Checks are bounded; remote authentication may contact GitHub and Linear. Does not install tools, start project services or run project hooks. Missing JJ prerequisites or unhealthy workspace state return a nonzero exit status; optional GitHub/Linear warnings do not. Example: wtf doctor --here --json.",
           "patternProperties": {
             "^[hH][eE][rR][eE]$": {
               "$ref": "#/properties/commands/definitions/doctor/definitions/here"
@@ -137,6 +137,11 @@
               "description": "Include removed workspace records; active workspaces are shown by default CLI: --all / -a. Explicit CLI flags override inherited TOML defaults.",
               "type": "boolean"
             },
+            "checks": {
+              "default": true,
+              "description": "Show GitHub CI check counts for the published PR head CLI: --checks / -c. Explicit CLI flags override inherited TOML defaults.",
+              "type": "boolean"
+            },
             "global": {
               "default": false,
               "description": "List all registered repositories CLI: --global. Explicit CLI flags override inherited TOML defaults.",
@@ -158,13 +163,13 @@
               "type": "boolean"
             },
             "pr": {
-              "default": false,
-              "description": "Show GitHub PRs using a cache-first, bounded lookup CLI: --pr / -p. Explicit CLI flags override inherited TOML defaults.",
+              "default": true,
+              "description": "Show PRs with Linear-first review links and GitHub fallback CLI: --pr / -p. Explicit CLI flags override inherited TOML defaults.",
               "type": "boolean"
             },
             "refresh": {
               "default": false,
-              "description": "Refresh PR metadata now (requires --pr) CLI: --refresh. Explicit CLI flags override inherited TOML defaults.",
+              "description": "Request live PR metadata (already automatic with --pr) CLI: --refresh. Explicit CLI flags override inherited TOML defaults.",
               "type": "boolean"
             },
             "select": {
@@ -173,10 +178,13 @@
               "type": "boolean"
             }
           },
-          "description": "Browse active workspaces with arrow keys; Enter selects, Esc cancels. The view paginates to your terminal size. list, ls, switch, sw and w are the same command. An optional NAME resolves a workspace directly.\n\nInside a repository, show its workspaces; from a parent directory, show repositories beneath it. --global includes all registered repositories, --all includes removed records.\n\n--hook adds local stages, not CI. --pr adds GitHub PR status; --refresh forces a bounded lookup. JSON and redirected output never prompt. With shell integration, selection changes your directory.\n\nExamples:\n  wtf list\n  wtf sw -p\n  wtf ls --all --json",
+          "description": "Browse active workspaces with arrow keys; Enter selects, Esc cancels. The view paginates to your terminal size. list, ls, switch, sw and w are the same command. An optional NAME resolves a workspace directly.\n\nInside a repository, show its workspaces; from a parent directory, show repositories beneath it. --global includes all registered repositories, --all includes removed records.\n\n--hook adds local stages, not CI. --pr adds GitHub PR status; each invocation performs a bounded live lookup. JSON and redirected output never prompt. With shell integration, selection changes your directory.\n\nExamples:\n  wtf list\n  wtf sw -p\n  wtf ls --all --json",
           "patternProperties": {
             "^[aA][lL][lL]$": {
               "$ref": "#/properties/commands/definitions/list/definitions/all"
+            },
+            "^[cC][hH][eE][cC][kK][sS]$": {
+              "$ref": "#/properties/commands/definitions/list/definitions/checks"
             },
             "^[gG][lL][oO][bB][aA][lL]$": {
               "$ref": "#/properties/commands/definitions/list/definitions/global"
@@ -203,6 +211,9 @@
           "properties": {
             "all": {
               "$ref": "#/properties/commands/definitions/list/definitions/all"
+            },
+            "checks": {
+              "$ref": "#/properties/commands/definitions/list/definitions/checks"
             },
             "global": {
               "$ref": "#/properties/commands/definitions/list/definitions/global"

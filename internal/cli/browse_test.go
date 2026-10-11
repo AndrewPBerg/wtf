@@ -18,6 +18,7 @@ func TestBrowserPagesResizesAndSelectsWithoutEnteringRemovedPaths(t *testing.T) 
 	}
 	rows = append(rows, core.WorkspaceView{Workspace: core.Workspace{Name: "removed", Path: "/gone", Status: "removed"}})
 	m := newBrowser(rows, "/repo/one", humanPresentation(&bytes.Buffer{}), true, true)
+	m.showChecks = true
 	update := func(msg tea.Msg) tea.Cmd {
 		t.Helper()
 		next, cmd := m.Update(msg)
@@ -124,5 +125,72 @@ func TestBrowserSinglePageUsesHorizontalRowsWithoutPagination(t *testing.T) {
 		if strings.Contains(line, "two") && !strings.Contains(line, "../two") {
 			t.Fatalf("workspace and path are stacked: %s", view)
 		}
+	}
+}
+
+func TestBrowserArrowKeysWrapAcrossPagesAndHandleEmptyLists(t *testing.T) {
+	rows := []core.WorkspaceView{}
+	for _, name := range []string{"first", "middle", "last"} {
+		rows = append(rows, core.WorkspaceView{Workspace: core.Workspace{Name: name, Path: "/repo/" + name}, Exists: true})
+	}
+	m := newBrowser(rows, "/repo/first", humanPresentation(&bytes.Buffer{}), false, false)
+	m.height = 8 // One workspace per page.
+	for _, key := range []tea.KeyMsg{{Type: tea.KeyUp}, {Type: tea.KeyDown}, {Type: tea.KeyRunes, Runes: []rune{'k'}}, {Type: tea.KeyRunes, Runes: []rune{'j'}}} {
+		next, _ := m.Update(key)
+		m = next.(browser)
+		want := 0
+		if key.String() == "up" || key.String() == "k" {
+			want = 2
+		}
+		if m.cursor != want {
+			t.Fatalf("%s did not wrap: cursor %d", key.String(), m.cursor)
+		}
+	}
+	empty := newBrowser(nil, "/repo", humanPresentation(&bytes.Buffer{}), false, false)
+	for _, key := range []tea.KeyMsg{{Type: tea.KeyUp}, {Type: tea.KeyDown}} {
+		next, _ := empty.Update(key)
+		empty = next.(browser)
+		if empty.cursor != 0 {
+			t.Fatal("empty browser moved its cursor")
+		}
+	}
+}
+
+func TestBrowserRefreshesRecentDraftCacheAndAutomaticallyRechecks(t *testing.T) {
+	cached := []core.WorkspaceView{{Workspace: core.Workspace{ID: "workspace", Name: "pilot", Path: "/repo", Status: "ready"}, Exists: true,
+		GitHub: &core.PRInfo{Lookup: "cached", Matches: []core.PullRequest{{Number: 19, State: "OPEN", Draft: true}}}}}
+	fresh := []core.WorkspaceView{{Workspace: cached[0].Workspace, Exists: true,
+		GitHub: &core.PRInfo{Lookup: "fresh", Matches: []core.PullRequest{{Number: 19, State: "OPEN"}}}}}
+	m := newBrowser(cached, "/repo", humanPresentation(&bytes.Buffer{}), true, false)
+	calls := 0
+	m.fetchPRs = func() []core.WorkspaceView { calls++; return fresh }
+	m.refreshing = true
+	if !strings.Contains(m.View(), "draft") || !strings.Contains(m.View(), "↻") {
+		t.Fatal("cached view did not indicate an active lookup")
+	}
+	initial := m.Init()
+	if initial == nil {
+		t.Fatal("recent cache suppressed the initial refresh")
+	}
+	next, followup := m.Update(initial())
+	m = next.(browser)
+	if calls != 1 || m.refreshing || followup == nil || strings.Contains(m.View(), "draft") || !strings.Contains(m.View(), "#19 open") {
+		t.Fatalf("live refresh did not replace the recent cached draft: %s", m.View())
+	}
+	next, automatic := m.Update(prPollMsg{})
+	m = next.(browser)
+	if automatic == nil || !m.refreshing {
+		t.Fatal("automatic refresh did not start")
+	}
+	if _, duplicate := m.Update(prPollMsg{}); duplicate != nil {
+		t.Fatal("automatic refresh overlapped an existing lookup")
+	}
+	next, followup = m.Update(automatic())
+	m = next.(browser)
+	if calls != 2 || m.refreshing || m.cursor != 0 || followup == nil {
+		t.Fatalf("unexpected refresh result: calls=%d cursor=%d refreshing=%v", calls, m.cursor, m.refreshing)
+	}
+	if strings.Contains(m.View(), "r refresh") {
+		t.Fatal("automatic browser shows a manual refresh hint")
 	}
 }

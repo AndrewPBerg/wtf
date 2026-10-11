@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -156,5 +157,37 @@ func TestGHClientResolvesInstalledMiseBinaryWithoutSetupLauncher(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatal("metadata read executed setup launcher")
+	}
+}
+
+func TestCheckSummaryCountsRunsAndLegacyStatusesWithoutHidingUnknowns(t *testing.T) {
+	raw := json.RawMessage(`[
+ {"__typename":"CheckRun","status":"COMPLETED","conclusion":"FAILURE"},
+ {"__typename":"CheckRun","status":"COMPLETED","conclusion":"TIMED_OUT"},
+ {"__typename":"CheckRun","status":"IN_PROGRESS","conclusion":"SUCCESS"},
+ {"__typename":"CheckRun","status":"COMPLETED","conclusion":"CANCELLED"},
+ {"__typename":"CheckRun","status":"COMPLETED","conclusion":"SKIPPED"},
+ {"__typename":"CheckRun","status":"COMPLETED","conclusion":"NEUTRAL"},
+ {"__typename":"CheckRun","status":"COMPLETED","conclusion":"FUTURE_STATE"},
+ {"__typename":"StatusContext","state":"SUCCESS"},
+ {"__typename":"StatusContext","state":"ERROR"},
+ {"__typename":"StatusContext","state":"PENDING"}
+ ]`)
+	c, err := summarizeChecks("published-head", raw)
+	if err != nil || c == nil || c.Head != "published-head" || c.Total != 10 || c.Failed != 3 || c.Pending != 2 || c.Passed != 1 || c.Skipped != 2 || c.Cancelled != 1 || c.Unknown != 1 {
+		t.Fatalf("incorrect check summary: %+v %v", c, err)
+	}
+	missing, err := summarizeChecks("head", nil)
+	if err != nil || missing != nil {
+		t.Fatal("missing observation became known empty checks")
+	}
+	for _, raw := range []json.RawMessage{json.RawMessage(`null`), json.RawMessage(`[]`)} {
+		empty, err := summarizeChecks("head", raw)
+		if err != nil || empty == nil || empty.Total != 0 {
+			t.Fatalf("known empty observation was lost: %+v %v", empty, err)
+		}
+	}
+	if _, err := summarizeChecks("head", json.RawMessage(`{"invalid":"shape"}`)); err == nil {
+		t.Fatal("malformed check data was accepted")
 	}
 }

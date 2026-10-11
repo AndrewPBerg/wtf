@@ -87,16 +87,17 @@ type Index struct {
 	Repositories map[string]Repository `json:"repositories"`
 }
 type App struct {
-	Cwd  string
-	Home string
-	Out  io.Writer
+	Cwd     string
+	Home    string
+	Out     io.Writer
+	Reviews ReviewClient
 }
 
 func New(cwd, home string, out io.Writer) *App {
 	if out == nil {
 		out = io.Discard
 	}
-	return &App{cwd, home, out}
+	return &App{Cwd: cwd, Home: home, Out: out}
 }
 func Home() (string, error) {
 	if h := os.Getenv("WTF_HOME"); h != "" {

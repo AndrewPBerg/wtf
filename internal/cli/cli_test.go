@@ -18,6 +18,7 @@ func invoke(t *testing.T, a *core.App, args ...string) (Envelope, int, string) {
 	t.Helper()
 	var out, logs bytes.Buffer
 	app := core.New(a.Cwd, a.Home, &logs)
+	app.Reviews = testReviewClient{}
 	s := New(app, &out, &logs)
 	code := s.Execute(context.Background(), args)
 	var result Envelope
@@ -33,6 +34,16 @@ func invoke(t *testing.T, a *core.App, args ...string) (Envelope, int, string) {
 		t.Fatalf("missing version %+v", result)
 	}
 	return result, code, logs.String()
+}
+
+type testReviewClient struct{}
+
+func (testReviewClient) Resolve(_ context.Context, _ string, uri string) core.ReviewResolution {
+	return core.ReviewResolution{Provider: "github", URL: uri, Code: "review_not_found"}
+}
+
+func (testReviewClient) Diagnose(context.Context, string) core.ReviewResolution {
+	return core.ReviewResolution{Status: "ready", Workspace: "cascadinglabs", WorkspaceID: "test-workspace", Server: "linear"}
 }
 func TestEveryCommandAndAliasHasJSONHelpAndArgumentErrors(t *testing.T) {
 	a := core.New(t.TempDir(), t.TempDir(), nil)

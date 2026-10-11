@@ -58,6 +58,7 @@ type presentation struct {
 	Renderer                               *lipgloss.Renderer
 	Title, Text, Muted, Good, Warning, Bad lipgloss.Style
 	Width                                  int
+	Links                                  bool
 }
 
 func humanPresentation(out io.Writer) presentation {
@@ -83,7 +84,7 @@ func humanPresentation(out io.Writer) presentation {
 	}
 	p := activePalette()
 	style := func(value string) lipgloss.Style { return r.NewStyle().Foreground(lipgloss.Color(value)) }
-	return presentation{r, style(p.Accent).Bold(true), style(p.Foreground), style(p.Muted), style(p.Good), style(p.Warning), style(p.Bad), width}
+	return presentation{r, style(p.Accent).Bold(true), style(p.Foreground), style(p.Muted), style(p.Good), style(p.Warning), style(p.Bad), width, terminalWriter(out) && os.Getenv("TERM") != "dumb"}
 }
 
 // Keep control characters in recorded data out of terminal presentation.

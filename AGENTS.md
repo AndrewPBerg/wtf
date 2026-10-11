@@ -16,8 +16,16 @@
   inherited from `[commands.<name>]` in TOML. Per-flag priority is CLI > leaf >
   nearest parent > outer parents > global, including explicit `false` values.
   Use the common defaults resolver for new flags.
-- GitHub metadata is opt-in and cache-first. Bound concurrent requests and timeouts;
-  preserve stale cache on failure and distinguish unavailable from unassociated.
+- PR links are enabled by default and prefer verified Linear reviews, falling
+  back to GitHub. Keep their appearance identical; provider diagnostics belong
+  in doctor and JSON. Explicit --pr=false disables the view.
+- CI checks are enabled by default in a separate column. Explicit --checks=false
+  or inherited TOML defaults can disable them.
+- Bound metadata requests and timeouts; preserve GitHub observations on failure
+  and distinguish unavailable from unassociated. Cache review links by repository
+  and account configuration. Never cache transient failures as missing reviews.
+- Use the existing Codex MCP OAuth connection and verify its workspace before
+  review lookup. Start no model turn and emit no credential or child diagnostics.
 - Hook registration is explicit: TOML selects a Lua entrypoint, and its returned
   hooks/overrides table registers functions. Never infer behavior from filenames.
   Imported modules stay within the selected package. Checks may block before

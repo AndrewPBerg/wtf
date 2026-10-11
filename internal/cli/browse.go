@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/AndrewPBerg/wtf/internal/core"
 	_ "github.com/AndrewPBerg/wtf/internal/terminal" // Initialize background defaults before Bubble Tea's startup query.
@@ -25,12 +26,28 @@ func (s *Session) browseInteractive() bool {
 }
 
 func (s *Session) browse(ctx context.Context, rows []core.WorkspaceView) (any, error) {
+	browseCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	out := s.Out
 	if s.SelectPath {
 		out = s.Err
 	}
 	m := newBrowser(rows, s.App.Cwd, humanPresentation(out), s.ShowPRs, s.ShowStages)
-	result, err := tea.NewProgram(m, tea.WithInput(os.Stdin), tea.WithOutput(out), tea.WithContext(ctx)).Run()
+	m.showChecks = s.ShowChecks
+	if s.ShowPRs || s.ShowChecks {
+		service := s.App.GitHubService()
+		m.rows = service.Prepare(browseCtx, rows, false).Rows
+		m.fetchPRs = func() []core.WorkspaceView {
+			plan := service.Prepare(browseCtx, rows, true)
+			refreshed := service.Refresh(browseCtx, plan)
+			if s.ShowPRs {
+				refreshed = s.App.WithReviewLinks(browseCtx, refreshed, s.RefreshPRs)
+			}
+			return refreshed
+		}
+		m.refreshing = true
+	}
+	result, err := tea.NewProgram(m, tea.WithInput(os.Stdin), tea.WithOutput(out), tea.WithContext(browseCtx)).Run()
 	if err != nil {
 		return nil, core.Fail("browse_failed", err.Error())
 	}
@@ -51,9 +68,20 @@ type browser struct {
 	p                   presentation
 	cursor, height      int
 	showPRs, showStages bool
+	showChecks          bool
 	chosen              *core.WorkspaceView
 	message             string
+	fetchPRs            func() []core.WorkspaceView
+	refreshing          bool
 }
+
+type prRefreshMsg struct {
+	rows []core.WorkspaceView
+}
+
+const prRefreshInterval = 15 * time.Second
+
+type prPollMsg struct{}
 
 func newBrowser(rows []core.WorkspaceView, cwd string, p presentation, prs, stages bool) browser {
 	m := browser{rows: rows, cwd: cwd, p: p, height: 24, showPRs: prs, showStages: stages}
@@ -66,12 +94,29 @@ func newBrowser(rows []core.WorkspaceView, cwd string, p presentation, prs, stag
 	return m
 }
 
-func (m browser) Init() tea.Cmd { return nil }
+func (m browser) Init() tea.Cmd { return m.refreshPRs() }
+
+func (m browser) refreshPRs() tea.Cmd {
+	if m.fetchPRs == nil {
+		return nil
+	}
+	return func() tea.Msg { return prRefreshMsg{m.fetchPRs()} }
+}
 
 func (m browser) pageSize() int { return max(1, min(10, m.height-7)) }
 
 func (m browser) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case prRefreshMsg:
+		m.rows, m.refreshing = msg.rows, false
+		m.cursor = max(0, min(m.cursor, len(m.rows)-1))
+		return m, tea.Tick(prRefreshInterval, func(time.Time) tea.Msg { return prPollMsg{} })
+	case prPollMsg:
+		if m.fetchPRs == nil || m.refreshing {
+			return m, nil
+		}
+		m.refreshing = true
+		return m, m.refreshPRs()
 	case tea.WindowSizeMsg:
 		m.p.Width, m.height = max(1, msg.Width), max(1, msg.Height)
 	case tea.KeyMsg:
@@ -81,8 +126,14 @@ func (m browser) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "up", "k":
 			m.cursor--
+			if m.cursor < 0 {
+				m.cursor = len(m.rows) - 1
+			}
 		case "down", "j":
 			m.cursor++
+			if m.cursor >= len(m.rows) {
+				m.cursor = 0
+			}
 		case "pgup", "left":
 			m.cursor -= m.pageSize()
 		case "pgdown", "right":
@@ -110,17 +161,23 @@ func (m browser) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m browser) View() string {
-	nameWidth, pathWidth, prWidth := 9, 4, 2
+	nameWidth, pathWidth, prWidth, ciWidth := 9, 4, 2, 2
 	for _, row := range m.rows {
 		nameWidth = max(nameWidth, min(32, lipgloss.Width(plain(row.Name))))
 		pathWidth = max(pathWidth, min(60, lipgloss.Width(listPath(row.Path, m.cwd))))
 		if m.showPRs {
-			prWidth = max(prWidth, min(24, lipgloss.Width(prLabel(row.GitHub))))
+			prWidth = max(prWidth, min(24, lipgloss.Width(prPresentation(m.p, row.GitHub))))
+		}
+		if m.showChecks {
+			ciWidth = max(ciWidth, min(20, lipgloss.Width(ciPresentation(m.p, row.GitHub))))
 		}
 	}
 	desired := 4 + nameWidth + 2 + pathWidth + 4
 	if m.showPRs {
 		desired += prWidth + 2
+	}
+	if m.showChecks {
+		desired += ciWidth + 2
 	}
 	if m.showStages {
 		desired += 8
@@ -138,10 +195,16 @@ func (m browser) View() string {
 	if pages > 1 {
 		title += fmt.Sprintf(" · %d/%d", page+1, pages)
 	}
+	if m.refreshing {
+		title += " · ↻"
+	}
 	lines := []string{}
 	header := "    " + cell("WORKSPACE", nameWidth) + "  "
 	if m.showPRs {
 		header += cell("PR", prWidth) + "  "
+	}
+	if m.showChecks {
+		header += cell("CI", ciWidth) + "  "
 	}
 	if m.showStages {
 		header += "STAGES  "
@@ -163,7 +226,10 @@ func (m browser) View() string {
 		}
 		label := pointer + " " + current + " " + cell(plain(row.Name), nameWidth) + "  "
 		if m.showPRs {
-			label += cell(prLabel(row.GitHub), prWidth) + "  "
+			label += cell(prPresentation(m.p, row.GitHub), prWidth) + "  "
+		}
+		if m.showChecks {
+			label += cell(ciPresentation(m.p, row.GitHub), ciWidth) + "  "
 		}
 		if m.showStages {
 			passed := 0

@@ -32,8 +32,70 @@ type PullRequest struct {
 	Owner           struct {
 		Login string `json:"login"`
 	} `json:"headRepositoryOwner"`
-	Relation string `json:"relation,omitempty"`
+	Relation string            `json:"relation,omitempty"`
+	Rollup   json.RawMessage   `json:"statusCheckRollup,omitempty"`
+	Checks   *CheckSummary     `json:"checks,omitempty"`
+	Review   *ReviewResolution `json:"review,omitempty"`
 }
+
+// CheckSummary describes GitHub checks on the published PR head, not local work.
+type CheckSummary struct {
+	Head      string `json:"head"`
+	Total     int    `json:"total"`
+	Failed    int    `json:"failed"`
+	Pending   int    `json:"pending"`
+	Passed    int    `json:"passed"`
+	Skipped   int    `json:"skipped"`
+	Cancelled int    `json:"cancelled"`
+	Unknown   int    `json:"unknown"`
+	Truncated bool   `json:"truncated,omitempty"`
+}
+
+func summarizeChecks(head string, raw json.RawMessage) (*CheckSummary, error) {
+	if len(raw) == 0 {
+		return nil, nil // Older cache entries have no check observation.
+	}
+	var checks []struct {
+		Type       string `json:"__typename"`
+		Status     string `json:"status"`
+		Conclusion string `json:"conclusion"`
+		State      string `json:"state"`
+	}
+	if err := json.Unmarshal(raw, &checks); err != nil {
+		return nil, Fail("invalid_github_response", "GitHub returned invalid check data")
+	}
+	summary := &CheckSummary{Head: head, Total: len(checks), Truncated: len(checks) >= 100}
+	for _, check := range checks {
+		if check.Type != "CheckRun" && check.Type != "StatusContext" {
+			summary.Unknown++
+			continue
+		}
+		state := check.State
+		if check.Type == "CheckRun" {
+			if check.Status != "COMPLETED" {
+				state = check.Status
+			} else {
+				state = check.Conclusion
+			}
+		}
+		switch state {
+		case "FAILURE", "ERROR", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE":
+			summary.Failed++
+		case "QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED", "EXPECTED":
+			summary.Pending++
+		case "SUCCESS":
+			summary.Passed++
+		case "SKIPPED", "NEUTRAL":
+			summary.Skipped++
+		case "CANCELLED":
+			summary.Cancelled++
+		default:
+			summary.Unknown++
+		}
+	}
+	return summary, nil
+}
+
 type PRInfo struct {
 	Repository string        `json:"repository,omitempty"`
 	Lookup     string        `json:"lookup"`
@@ -82,7 +144,7 @@ func (client GHClient) List(ctx context.Context, repository string) ([]PullReque
 			}
 		}
 	}
-	cmd := exec.CommandContext(ctx, binary, "pr", "list", "--repo", repository, "--state", "all", "--limit", "200", "--json", "number,title,url,state,isDraft,headRefName,headRefOid,headRepositoryOwner,isCrossRepository")
+	cmd := exec.CommandContext(ctx, binary, "pr", "list", "--repo", repository, "--state", "all", "--limit", "200", "--json", "number,title,url,state,isDraft,headRefName,headRefOid,headRepositoryOwner,isCrossRepository,statusCheckRollup")
 	var data bytes.Buffer
 	cmd.Stdout = &data
 	cmd.Stderr = io.Discard
@@ -95,6 +157,13 @@ func (client GHClient) List(ctx context.Context, repository string) ([]PullReque
 	var prs []PullRequest
 	if err := json.Unmarshal(data.Bytes(), &prs); err != nil {
 		return nil, Fail("invalid_github_response", "GitHub returned an invalid PR list")
+	}
+	for i := range prs {
+		checks, err := summarizeChecks(prs[i].Head, prs[i].Rollup)
+		if err != nil {
+			return nil, err
+		}
+		prs[i].Checks = checks
 	}
 	return prs, nil
 }

@@ -33,6 +33,7 @@ type Session struct {
 	JSON       bool
 	ShowStages bool
 	ShowPRs    bool
+	ShowChecks bool
 	RefreshPRs bool
 	SelectPath bool
 	Data       any
@@ -166,7 +167,7 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 	n.Flags().StringVarP(&from, "from", "f", "trunk()", "JJ parent revision for the new workspace")
 	root.AddCommand(n)
 	var global, here, all bool
-	list := s.command("list [NAME]", "Browse and switch workspaces", "Browse active workspaces with arrow keys; Enter selects, Esc cancels. The view paginates to your terminal size. list, ls, switch, sw and w are the same command. An optional NAME resolves a workspace directly.\n\nInside a repository, show its workspaces; from a parent directory, show repositories beneath it. --global includes all registered repositories, --all includes removed records.\n\n--hook adds local stages, not CI. --pr adds GitHub PR status; --refresh forces a bounded lookup. JSON and redirected output never prompt. With shell integration, selection changes your directory.\n\nExamples:\n  wtf list\n  wtf sw -p\n  wtf ls --all --json", cobra.MaximumNArgs(1), func(c *cobra.Command, args []string) (any, error) {
+	list := s.command("list [NAME]", "Browse and switch workspaces", "Browse active workspaces with arrow keys; Enter selects, Esc cancels. The view paginates to your terminal size. list, ls, switch, sw and w are the same command. An optional NAME resolves a workspace directly.\n\nInside a repository, show its workspaces; from a parent directory, show repositories beneath it. --global includes all registered repositories, --all includes removed records.\n\n--hook adds local stages, not CI. --pr adds GitHub PR status; each invocation performs a bounded live lookup. JSON and redirected output never prompt. With shell integration, selection changes your directory.\n\nExamples:\n  wtf list\n  wtf sw -p\n  wtf ls --all --json", cobra.MaximumNArgs(1), func(c *cobra.Command, args []string) (any, error) {
 		rows, e := app.List(c.Context(), global, here)
 		if e != nil {
 			return rows, e
@@ -191,10 +192,10 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 			}
 			return nil, core.Fail("workspace_not_found", "No workspace matches "+args[0])
 		}
-		if s.RefreshPRs && !s.ShowPRs {
-			return nil, core.Fail("invalid_arguments", "--refresh requires --pr")
+		if s.RefreshPRs && !s.ShowPRs && !s.ShowChecks {
+			return nil, core.Fail("invalid_arguments", "--refresh requires --pr or --checks")
 		}
-		if s.ShowPRs {
+		if (s.ShowPRs || s.ShowChecks) && !s.browseInteractive() {
 			rows = s.loadPRs(c.Context(), rows)
 			if c.Context().Err() != nil {
 				return rows, core.Fail("command_cancelled", c.Context().Err().Error())
@@ -214,8 +215,9 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 	list.Flags().BoolVarP(&all, "all", "a", false, "Include removed workspace records; active workspaces are shown by default")
 	list.Flags().BoolVar(&s.SelectPath, "select", false, "Return only the selected path; render the picker on stderr for shell navigation")
 	list.Flags().BoolVarP(&s.ShowStages, "hook", "k", false, "Show local hook stages (successful/recorded), not GitHub CI")
-	list.Flags().BoolVarP(&s.ShowPRs, "pr", "p", false, "Show GitHub PRs using a cache-first, bounded lookup")
-	list.Flags().BoolVar(&s.RefreshPRs, "refresh", false, "Refresh PR metadata now (requires --pr)")
+	list.Flags().BoolVarP(&s.ShowPRs, "pr", "p", true, "Show PRs with Linear-first review links and GitHub fallback")
+	list.Flags().BoolVarP(&s.ShowChecks, "checks", "c", true, "Show GitHub CI check counts for the published PR head")
+	list.Flags().BoolVar(&s.RefreshPRs, "refresh", false, "Request live PR metadata (already automatic with --pr)")
 	list.MarkFlagsMutuallyExclusive("global", "here")
 	root.AddCommand(list)
 	rm := s.command("remove NAME", "Remove a workspace and its owned resources", "Invoke the target workspace's remove override before native removal. Refuses current/adopted workspaces, identity mismatch, remaining external claims and changed source files. Failures retain cleanup state. Example: wtf remove agent-a --json.", cobra.ExactArgs(1), func(c *cobra.Command, args []string) (any, error) { return app.Remove(c.Context(), args[0]) })
@@ -223,7 +225,7 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 	root.AddCommand(rm)
 	root.AddCommand(s.command("run TASK [ARGS...]", "Run a project task", "Run an argv-based TOML task in the current managed workspace, recording its result. Arguments after -- are forwarded literally. Tasks do not reuse results by default. Example: wtf run test -- tests/auth.", cobra.MinimumNArgs(1), func(c *cobra.Command, args []string) (any, error) { return app.Task(c.Context(), args[0], args[1:]) }))
 	root.AddCommand(s.command("validate", "Check project configuration", "Parse strict config and compile the Lua file without executing it. Does not run hooks, register workspaces or snapshot JJ state. Example: wtf validate --json.", cobra.NoArgs, func(c *cobra.Command, args []string) (any, error) { return app.Validate(c.Context()) }))
-	doctor := s.command("doctor", "Inspect workspace health and resources", "Read current workspace identity, retained stage results, claims and failures. Does not start services or run hooks. Unhealthy state returns structured data and a nonzero exit status. Example: wtf doctor --here --json.", cobra.NoArgs, func(c *cobra.Command, args []string) (any, error) { return app.Doctor(c.Context()) })
+	doctor := s.command("doctor", "Inspect CLI readiness and workspace health", "Check JJ installation and user identity, GitHub authentication, and the repository's Codex Linear MCP connection and workspace identity. Inspect retained workspace stages, claims and failures. Checks are bounded; remote authentication may contact GitHub and Linear. Does not install tools, start project services or run project hooks. Missing JJ prerequisites or unhealthy workspace state return a nonzero exit status; optional GitHub/Linear warnings do not. Example: wtf doctor --here --json.", cobra.NoArgs, func(c *cobra.Command, args []string) (any, error) { return app.Doctor(c.Context()) })
 	doctor.Flags().Bool("here", true, "Inspect the current managed workspace")
 	root.AddCommand(doctor)
 	hooks := s.group("hook", "Inspect or invoke named hooks")

@@ -24,12 +24,16 @@ func (s *Session) human(out io.Writer, err error) error {
 			_, e := fmt.Fprintln(out, p.Muted.Render("Workspace: ")+plain(w.Path))
 			return e
 		}
+		if h, ok := s.Data.(core.Health); ok {
+			_, e := fmt.Fprintln(out, doctorToolsText(p, h.Tools))
+			return e
+		}
 		return nil
 	}
 	text := ""
 	switch data := s.Data.(type) {
 	case []core.WorkspaceView:
-		text = workspaceTable(p, data, s.App.Cwd, s.ShowStages, s.ShowPRs)
+		text = workspaceTable(p, data, s.App.Cwd, s.ShowStages, s.ShowPRs, s.ShowChecks)
 	case core.Initialization:
 		message := "Workspace registered"
 		if data.Code == "already_initialized" {
@@ -62,6 +66,7 @@ func (s *Session) human(out io.Writer, err error) error {
 		}
 	case core.Health:
 		text = p.Good.Render("✓ Workspace healthy") + "  " + p.Title.Render(plain(data.Workspace.Name)) + "\n" + p.Muted.Render(fmt.Sprintf("%d stages · %d resource claims", len(data.Workspace.Stages), len(data.Claims)))
+		text += "\n\n" + doctorToolsText(p, data.Tools)
 	case core.Config:
 		text = p.Good.Render("✓ Configuration valid")
 		if data.Lua != "" {
@@ -100,7 +105,11 @@ func (s *Session) human(out io.Writer, err error) error {
 		text = strings.Join(lines, "\n")
 	case map[string]string:
 		if path, ok := data["path"]; ok {
-			text = plain(path)
+			if s.SelectPath {
+				text = path
+			} else {
+				text = p.Title.Render("→ ") + p.Text.Render(shortPath(path))
+			}
 		} else if version, ok := data["version"]; ok {
 			text = p.Title.Render("WTF ") + plain(version)
 		} else if name, ok := data["released"]; ok {
@@ -159,7 +168,11 @@ func listPath(path, cwd string) string {
 	return shortPath(path)
 }
 
-func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string, showStages, showPRs bool) string {
+func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string, showStages, showPRs bool, checks ...bool) string {
+	showChecks := false
+	for _, enabled := range checks {
+		showChecks = showChecks || enabled
+	}
 	if len(workspaces) == 0 {
 		return p.Title.Render("Workspaces") + "\n" + p.Muted.Render("No active workspaces in this scope.")
 	}
@@ -176,6 +189,12 @@ func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string,
 		prColumn = len(headers)
 		headers = append(headers, "PR")
 		widths = append(widths, 14)
+	}
+	ciColumn := -1
+	if showChecks {
+		ciColumn = len(headers)
+		headers = append(headers, "CI")
+		widths = append(widths, 6)
 	}
 	headers = append(headers, "PATH")
 	widths = append(widths, 6)
@@ -204,7 +223,10 @@ func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string,
 			row = append(row, stages)
 		}
 		if showPRs {
-			row = append(row, prLabel(w.GitHub))
+			row = append(row, prPresentation(p, w.GitHub))
+		}
+		if showChecks {
+			row = append(row, ciPresentation(p, w.GitHub))
 		}
 		rows = append(rows, append(row, listPath(w.Path, cwd)))
 		states = append(states, status)
@@ -215,6 +237,9 @@ func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string,
 		widths[1] = max(widths[1], min(lipgloss.Width(row[1])+2, 24))
 		if showPRs {
 			widths[prColumn] = max(widths[prColumn], min(lipgloss.Width(row[prColumn])+2, 24))
+		}
+		if showChecks {
+			widths[ciColumn] = max(widths[ciColumn], min(lipgloss.Width(row[ciColumn])+2, 22))
 		}
 		widths[pathColumn] = max(widths[pathColumn], min(lipgloss.Width(row[pathColumn])+2, 70))
 	}
@@ -234,6 +259,9 @@ func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string,
 			}
 			if showPRs {
 				detail += " · PR " + row[prColumn]
+			}
+			if showChecks {
+				detail += " · CI " + row[ciColumn]
 			}
 			lines = append(lines,
 				p.Title.Render(ansi.Truncate(strings.TrimSpace(row[0]+" "+row[1]), max(width, 1), "…")),

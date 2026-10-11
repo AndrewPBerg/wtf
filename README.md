@@ -67,6 +67,7 @@ below your prompt, with one horizontal row per workspace. Arrow keys move,
 Enter selects, and Esc cancels. Pages resize with the terminal, capped at ten
 rows; page counts and page-key hints appear only when multiple pages are needed.
 The workspace count and page indicator share help's caption in the top border.
+Up/Down and k/j wrap between the first and last workspace.
 JSON and piped output never prompt. An optional workspace name resolves its path
 directly through any alias.
 
@@ -112,6 +113,7 @@ registers a new nested command and verifies inherited behavior.
 ```sh
 ./bin/wtf-pilot list -p          # GitHub PRs: draft/open/merged/closed
 ./bin/wtf-pilot list -p -k       # PRs plus local hook stages
+./bin/wtf-pilot list -p -c       # PRs plus GitHub CI check counts
 ./bin/wtf-pilot list -p --refresh
 ./bin/wtf-pilot list --pr=false  # override an inherited preference
 ```
@@ -145,16 +147,59 @@ and future registered flags use the same resolver and their own value validation
 Help remains available even if configuration is invalid.
 
 PR loading uses `gh` authentication and readonly JJ bookmark/revision inspection.
-On a terminal it displays cached/pending results first, then refreshes in place.
-Fresh cache lasts two minutes; refresh uses at most three Go workers and an
+PRs and Linear-first review links are enabled by default; use
+`--pr=false` to disable them. On a terminal, matched PRs show a Nerd Font pull
+request glyph and number as an OSC 8 hyperlink. Ghostty handles opening the link
+through its normal link interaction. Redirected output stays plain; JSON keeps
+the GitHub URL and resolved review destination in each PR record. The visible
+glyph, number, state, and colors stay the same for both destinations.
+
+The embedded review adapter uses Node.js and the existing Codex MCP OAuth
+connection. It verifies the repository's expected Linear workspace before
+resolving the PR. Default connections use Cascading Labs; `~/Desktop/Work/**`
+uses the configured `alita` profile and `linear-alita` connection. A found review
+opens its canonical Linear URL; no matching review or an unavailable connection
+falls back to GitHub. No token is copied into WTF, and no model turn is started.
+Account routing follows the current Codex wrapper and explicit project MCP
+configuration. Only the selected Linear connection is started.
+
+`wtf doctor` reports the optional Linear connection, verified workspace, and
+lookup failures alongside JJ/GitHub readiness. Missing Node/Codex, unavailable
+authentication, missing review tools, and wrong-workspace routing include repair
+guidance. These optional warnings do not block normal GitHub-backed operation.
+No review for a particular PR is a normal fallback, not a failed diagnostic.
+
+Verified review destinations are cached for five minutes and confirmed missing
+reviews for one minute, scoped to repository/account configuration. Transient
+lookup failures are retried on the next refresh. `ls --refresh` rechecks the
+destination. PR state and check counts still refresh independently.
+Draft, open, closed, and merged PRs use distinct Octicon Nerd Font glyphs and
+the theme's muted, success, error, and accent colors respectively.
+CI checks are enabled by default in a separate column. `✗ 1` means one failed
+GitHub check; `↻ 2` means two pending checks;
+`✓ 3` means three passing checks. Mixed failures and pending checks show both
+counts. Cancelled/skipped checks use `⊘`, and unknown or incomplete observations
+use `?`. No PR or no checks leaves a blank cell. Clicking a CI count opens the
+PR's Checks tab. Counts describe GitHub's rollup for the published PR head;
+local hook stages remain separate. JSON includes the head and all category counts.
+Use `--checks=false` to hide CI, or `--pr=false --checks=false` to disable both
+GitHub views.
+Every list invocation with PRs enabled checks GitHub. The interactive browser
+displays cached/pending results immediately, then lazily updates the frame with
+the live response. It rechecks automatically every 15 seconds while open.
+A `↻` caption indicates an active lookup.
+Refreshes run in the background, stay bounded, and are cancelled when the picker
+closes. JSON and redirected output wait for the live lookup and emit one result.
+Cached data is retained as a marked fallback when GitHub is unavailable.
+Refresh uses at most three Go workers and an
 eight-second network budget. JSON emits one final result with URLs, observed-at
 timestamps, association state, and revision relationships. Stale matches retain a
 `~` marker on failed refresh. Unavailable is distinct from unassociated.
 
-Lookup considers the latest 200 PRs per repository; **unassociated** means no match
+Lookup considers the latest 200 PRs per repository; a blank PR cell means no match
 in that result, not proof that a workspace never had a PR. Associations use current
 or parent bookmarks and exact revision IDs, never workspace names. Unsnapshotted
-filesystem changes and GitHub Actions CI are not inspected by this view.
+filesystem changes are not inspected by this view.
 
 ## Hook API
 

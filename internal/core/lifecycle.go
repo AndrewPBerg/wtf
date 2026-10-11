@@ -350,25 +350,36 @@ func (a *App) Hook(ctx context.Context, name string, args ...string) (Workspace,
 }
 
 type Health struct {
-	Workspace Workspace `json:"workspace"`
-	Claims    []Claim   `json:"claims"`
-	Issues    []string  `json:"issues"`
+	Workspace Workspace   `json:"workspace"`
+	Claims    []Claim     `json:"claims"`
+	Issues    []string    `json:"issues"`
+	Tools     []ToolCheck `json:"tools"`
 }
 
 func (a *App) Doctor(ctx context.Context) (Health, error) {
+	h := Health{Claims: []Claim{}, Issues: []string{}, Tools: doctorTools(ctx, a.Cwd, doctorBinary, probeDoctor)}
+	h.Tools = append(h.Tools, a.linearToolCheck(ctx))
+	for _, check := range h.Tools {
+		if check.Required && check.Status != "ready" {
+			h.Issues = append(h.Issues, check.Message)
+		}
+	}
+	if len(h.Issues) > 0 {
+		return h, Fail("unhealthy_prerequisites", strings.Join(h.Issues, "; "))
+	}
 	r, e := Discover(ctx, a.Cwd)
 	if e != nil {
-		return Health{}, e
+		return h, e
 	}
 	w, e := r.Workspace(ctx)
 	if e != nil {
-		return Health{}, e
+		return h, e
 	}
 	claims, e := r.Claims(w)
 	if e != nil {
-		return Health{}, e
+		return h, e
 	}
-	h := Health{w, claims, []string{}}
+	h.Workspace, h.Claims = w, claims
 	if _, e = LoadConfig(w.Path); e != nil {
 		h.Issues = append(h.Issues, e.Error())
 	}

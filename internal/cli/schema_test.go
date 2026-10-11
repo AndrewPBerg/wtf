@@ -80,7 +80,7 @@ func TestConfigurationSchemaDocumentsTypesAliasesAndNestedCommands(t *testing.T)
 		t.Fatal("missing portable schema dialect")
 	}
 	pr := schemaAt(t, doc, "properties", "commands", "definitions", "list", "definitions", "pr")
-	if pr["type"] != "boolean" || pr["default"] != false || !strings.Contains(pr["description"].(string), "--pr / -p") {
+	if pr["type"] != "boolean" || pr["default"] != true || !strings.Contains(pr["description"].(string), "--pr / -p") {
 		t.Fatalf("PR flag metadata missing: %+v", pr)
 	}
 	alias := schemaAt(t, doc, "properties", "commands", "properties", "ls")
