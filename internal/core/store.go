@@ -267,8 +267,8 @@ type WorkspaceView struct {
 func views(s State) []WorkspaceView {
 	out := []WorkspaceView{}
 	for _, w := range s.Workspaces {
-		_, e := os.Stat(w.Path)
-		out = append(out, WorkspaceView{Workspace: w, RepositoryID: s.RepositoryID, RepositoryPath: s.Anchor, Exists: e == nil})
+		info, e := os.Stat(w.Path)
+		out = append(out, WorkspaceView{Workspace: w, RepositoryID: s.RepositoryID, RepositoryPath: s.Anchor, Exists: e == nil && info.IsDir()})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
@@ -278,7 +278,7 @@ func views(s State) []WorkspaceView {
 func (a *App) List(ctx context.Context, global, here bool) ([]WorkspaceView, error) {
 	if !global {
 		if r, e := Discover(ctx, a.Cwd); e == nil {
-			s, e := r.Load()
+			s, e := r.loadReconciled(ctx)
 			if e != nil {
 				return nil, e
 			}
@@ -304,7 +304,7 @@ func (a *App) List(ctx context.Context, global, here bool) ([]WorkspaceView, err
 				continue
 			}
 		}
-		s, e := (Repo{entry.Path, entry.Store}).Load()
+		s, e := (Repo{entry.Path, entry.Store}).loadReconciled(ctx)
 		if e != nil {
 			return nil, fmt.Errorf("%s: %w", entry.Path, e)
 		}

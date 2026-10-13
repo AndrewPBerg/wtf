@@ -15,20 +15,21 @@ import (
 
 // Runtime owns a restricted Lua hook interpreter and workspace context.
 type Runtime struct {
-	App         *App
-	Repo        Repo
-	Workspace   Workspace
-	L           *lua.LState
-	Context     context.Context
-	Cancel      context.CancelFunc
-	CTX         *lua.LTable
-	Hooks       *lua.LTable
-	Overrides   *lua.LTable
-	ModuleRoot  string
-	Modules     map[string]lua.LValue
-	Loading     map[string]bool
-	Request     *lua.LTable
-	Destination string
+	App           *App
+	Repo          Repo
+	Workspace     Workspace
+	L             *lua.LState
+	Context       context.Context
+	Cancel        context.CancelFunc
+	CTX           *lua.LTable
+	Hooks         *lua.LTable
+	Overrides     *lua.LTable
+	ModuleRoot    string
+	Modules       map[string]lua.LValue
+	Loading       map[string]bool
+	Request       *lua.LTable
+	Destination   string
+	CreationHooks []string
 }
 
 func (a *App) runtime(ctx context.Context, r Repo, w Workspace) (*Runtime, error) {
@@ -36,6 +37,10 @@ func (a *App) runtime(ctx context.Context, r Repo, w Workspace) (*Runtime, error
 	if e != nil {
 		return nil, e
 	}
+	return a.runtimeWithConfig(ctx, r, w, c)
+}
+
+func (a *App) runtimeWithConfig(ctx context.Context, r Repo, w Workspace, c Config) (*Runtime, error) {
 	hookCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	L := newLua(hookCtx)
 	rt := &Runtime{App: a, Repo: r, Workspace: w, L: L, Context: hookCtx, Cancel: cancel}
@@ -52,8 +57,10 @@ func (a *App) runtime(ctx context.Context, r Repo, w Workspace) (*Runtime, error
 	rt.Bind(w)
 	project := L.NewTable()
 	project.RawSetString("path", lua.LString(r.Root))
-	if state, err := r.Load(); err == nil {
-		project.RawSetString("id", lua.LString(state.RepositoryID))
+	if r.Store != "" {
+		if state, err := r.Load(); err == nil {
+			project.RawSetString("id", lua.LString(state.RepositoryID))
+		}
 	}
 	rt.CTX.RawSetString("project", project)
 	L.SetGlobal("print", L.NewFunction(func(L *lua.LState) int {
@@ -81,7 +88,7 @@ func (r *Runtime) Close() { r.Cancel(); r.L.Close() }
 // Bind sets the current registered workspace in the hook context.
 func (r *Runtime) Bind(w Workspace) {
 	r.Workspace = w
-	if project, ok := r.CTX.RawGetString("project").(*lua.LTable); ok {
+	if project, ok := r.CTX.RawGetString("project").(*lua.LTable); ok && r.Repo.Store != "" {
 		if state, err := r.Repo.Load(); err == nil {
 			project.RawSetString("id", lua.LString(state.RepositoryID))
 		}
@@ -158,6 +165,7 @@ func (r *Runtime) Override(op, name, from string, def func(string, string) (Work
 		if e != nil {
 			return r.raise(L, e)
 		}
+		r.Bind(w)
 		L.Push(luaWorkspace(L, w))
 		return 1
 	})
@@ -169,6 +177,9 @@ func (r *Runtime) Override(op, name, from string, def func(string, string) (Work
 func (r *Runtime) requireWorkspace(_ *lua.LState) error {
 	if r.Workspace.ID == "" {
 		return Fail("workspace_required", "Call default creation before workspace-specific stages")
+	}
+	if r.Workspace.Status == "removed" {
+		return Fail("workspace_unavailable", "Workspace-specific operations cannot run after removal")
 	}
 	return nil
 }
@@ -184,7 +195,11 @@ func (r *Runtime) install() {
 			return r.raise(L, e)
 		}
 		o := StageOptions{}
-		if opts, ok := L.Get(4).(*lua.LTable); ok {
+		opts, e := luaOptions(L, L.Get(4), "inputs", "check", "reuse", "timeout_seconds", "env", "cwd", "inherit_env")
+		if e != nil {
+			return r.raise(L, e)
+		}
+		{
 			if v := opts.RawGetString("inputs"); v != lua.LNil {
 				o.Inputs, e = tableStrings(L, v)
 				if e != nil {
@@ -197,7 +212,19 @@ func (r *Runtime) install() {
 					return r.raise(L, e)
 				}
 			}
-			o.Reuse = lua.LVAsBool(opts.RawGetString("reuse"))
+			o.Reuse, e = boolOption(opts, "reuse", false)
+			if e != nil {
+				return r.raise(L, e)
+			}
+			o.Cwd, e = stringOption(opts, "cwd", ".")
+			if e != nil {
+				return r.raise(L, e)
+			}
+			inherit, err := boolOption(opts, "inherit_env", true)
+			if err != nil {
+				return r.raise(L, err)
+			}
+			o.NoInheritEnv = !inherit
 			if v := opts.RawGetString("timeout_seconds"); v != lua.LNil {
 				n, ok := v.(lua.LNumber)
 				if !ok || math.Trunc(float64(n)) != float64(n) || n < 1 || n > 3600 {
@@ -205,23 +232,9 @@ func (r *Runtime) install() {
 				}
 				o.TimeoutSeconds = int(n)
 			}
-			if v := opts.RawGetString("env"); v != lua.LNil {
-				t, ok := v.(*lua.LTable)
-				if !ok {
-					return r.raise(L, Fail("invalid_hook", "env must be a string map"))
-				}
-				o.Env = map[string]string{}
-				var bad bool
-				t.ForEach(func(k, v lua.LValue) {
-					if k.Type() != lua.LTString || v.Type() != lua.LTString {
-						bad = true
-					} else {
-						o.Env[k.String()] = v.String()
-					}
-				})
-				if bad {
-					return r.raise(L, Fail("invalid_hook", "env must contain string keys and values"))
-				}
+			o.Env, o.EnvUnset, e = luaEnvironment(opts.RawGetString("env"))
+			if e != nil {
+				return r.raise(L, e)
 			}
 		}
 		st, e := r.App.Stage(r.Context, r.Repo, r.Workspace, name, argv, o)

@@ -7,11 +7,14 @@ wrapping, and recorded command stages. The first real hook is intentionally smal
 ```sh
 GOMAXPROCS=1 go build -p 1 -o bin/wtf-pilot ./cmd/wtf
 ./bin/wtf-pilot new . --json
-./bin/wtf-pilot new ../agent-a --from @ --json
+./bin/wtf-pilot new agent-a --from @ --json
 ```
 
-`new PATH` resolves a destination relative to the current directory, or accepts an
-absolute path. `new .` registers and prepares the current JJ workspace. An existing
+`new NAME` creates a sibling of the registered main repository, using exactly the
+supplied name without a repository prefix or suffix. Creation from another
+workspace or a subdirectory keeps the same flat layout. Explicit relative paths
+such as `./agent-a` or `../agent-a` resolve from the current directory; absolute
+paths also work. `new .` registers and prepares the current JJ workspace. An existing
 workspace root is prepared in place; a missing path creates a workspace at that
 exact location, named after its basename. `--from` applies only to creation.
 Bare `wtf` shows help. `new PATH` is the public entry point for workspace creation
@@ -35,43 +38,39 @@ ownership, so registration never makes them removable. Existing files, ordinary
 directories, and directories inside a workspace are rejected. Project options
 follow `--`, for example `wtf new . -- --compose --test`.
 
-The project selects [.wtf/hooks/init.lua](.wtf/hooks/init.lua) explicitly:
+Creation hooks are declared directly in `.wtf/config.toml`:
 
 ```toml
 version = 1
-lua = "hooks/init.lua"
+
+[new]
+after = ["hello_world"]
 ```
 
 ```lua
-return {
-  hooks = { guard = require("guard"), prepare = require("prepare") },
-  overrides = { init = require("initialize") },
-}
-```
+-- .wtf/hooks/hello_world.lua
+local wtf = require("wtf")
 
-The imported implementation wraps the operation:
-
-```lua
-init = function(ctx, request, default)
-  ctx:hook("guard", request)
-  local workspace = default(request) -- registration, preserving existing identity
-  ctx:hook("prepare", request)
-  return workspace
+return function(event)
+  wtf.notify("hello world", "success")
 end
 ```
 
-The `init` override calls `prepare` and any optional service/test stages.
-`new` handles native creation before invoking that operation. `prepare` prints a message and runs a
-synchronous `workspace-check` stage. Filenames have no automatic behavior; only
-the entrypoint's returned table registers hooks and overrides. Run a hook again
-from the child to inspect reuse:
+WTF creates and registers the workspace, then runs the listed callbacks in order.
+No `init.lua` or imperative creation wrapper is required. A failure stops the
+sequence and retains the workspace and completed stages. Existing destinations
+do not rerun creation hooks. Unlisted files never run. Git-ignored `.wtf` files
+stay local; this sequence uses the creating workspace's configuration.
+Advanced Lua entrypoints and lifecycle overrides remain available separately.
+See [hooks](docs/hooks.md) for the callback event and current package API.
+See [files, commands and environment](docs/lua-substrate.md) for substrate APIs
+and the [repeatable hello-world examples](examples/hello-world/README.md).
 
-```sh
-cd ../agent-a
-/path/to/wtf-pilot hook run prepare --json
-/path/to/wtf-pilot doctor --here --json
-/path/to/wtf-pilot run test --json
-```
+`new`, `list`, `remove`, and `invocation` all support ordered `before`, `after`,
+`failed`, and `finally` arrays. Before hooks can block the operation; failed hooks
+inspect the original error; finally hooks run with bounded cleanup time even after
+cancellation. The [hello-world matrix](docs/hooks.md#trigger-phases) verifies all
+16 combinations. `[new].hooks` remains compatible as a post-creation shorthand.
 
 Every command accepts `--help` and `--json`, including JSON help and argument errors.
 `wtf doctor` combines configuration validation, tool readiness and workspace health.
@@ -80,7 +79,7 @@ without executing hooks or changing state. There is no separate `validate` comma
 JSON stdout contains exactly one versioned result. Hook messages and subprocess
 output go to stderr. Help and config validation never execute hooks.
 
-Human-readable output is the default. `list` and its only alias, `ls`, open
+Human-readable output is the default. `list` and its aliases, `ls` and `sw`, open
 an inline Bubble Tea workspace browser on a terminal
 below your prompt, with one horizontal row per workspace. Arrow keys move,
 Enter selects, and Esc cancels. Pages resize with the terminal, capped at ten
@@ -127,8 +126,22 @@ Source that installed file from your personal Bash configuration so new terminal
 also enter the selected workspace. Existing aliases such as `f='wtf'` use the same
 function. `command wtf` invokes the underlying CLI directly.
 
-`list` shows active workspaces;
-`--all` (`-a`) includes removed records. A dot marks the current workspace.
+Enable Bash completions for `wtf` and `f` in the current shell:
+
+```bash
+source <(wtf completion bash)
+```
+
+Completions include commands, aliases, flags, live workspace names, and configured
+tasks. Workspace and task names support fuzzy matches: `f ls tmsg<Tab>` can
+complete `testing-msg`. Generate Zsh or Fish scripts with `wtf completion zsh`
+or `wtf completion fish`; see [shell completion setup](docs/completion.md).
+
+`list` shows active workspaces whose directories are available;
+`--all` (`-a`) includes retained unavailable and removed records. Listing removes
+confirmed missing, idle registrations from WTF, JJ, and native Git metadata so
+their names can be reused. Resource owners and locked workspaces are retained.
+A dot marks the current workspace.
 Local lifecycle state and full workspace paths remain in JSON and `doctor`.
 The workspace name carries the editor link, so there is no separate PATH column.
 `list --hook` (or `list -k`) adds local **Stages**:
@@ -164,6 +177,12 @@ the UTC `created_at` timestamp when known.
 description. List and remove display it below the highlighted row. A repeated
 `new PATH` preserves it; `new PATH -m TEXT` updates it, and `-m ""` clears it.
 JSON exposes the description as `message` when nonempty.
+
+Use `wtf change hello_world -m "Picking this up tomorrow"` to replace the
+message later without preparing the workspace again.
+`wtf change hello_world -m ""` clears it;
+`wtf change -m "New message"` targets the current workspace.
+See [wtf change](docs/change.md) for details.
 
 ```sh
 ./bin/wtf-pilot list -p          # GitHub PRs: draft/open/merged/closed

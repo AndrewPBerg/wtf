@@ -1,6 +1,6 @@
 package cli
 
-//go:generate go run -p 1 ../../cmd/wtf-schema -output ../../.wtf/schema.json
+//go:generate go run -p 1 ../../cmd/wtf-schema -output testdata/config-schema.json
 
 import (
 	"encoding/json"

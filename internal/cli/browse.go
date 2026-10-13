@@ -294,7 +294,7 @@ func (m browser) View() string {
 	now := time.Now()
 	for _, row := range m.rows[page.start:page.end] {
 		ageWidth = max(ageWidth, len(workspaceAge(row.CreatedAt, now)))
-		nameWidth = max(nameWidth, min(32, lipgloss.Width(plain(row.Name))))
+		nameWidth = max(nameWidth, min(32, lipgloss.Width(plain(workspaceDisplayName(row)))))
 		if m.showPRs {
 			prWidth = max(prWidth, min(24, lipgloss.Width(prPresentation(m.p, row.GitHub))))
 		}
@@ -369,7 +369,7 @@ func (m browser) View() string {
 		if !row.Exists || row.Status == "removed" {
 			current = "!"
 		}
-		label := pointer + " " + current + " " + cell(workspaceLinkPresentation(m.p, row, row.Name), nameWidth) + "  "
+		label := pointer + " " + current + " " + cell(workspaceLinkPresentation(m.p, row, workspaceDisplayName(row)), nameWidth) + "  "
 		if m.showPRs {
 			label += cell(prPresentation(m.p, row.GitHub), prWidth) + "  "
 		}

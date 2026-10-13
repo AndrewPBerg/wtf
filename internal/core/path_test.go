@@ -45,6 +45,50 @@ func TestNewUsesExactDestinationPathsAndPreservesHookRequests(t *testing.T) {
 	}
 }
 
+func TestNewBareNamesStayBesideRepositoryFromEveryWorkspace(t *testing.T) {
+	a, r, anchor := fixture(t)
+	parent := filepath.Dir(anchor.Path)
+	first, err := a.NewWorkspace(t.Context(), "FirstCase", "@")
+	if err != nil || first.Path != filepath.Join(parent, "FirstCase") {
+		t.Fatalf("first workspace is not a sibling: %+v %v", first, err)
+	}
+	// Even an explicitly placed workspace must not become the placement anchor.
+	if err := os.Mkdir(filepath.Join(anchor.Path, "nested"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	nested, err := a.NewWorkspace(t.Context(), "./nested/ExplicitCase", "@")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, cwd := range []string{anchor.Path, first.Path, nested.Path} {
+		sub := filepath.Join(cwd, "subdirectory")
+		if err := os.Mkdir(sub, 0700); err != nil {
+			t.Fatal(err)
+		}
+		a.Cwd = sub
+		name := []string{"FromRepo", "FromSibling", "FromNested"}[i]
+		child, err := a.NewWorkspace(t.Context(), name, "@", "--KeepCase")
+		want := filepath.Join(parent, name)
+		if err != nil || child.Path != want || child.Name != name || !child.Owned {
+			t.Fatalf("creation from %s: %+v %v; want %s", sub, child, err, want)
+		}
+		repeated, err := a.NewWorkspace(t.Context(), name, "")
+		if err != nil || repeated.Code != "already_initialized" || repeated.ID != child.ID {
+			t.Fatalf("bare name retry changed identity: %+v %v", repeated, err)
+		}
+		native, err := NativeWorkspaces(t.Context(), anchor.Path)
+		if err != nil || native[name] != want {
+			t.Fatalf("native placement differs: %+v %v", native, err)
+		}
+		if _, err := r.Select(name); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(sub, name)); !os.IsNotExist(err) {
+			t.Fatalf("destination was also created inside invoking directory: %v", err)
+		}
+	}
+}
+
 func TestNewRegistersExistingNativeWorkspaceWithoutTakingOwnership(t *testing.T) {
 	a, r, anchor := fixture(t)
 	path := filepath.Join(filepath.Dir(anchor.Path), "ExistingCase")

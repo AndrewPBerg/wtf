@@ -2,6 +2,14 @@
 
 Run `wtf remove` or `wtf rm` to open the inline cleanup picker.
 
+Listing reconciles confirmed missing, idle workspace registrations. It forgets
+their JJ registration, removes only their stale Git administrative entry, and
+drops them from WTF's registry, allowing their names and paths to be reused.
+This cleanup does not remove source directories. In-flight operations, resource
+claims, Git worktree locks, broken symlinks, and access errors prevent pruning.
+Other unavailable paths are hidden from normal `ls` and removal candidates;
+`wtf ls --all --json` can still inspect retained records with `exists: false`.
+
 The `AGE` column shows time since first WTF registration in whole seconds (`S`),
 minutes (`M`), hours (`H`), days (`D`), or weeks (`W`). Legacy records without a
 timestamp show `?`. Age is informational and does not affect removal eligibility.
@@ -22,7 +30,9 @@ cleanup warning. Descriptions are also visible during the removal review.
 - Enter opens the review, then Enter confirms removal. Esc returns to the selection; Ctrl+C cancels.
 
 Safety inspection dispatches workspaces in display order, with up to 32 concurrent
-inspections and a separate bounded metadata lookup for each eligible workspace.
+local inspections. Workspaces share the existing successful GitHub observation
+while it is within the two-minute metadata lifetime. Only missing or expired
+observations require targeted GraphQL discovery, without CI hydration.
 Results appear as they finish, without waiting for earlier rows. Completed rows
 can be selected and reviewed while other rows are checking; checking rows cannot
 be selected.
@@ -40,14 +50,18 @@ verified workspaces. Direct named removal keeps its normal safety checks.
 
 Integration is verified through JJ ancestry against the available main/master
 bookmark, preferring origin's last-fetched bookmark. An exact GitHub PR head
-freshly observed as merged into main/master also verifies integration, including
-squash merges. A closed PR, matching branch name or stale cached result does not
+observed as merged into main/master within the metadata lifetime also verifies
+integration, including squash merges. A closed PR, matching branch name or stale cached result does not
 prove integration. Unknown observations remain warnings. Remote bookmarks reflect
 the last fetch; inspection does not fetch or update-stale automatically.
 
 Normal JJ snapshotting captures on-disk edits during inspection. Every deletion
 rechecks source changes, workspace identity and resource ownership and invokes
-the existing project removal lifecycle. Each result is reported separately if a
+the existing project removal lifecycle. The picker carries its exact-revision
+assessment into deletion; confirmation makes no GitHub requests. Source changes
+made after inspection or by removal hooks cannot use the earlier integration
+proof. Force removal also uses local checks without provider requests.
+Each result is reported separately if a
 multi-selection only partially succeeds.
 
 `wtf remove NAME` keeps direct single-workspace removal. `wtf remove --json`

@@ -26,7 +26,11 @@
   and account configuration. Never cache transient failures as missing reviews.
 - Use the existing Codex MCP OAuth connection and verify its workspace before
   review lookup. Start no model turn and emit no credential or child diagnostics.
-- Hook registration is explicit: TOML selects a Lua entrypoint, and its returned
-  hooks/overrides table registers functions. Never infer behavior from filenames.
+- Hook registration is explicit: new/list/remove/invocation declare ordered before,
+  after, failed and finally modules, each returning function(event). `[new].hooks`
+  remains a post-creation shorthand. Advanced `lua` entrypoints return tables;
+  the two modes cannot be combined. Unlisted files do not run. Inspection/help,
+  version, doctor and setup teardown never run callbacks. Cleanup preserves the
+  primary error and runs with bounded cancellation-independent contexts.
   Imported modules stay within the selected package. Checks may block before
   mutation; hook arguments after `--` remain project-owned and preserve case.

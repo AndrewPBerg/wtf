@@ -34,9 +34,9 @@ func TestNewMessageFlagRoundTripDefaultsAndCase(t *testing.T) {
 		want string
 	}{
 		{[]string{"NeW", ".", "--MeSsAgE", "Anchor Description"}, "Anchor Description"},
-		{[]string{"NEW", "../ChildCase", "-M", "Hello This Is Testing 日本", "-F", "@"}, "Hello This Is Testing 日本"},
-		{[]string{"new", "../ChildCase"}, "Hello This Is Testing 日本"},
-		{[]string{"new", "../ChildCase", "-m", "Updated"}, "Updated"},
+		{[]string{"NEW", "ChildCase", "-M", "Hello This Is Testing 日本", "-F", "@"}, "Hello This Is Testing 日本"},
+		{[]string{"new", "ChildCase"}, "Hello This Is Testing 日本"},
+		{[]string{"new", "ChildCase", "-m", "Updated"}, "Updated"},
 	} {
 		result, code, logs := invoke(t, a, append(test.args, "-J")...)
 		if code != 0 {
@@ -49,6 +49,9 @@ func TestNewMessageFlagRoundTripDefaultsAndCase(t *testing.T) {
 		var workspace core.Initialization
 		if err := json.Unmarshal(data, &workspace); err != nil || workspace.Message != test.want {
 			t.Fatalf("message changed: %s %v", data, err)
+		}
+		if workspace.Name == "ChildCase" && workspace.Path != filepath.Join(dir, "ChildCase") {
+			t.Fatalf("bare name did not create a sibling: %+v", workspace)
 		}
 	}
 	for _, args := range [][]string{{"LS", "--pr=false", "--checks=false"}, {"RM"}} {
@@ -79,8 +82,8 @@ func TestNewMessageFlagRoundTripDefaultsAndCase(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"new", "../ChildCase"}, "Inherited Description"},
-		{[]string{"new", "../ChildCase", "--MESSAGE", ""}, ""},
+		{[]string{"new", "ChildCase"}, "Inherited Description"},
+		{[]string{"new", "ChildCase", "--MESSAGE", ""}, ""},
 	} {
 		result, code, logs := invoke(t, a, append(test.args, "-j")...)
 		if code != 0 {

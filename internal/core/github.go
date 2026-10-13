@@ -178,7 +178,7 @@ type PRClient interface {
 type GHClient struct{ Binary string }
 
 // List fetches PR state and checks for the repository.
-func (client GHClient) List(ctx context.Context, repository string) ([]PullRequest, error) {
+func (client GHClient) binary(ctx context.Context) string {
 	binary := client.Binary
 	if binary == "" {
 		binary = "gh"
@@ -193,6 +193,12 @@ func (client GHClient) List(ctx context.Context, repository string) ([]PullReque
 			}
 		}
 	}
+	return binary
+}
+
+// List fetches PR state and checks for the repository.
+func (client GHClient) List(ctx context.Context, repository string) ([]PullRequest, error) {
+	binary := client.binary(ctx)
 	cmd := exec.CommandContext(ctx, binary, "pr", "list", "--repo", repository, "--state", "all", "--limit", "200", "--json", "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,headRepositoryOwner,isCrossRepository,statusCheckRollup")
 	var data bytes.Buffer
 	cmd.Stdout = &data
@@ -223,6 +229,7 @@ type prGroup struct {
 	Cached               *prCacheEntry
 	Refresh              bool
 	Error                string
+	Transient            bool // Targeted observations must not overwrite the repository-wide cache.
 }
 
 // PRPlan groups workspace observations for a bounded refresh.
@@ -521,7 +528,9 @@ func (s *PRService) Refresh(ctx context.Context, plan PRPlan) []WorkspaceView {
 		}
 		entry := prCacheEntry{g.Repository, s.Now().UTC(), result.PRs}
 		g.Cached = &entry
-		updates[g.ID] = entry
+		if !g.Transient {
+			updates[g.ID] = entry
+		}
 	}
 	persist, done := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 	defer done()

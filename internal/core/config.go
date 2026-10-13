@@ -19,12 +19,44 @@ type Task struct {
 	TimeoutSeconds int      `toml:"timeout_seconds" schema:"Task timeout in seconds. Omitted or zero uses 120 seconds." schema-minimum:"0" schema-maximum:"3600" schema-default:"0"`
 }
 
+// HookTriggers selects explicit modules for lifecycle phases.
+type HookTriggers struct {
+	Hooks   []string `toml:"hooks" schema:"Compatibility shorthand for after. For new, runs inside native creation; other surfaces run these before explicit after hooks. Modules return function(event), names preserve case, and lists do not inherit. Prefer explicit phase arrays."`
+	Before  []string `toml:"before" schema:"Ordered modules run before the operation. A failure blocks the operation. Modules return function(event)."`
+	After   []string `toml:"after" schema:"Ordered modules run after a successful operation. A failure stops the sequence and fails the command."`
+	Failed  []string `toml:"failed" schema:"Modules run on failure with event.error. All are attempted; they cannot hide the primary error."`
+	Finally []string `toml:"finally" schema:"Modules run on success or failure. All are attempted with bounded cleanup time, including after cancellation."`
+}
+
+// CreationHooks retains the original Go type name for callers.
+type CreationHooks = HookTriggers
+
+func (h HookTriggers) phases() []string {
+	var names []string
+	for _, phase := range [][]string{h.Hooks, h.Before, h.After, h.Failed, h.Finally} {
+		names = append(names, phase...)
+	}
+	return names
+}
+
+func (c Config) hookModules() []string {
+	var names []string
+	for _, scope := range []HookTriggers{c.New, c.List, c.Remove, c.Invocation} {
+		names = append(names, scope.phases()...)
+	}
+	return names
+}
+
 // Config contains project hooks, tasks and command defaults.
 type Config struct {
-	Version  int                       `toml:"version" schema:"WTF configuration format version." schema-required:"true" schema-const:"1"`
-	Lua      string                    `toml:"lua" schema:"Explicit Lua registration module relative to .wtf, such as hooks/init.lua. Filenames never register hooks; the returned hooks/overrides table does. Project modules may be imported with require."`
-	Tasks    map[string]Task           `toml:"tasks" schema:"Named project tasks. Tasks use the selected project's configuration rather than inherited command defaults."`
-	Commands map[string]map[string]any `toml:"commands" schema:"Defaults for registered command flags. Precedence is global, outer parent, nearest parent, leaf, then explicit CLI flags. These schema defaults are annotations and do not perform the merge."`
+	Version    int                       `toml:"version" schema:"WTF configuration format version." schema-required:"true" schema-const:"1"`
+	Lua        string                    `toml:"lua" schema:"Explicit Lua registration module relative to .wtf, such as hooks/init.lua. Filenames never register hooks; the returned hooks/overrides table does. Project modules may be imported with require."`
+	New        HookTriggers              `toml:"new" schema:"Hooks around creation of a missing destination. Existing JJ workspace preparation does not run these phases. No registration entrypoint is needed."`
+	List       HookTriggers              `toml:"list" schema:"Hooks around the list command, including aliases. after receives the listing or selection as event.result."`
+	Remove     HookTriggers              `toml:"remove" schema:"Hooks around the remove command, including aliases. Native removal safety checks remain authoritative."`
+	Invocation HookTriggers              `toml:"invocation" schema:"Hooks around execution commands. Inspection, help, version and setup teardown never invoke callbacks. Wraps command-specific phases."`
+	Tasks      map[string]Task           `toml:"tasks" schema:"Named project tasks. Tasks use the selected project's configuration rather than inherited command defaults."`
+	Commands   map[string]map[string]any `toml:"commands" schema:"Defaults for registered command flags. Precedence is global, outer parent, nearest parent, leaf, then explicit CLI flags. These schema defaults are annotations and do not perform the merge."`
 }
 
 func relative(root, path string) (string, error) {

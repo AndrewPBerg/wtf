@@ -133,7 +133,7 @@ func TestJSONSuccessFailuresAndHookOutputIsolation(t *testing.T) {
 		}
 	}
 	failures := [][]string{{"new"}, {"hook", "run", "missing"}, {"hook", "run", "fail"}, {"run", "missing"}, {"ports", "claim", "bad", "--port", "70000"}, {"remove", "default"}, {"ls", "missing"}, {"doctor"}}
-	for _, command := range []string{"list", "ls"} {
+	for _, command := range []string{"list", "ls", "sw", "SW", "Sw"} {
 		for _, all := range []bool{false, true} {
 			args := []string{command, "--json"}
 			if all {
@@ -208,7 +208,7 @@ func TestInitIsNotACommand(t *testing.T) {
 	}
 }
 
-func TestListHasOnlyLsAlias(t *testing.T) {
+func TestListHasLsAndSwAliases(t *testing.T) {
 	a := core.New(t.TempDir(), t.TempDir(), nil)
 	result, code, _ := invoke(t, a, "LS", "--json", "--help")
 	if code != 0 || result.Command != "wtf list" {
@@ -216,10 +216,16 @@ func TestListHasOnlyLsAlias(t *testing.T) {
 	}
 	data := result.Data.(map[string]any)
 	aliases, err := json.Marshal(data["aliases"])
-	if err != nil || string(aliases) != `["ls"]` {
+	if err != nil || string(aliases) != `["ls","sw"]` {
 		t.Fatalf("unexpected list aliases: %s %v", aliases, err)
 	}
-	for _, alias := range []string{"switch", "sw", "w", "sww", "SWITCH", "Sw", "W"} {
+	for _, alias := range []string{"sw", "SW", "Sw"} {
+		result, code, _ := invoke(t, a, alias, "--json", "--help")
+		if code != 0 || !result.OK || result.Command != "wtf list" {
+			t.Fatalf("alias %s does not resolve list: %+v", alias, result)
+		}
+	}
+	for _, alias := range []string{"switch", "w", "sww", "SWITCH", "W"} {
 		result, code, _ := invoke(t, a, alias, "--json")
 		if code == 0 || result.OK || result.Error == nil || result.Error.Code != "invalid_arguments" {
 			t.Fatalf("removed alias %s accepted: %+v", alias, result)

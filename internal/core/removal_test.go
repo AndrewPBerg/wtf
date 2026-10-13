@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func removalCandidateByID(t *testing.T, a *App, id string) RemovalCandidate {
@@ -22,7 +23,7 @@ func removalCandidateByID(t *testing.T, a *App, id string) RemovalCandidate {
 	return RemovalCandidate{}
 }
 
-func TestRemovalInspectsMetadataSeparatelyPerWorkspace(t *testing.T) {
+func TestRemovalReusesRecentMetadataAcrossWorkspaceInspections(t *testing.T) {
 	a, r, _ := fixture(t)
 	if _, err := output(t.Context(), r.Root, "git", "remote", "add", "origin", "https://github.com/owner/repo.git"); err != nil {
 		t.Fatal(err)
@@ -48,14 +49,158 @@ func TestRemovalInspectsMetadataSeparatelyPerWorkspace(t *testing.T) {
 			t.Fatalf("single workspace inspection: %+v %v", candidate, err)
 		}
 		if row.Owned && row.Exists && !samePath(row.Path, r.Root) {
-			wantCalls++
+			wantCalls = 1
 		}
 		if calls != wantCalls {
 			t.Fatalf("metadata requests: got %d, want %d", calls, wantCalls)
 		}
 	}
-	if wantCalls != 2 {
-		t.Fatalf("expected two eligible workspaces, got %d", wantCalls)
+	if wantCalls != 1 {
+		t.Fatalf("expected one shared metadata request, got %d", wantCalls)
+	}
+}
+
+func TestRemovalReusesBrowserObservationThroughDeletion(t *testing.T) {
+	a, r, _ := fixture(t)
+	if _, err := output(t.Context(), r.Root, "git", "remote", "add", "origin", "https://github.com/owner/repo.git"); err != nil {
+		t.Fatal(err)
+	}
+	child, err := a.NewWorkspace(t.Context(), "../published", "@")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(child.Path, "input.txt"), []byte("published"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = output(t.Context(), child.Path, "status"); err != nil {
+		t.Fatal(err)
+	}
+	revision, err := removalRevision(t.Context(), child.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.PRs = fakePRClient{call: func(context.Context, string) ([]PullRequest, error) {
+		return []PullRequest{{Number: 42, Head: revision.Commit, State: "MERGED", Base: "main"}}, nil
+	}}
+	rows, err := a.List(t.Context(), false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Metadata().Observe(t.Context(), rows, MetadataRequest{PRs: true, CI: true})
+	a.PRs = fakePRClient{call: func(context.Context, string) ([]PullRequest, error) {
+		t.Error("removal refetched the browser's GitHub observation")
+		return nil, Fail("unexpected_request", "no provider requests allowed")
+	}}
+	candidate := removalCandidateByID(t, a, child.ID)
+	if !candidate.Integrated || candidate.GitHub.Lookup != "cached" || candidate.Evidence != "merged_pr:42" {
+		t.Fatalf("cached proof not reused: %+v", candidate)
+	}
+	if _, err = a.RemoveWithOptions(t.Context(), child.ID, candidate.RemovalOptions(false)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRemovalPreflightCannotHideLaterChangesOrAnotherWorkspace(t *testing.T) {
+	for _, mode := range []string{"disk-edit", "hook-edit", "other-workspace"} {
+		t.Run(mode, func(t *testing.T) {
+			a, r, _ := fixture(t)
+			if mode == "hook-edit" {
+				config(t, r.Root, `return { overrides = { remove = function(ctx, request, default)
+ctx:stage("source-change", {"sh", "-c", "printf changed > input.txt"})
+return default(request)
+end } }`)
+			}
+			child, err := a.NewWorkspace(t.Context(), "../checked", "@")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = output(t.Context(), child.Path, "status"); err != nil {
+				t.Fatal(err)
+			}
+			revision, err := removalRevision(t.Context(), child.Path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = output(t.Context(), r.Root, "bookmark", "create", "main", "-r", revision.Commit); err != nil {
+				t.Fatal(err)
+			}
+			candidate := removalCandidateByID(t, a, child.ID)
+			if !candidate.Integrated {
+				t.Fatalf("preflight failed: %+v", candidate)
+			}
+			target := child.Workspace
+			want := "workspace_has_changes"
+			if mode == "disk-edit" {
+				if err = os.WriteFile(filepath.Join(child.Path, "input.txt"), []byte("new edit"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if mode == "other-workspace" {
+				other, err := a.NewWorkspace(t.Context(), "../other", "@")
+				if err != nil {
+					t.Fatal(err)
+				}
+				target, want = other.Workspace, "inspection_failed"
+			}
+			a.PRs = fakePRClient{call: func(context.Context, string) ([]PullRequest, error) {
+				t.Error("deletion fetched GitHub")
+				return nil, nil
+			}}
+			if _, err = a.RemoveWithOptions(t.Context(), target.ID, candidate.RemovalOptions(false)); ErrorCode(err) != want {
+				t.Fatalf("got %v, want %s", err, want)
+			}
+			if _, err = os.Stat(target.Path); err != nil {
+				t.Fatal("workspace was removed", err)
+			}
+		})
+	}
+}
+
+func TestRemovalForceMakesNoProviderRequests(t *testing.T) {
+	a, r, _ := fixture(t)
+	if _, err := output(t.Context(), r.Root, "git", "remote", "add", "origin", "https://github.com/owner/repo.git"); err != nil {
+		t.Fatal(err)
+	}
+	a.PRs = fakePRClient{call: func(context.Context, string) ([]PullRequest, error) {
+		t.Error("forced deletion fetched GitHub")
+		return nil, nil
+	}}
+	var children []Workspace
+	for i := 0; i < 7; i++ {
+		child, err := a.NewWorkspace(t.Context(), "../discard-"+string(rune('a'+i)), "@")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(filepath.Join(child.Path, "input.txt"), []byte("discard"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = output(t.Context(), child.Path, "status"); err != nil {
+			t.Fatal(err)
+		}
+		children = append(children, child.Workspace)
+	}
+	start := time.Now()
+	for _, child := range children {
+		if _, err := a.RemoveWithOptions(t.Context(), child.ID, RemovalOptions{Force: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Logf("seven forced removals, zero provider requests: %s", time.Since(start))
+}
+
+func TestRemovalRejectsStaleAndFailedProviderProof(t *testing.T) {
+	now, stale := time.Now(), time.Now().Add(-3*time.Minute)
+	for _, info := range []*PRInfo{
+		{Lookup: "cached", CheckedAt: &now}, {Lookup: "fresh", CheckedAt: &now},
+	} {
+		if !recentRemovalMetadata(info) {
+			t.Fatal("recent successful observation rejected")
+		}
+	}
+	for _, info := range []*PRInfo{nil, {Lookup: "cached"}, {Lookup: "cached", CheckedAt: &stale}, {Lookup: "stale", CheckedAt: &now}, {Lookup: "fresh", CheckedAt: &now, Error: "offline"}} {
+		if recentRemovalMetadata(info) {
+			t.Fatal("invalid observation accepted")
+		}
 	}
 }
 

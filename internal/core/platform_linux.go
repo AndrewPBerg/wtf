@@ -7,8 +7,11 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func lock(ctx context.Context, path string) (func(), error) {
@@ -54,3 +57,21 @@ func finishCommand(cmd *exec.Cmd) {
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 }
+
+// Publish a staged directory atomically without replacing any existing entry.
+// The parent descriptor is obtained through os.Root; syscall paths are basenames.
+func commitNewDirectory(root *os.Root, staged, destination string) error {
+	parent, err := root.OpenRoot(filepath.Dir(destination))
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	f, err := parent.Open(".")
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return unix.Renameat2(int(f.Fd()), filepath.Base(staged), int(f.Fd()), filepath.Base(destination), unix.RENAME_NOREPLACE)
+}
+
+func rootReadFlags() int { return os.O_RDONLY | unix.O_NONBLOCK }

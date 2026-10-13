@@ -21,6 +21,10 @@ profile.cov
 # vendor/
 node_modules/
 
+# Python helper-script bytecode
+__pycache__/
+*.py[cod]
+
 # Go workspace file
 go.work
 go.work.sum

@@ -24,6 +24,15 @@ Regenerate after changing command flags or configuration types:
 GOMAXPROCS=1 go generate ./internal/cli
 ```
 
+The checked-in reference lives at `internal/cli/testdata/config-schema.json`.
+Keeping it outside the ignored `.wtf/` directory lets clean checkouts run the
+schema drift test. `wtf setup` generates the local schema from the installed CLI.
+To refresh an existing local schema from source explicitly:
+
+```sh
+GOMAXPROCS=1 go run -p 1 ./cmd/wtf-schema -output .wtf/schema.json
+```
+
 The generator reads Go TOML types and their documentation tags, then walks the
 Cobra command tree for flag types, help text, defaults, and aliases. Shared schema
 references avoid duplicating each definition for aliases and mixed-case patterns.

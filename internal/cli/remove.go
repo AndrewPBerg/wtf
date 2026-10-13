@@ -48,7 +48,7 @@ func (s *Session) remove(ctx context.Context, args []string) (any, error) {
 	for _, row := range rows {
 		if row.Owned && row.Exists && !currentPath(row.Path, s.App.Cwd) {
 			m.metadata = func() []core.WorkspaceView {
-				return s.App.Metadata().Observe(pickerCtx, rows, core.MetadataRequest{PRs: true})
+				return s.App.RemovalMetadata(pickerCtx, rows)
 			}
 			break
 		}
@@ -73,7 +73,7 @@ func (s *Session) remove(ctx context.Context, args []string) (any, error) {
 	}
 	removed := removalResult{Removed: []core.Workspace{}, Failed: []removalFailure{}}
 	for _, candidate := range result.chosen {
-		workspace, removeErr := s.App.RemoveWithOptions(ctx, candidate.ID, core.RemovalOptions{Force: result.force})
+		workspace, removeErr := s.App.RemoveWithOptions(ctx, candidate.ID, candidate.RemovalOptions(result.force))
 		if removeErr != nil {
 			removed.Failed = append(removed.Failed, removalFailure{candidate.Name, core.ErrorCode(removeErr), removeErr.Error()})
 		} else {
@@ -92,7 +92,7 @@ func (s *Session) remove(ctx context.Context, args []string) (any, error) {
 func removalPreview(rows []core.WorkspaceView, cwd string) []core.RemovalCandidate {
 	preview := []core.RemovalCandidate{}
 	for _, row := range rows {
-		if row.Status == "removed" {
+		if row.Status == "removed" || !row.Exists {
 			continue
 		}
 		candidate := core.RemovalCandidate{WorkspaceView: row, Changes: []string{}, Code: "checking", Warning: "Checking cleanup safety…"}
@@ -379,7 +379,7 @@ func (m removalPicker) View() string {
 	now := time.Now()
 	for _, row := range rows {
 		ageWidth = max(ageWidth, len(workspaceAge(row.CreatedAt, now)))
-		nameWidth = max(nameWidth, min(32, lipgloss.Width(plain(row.Name))))
+		nameWidth = max(nameWidth, min(32, lipgloss.Width(plain(workspaceDisplayName(row.WorkspaceView)))))
 		statusWidth = max(statusWidth, min(28, lipgloss.Width(removalStatus(row))))
 		if len(row.Changes) > 0 {
 			changesWidth = max(changesWidth, lipgloss.Width(fmt.Sprintf("! %d", len(row.Changes))))
@@ -428,7 +428,7 @@ func (m removalPicker) View() string {
 		if len(row.Changes) > 0 {
 			changes = fmt.Sprintf("! %d", len(row.Changes))
 		}
-		label := pointer + " " + mark + " " + cell(workspaceLinkPresentation(m.p, row.WorkspaceView, row.Name), nameWidth) + "  " + cell(removalStatus(row), statusWidth) + "  " + cell(changes, changesWidth) + "  " + cell(workspaceAge(row.CreatedAt, now), ageWidth)
+		label := pointer + " " + mark + " " + cell(workspaceLinkPresentation(m.p, row.WorkspaceView, workspaceDisplayName(row.WorkspaceView)), nameWidth) + "  " + cell(removalStatus(row), statusWidth) + "  " + cell(changes, changesWidth) + "  " + cell(workspaceAge(row.CreatedAt, now), ageWidth)
 		lines = append(lines, style.Render(clip(label)))
 	}
 	if m.hasMessages() {

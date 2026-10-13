@@ -11,14 +11,41 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-type hookPackage struct{ Root, Entry string }
+type hookPackage struct {
+	Root, Entry   string
+	CreationHooks []string
+	Modules       []string
+}
 
 var moduleName = regexp.MustCompile(`^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$`)
 var hookOperations = map[string]bool{"init": true, "new": true, "remove": true}
 
-// The TOML entrypoint and its returned registration table are authoritative.
-// Directory names and filenames never register hooks or override operations.
+// Explicit TOML module lists or the selected entrypoint register behavior.
+// Unlisted files never register hooks or override operations.
 func projectHooks(root string, config Config) (hookPackage, error) {
+	modules := config.hookModules()
+	if len(modules) > 0 {
+		if config.Lua != "" {
+			return hookPackage{}, Fail("invalid_config", "Use declarative hook lists or a lua entrypoint, not both")
+		}
+		for _, name := range modules {
+			if !moduleName.MatchString(name) || name == "wtf" || strings.HasPrefix(name, "wtf.") {
+				return hookPackage{}, Fail("invalid_config", "Expected a project hook module name, such as hello_world: "+name)
+			}
+		}
+		path, err := relative(filepath.Join(root, ".wtf"), "hooks")
+		if err != nil {
+			return hookPackage{}, err
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			return hookPackage{}, err
+		}
+		if !info.IsDir() {
+			return hookPackage{}, Fail("invalid_path", "Expected .wtf/hooks to be a directory")
+		}
+		return hookPackage{Root: path, CreationHooks: config.New.Hooks, Modules: modules}, nil
+	}
 	if config.Lua == "" {
 		return hookPackage{}, nil
 	}
@@ -32,17 +59,36 @@ func validateHookPackage(root string, config Config) error {
 	pkg, e := projectHooks(root, config)
 	if e != nil {
 		if os.IsNotExist(e) {
+			if len(config.hookModules()) > 0 {
+				return Fail("hook_missing", "Configured hooks require a .wtf/hooks directory")
+			}
 			return Fail("hook_missing", "Configured Lua hook entrypoint is missing: "+config.Lua)
 		}
 		return e
 	}
-	if pkg.Entry == "" {
+	if pkg.Root == "" {
 		return nil
 	}
 	L := newLua(context.Background())
 	defer L.Close()
-	if _, e = L.LoadFile(pkg.Entry); e != nil {
-		return Fail("invalid_hook", e.Error())
+	paths := []string{}
+	if pkg.Entry != "" {
+		paths = append(paths, pkg.Entry)
+	}
+	for _, name := range pkg.Modules {
+		path, err := relative(pkg.Root, strings.ReplaceAll(name, ".", string(os.PathSeparator))+".lua")
+		if os.IsNotExist(err) {
+			return Fail("hook_missing", "Configured hook is missing: "+name)
+		}
+		if err != nil {
+			return err
+		}
+		paths = append(paths, path)
+	}
+	for _, path := range paths {
+		if _, e = L.LoadFile(path); e != nil {
+			return Fail("invalid_hook", e.Error())
+		}
 	}
 	return nil
 }
@@ -59,12 +105,15 @@ func (r *Runtime) loadLua(path string) (lua.LValue, error) {
 	return value, nil
 }
 func (r *Runtime) registerPackage(pkg hookPackage) error {
-	if pkg.Entry == "" {
+	if pkg.Root == "" {
 		return nil
 	}
 	r.ModuleRoot = pkg.Root
 	r.Modules = map[string]lua.LValue{}
 	r.Loading = map[string]bool{}
+	if err := r.installLuaPackage(); err != nil {
+		return err
+	}
 	r.L.SetGlobal("require", r.L.NewFunction(func(L *lua.LState) int {
 		name := L.CheckString(1)
 		if !moduleName.MatchString(name) {
@@ -73,6 +122,9 @@ func (r *Runtime) registerPackage(pkg hookPackage) error {
 		if value, ok := r.Modules[name]; ok {
 			L.Push(value)
 			return 1
+		}
+		if name == "wtf" || strings.HasPrefix(name, "wtf.") {
+			return r.raise(L, Fail("invalid_module", "Unknown WTF module: "+name))
 		}
 		path, e := relative(r.ModuleRoot, strings.ReplaceAll(name, ".", string(os.PathSeparator))+".lua")
 		if e != nil {
@@ -94,6 +146,11 @@ func (r *Runtime) registerPackage(pkg hookPackage) error {
 		L.Push(value)
 		return 1
 	}))
+	if pkg.Entry == "" {
+		err := r.registerCreationHooks(pkg.Modules)
+		r.CreationHooks = append([]string{}, pkg.CreationHooks...)
+		return err
+	}
 	r.Loading[pkg.Entry] = true
 	value, e := r.loadLua(pkg.Entry)
 	delete(r.Loading, pkg.Entry)
@@ -119,6 +176,57 @@ func (r *Runtime) registerPackage(pkg hookPackage) error {
 	})
 	if bad != "" {
 		return Fail("invalid_hook", "Pilot does not override "+bad)
+	}
+	return nil
+}
+
+func (r *Runtime) registerCreationHooks(names []string) error {
+	L := r.L
+	hooks := L.NewTable()
+	for _, name := range names {
+		if err := L.CallByParam(lua.P{Fn: L.GetGlobal("require"), NRet: 1, Protect: true}, lua.LString(name)); err != nil {
+			return r.operationError(err)
+		}
+		value := L.Get(-1)
+		L.Pop(1)
+		if value.Type() != lua.LTFunction {
+			return Fail("invalid_hook", "Hook must return a function(event): "+name)
+		}
+		hooks.RawSetString(name, value)
+	}
+	module, ok := r.Modules["wtf"].(*lua.LTable)
+	if !ok {
+		return Fail("invalid_host_api", "WTF package is unavailable")
+	}
+	options := L.NewTable()
+	options.RawSetString("hooks", hooks)
+	if err := L.CallByParam(lua.P{Fn: module.RawGetString("setup"), NRet: 1, Protect: true}, options); err != nil {
+		return r.operationError(err)
+	}
+	registration, ok := L.Get(-1).(*lua.LTable)
+	L.Pop(1)
+	if !ok {
+		return Fail("invalid_host_api", "WTF setup must return a registration table")
+	}
+	var err error
+	r.Hooks, err = checkSection(L, registration, "hooks")
+	return err
+}
+
+func (r *Runtime) runCreationHooks(name, from string, args []string) error {
+	request := r.request(name, from, args)
+	request.RawSetString("command", lua.LString("new"))
+	request.RawSetString("surface", lua.LString("new"))
+	request.RawSetString("trigger", lua.LString("after"))
+	result, err := luaResult(r.L, r.Workspace)
+	if err != nil {
+		return err
+	}
+	request.RawSetString("result", result)
+	for _, hook := range r.CreationHooks {
+		if err := r.runHook(hook, request); err != nil {
+			return err
+		}
 	}
 	return nil
 }

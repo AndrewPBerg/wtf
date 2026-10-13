@@ -41,6 +41,9 @@ func (s *Session) human(out io.Writer, err error) error {
 	}
 	text := ""
 	switch data := data.(type) {
+	case completionScript:
+		_, err := io.WriteString(out, data.Script)
+		return err
 	case core.SetupTeardownResult:
 		switch data.Status {
 		case "removed":
@@ -66,6 +69,14 @@ func (s *Session) human(out io.Writer, err error) error {
 	case []core.WorkspaceView:
 		text = workspaceTable(p, data, s.App.Cwd, s.ShowStages, s.ShowPRs, s.ShowChecks)
 	case core.Workspace:
+		if s.Command == "wtf change" {
+			verb := "Message updated for "
+			if data.Message == "" {
+				verb = "Message cleared for "
+			}
+			text = p.Good.Render("✓ "+verb) + p.Title.Render(plain(data.Name))
+			break
+		}
 		verb := "Workspace ready"
 		if data.Status == "removed" {
 			verb = "Workspace removed"
@@ -95,6 +106,9 @@ func (s *Session) human(out io.Writer, err error) error {
 		text = p.Good.Render("✓ Configuration valid")
 		if data.Lua != "" {
 			text += "\n" + p.Muted.Render("Hooks: "+plain(data.Lua))
+		}
+		if len(data.New.Hooks) > 0 {
+			text += "\n" + p.Muted.Render("Creation hooks: "+plain(strings.Join(data.New.Hooks, ", ")))
 		}
 		names := make([]string, 0, len(data.Tasks))
 		for name := range data.Tasks {
@@ -243,7 +257,7 @@ func workspaceTable(p presentation, workspaces []core.WorkspaceView, cwd string,
 		if len(w.Stages) > 0 {
 			stages = fmt.Sprintf("%d/%d", passed, len(w.Stages))
 		}
-		row := []string{marker, workspaceLinkPresentation(p, w, w.Name)}
+		row := []string{marker, workspaceLinkPresentation(p, w, workspaceDisplayName(w))}
 		if showStages {
 			row = append(row, stages)
 		}

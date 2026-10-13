@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/AndrewPBerg/wtf/internal/core"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -60,5 +61,34 @@ func TestWorkspaceNamesSuppressLinksForUnactionableRecords(t *testing.T) {
 	row := core.WorkspaceView{Workspace: core.Workspace{Path: "/repo/feature"}, Exists: true}
 	if got := workspaceLinkPresentation(p, row, "feature"); got != "feature" {
 		t.Fatalf("redirected output linked: %q", got)
+	}
+}
+
+func TestNestedWorkspacePlacementIsVisibleAcrossLayouts(t *testing.T) {
+	p := humanPresentation(&bytes.Buffer{})
+	p.Width = 100
+	for _, test := range []struct{ name, path, want string }{
+		{"default", "/projects/repo", "default"},
+		{"flat", "/projects/flat", "flat"},
+		{"hello_vert", "/projects/repo/hello_vert", "./hello_vert"},
+		{"deep", "/projects/repo/work/deep", "./work/deep"},
+		{"outside", "/projects/repo-other/outside", "outside"},
+	} {
+		row := core.WorkspaceView{Workspace: core.Workspace{ID: test.name, Name: test.name, Path: test.path, Status: "ready"}, RepositoryPath: "/projects/repo", Exists: true}
+		if got := workspaceDisplayName(row); got != test.want {
+			t.Fatalf("%s: label %q; want %q", test.path, got, test.want)
+		}
+		picker := newBrowser([]core.WorkspaceView{row}, "/projects/repo", p, false, false)
+		removal := newRemovalPicker([]core.RemovalCandidate{{WorkspaceView: row}}, "/projects/repo", p)
+		for _, view := range []string{picker.View(), workspaceTable(p, []core.WorkspaceView{row}, "/projects/repo", false, false), removal.View()} {
+			if !strings.Contains(ansi.Strip(view), test.want) {
+				t.Fatalf("placement label missing: %q", view)
+			}
+		}
+		next, _ := picker.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		selected := next.(browser)
+		if selected.chosen == nil || selected.chosen.Name != test.name || selected.chosen.Path != test.path {
+			t.Fatalf("display changed selection identity: %+v", selected.chosen)
+		}
 	}
 }

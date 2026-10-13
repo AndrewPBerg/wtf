@@ -111,11 +111,12 @@ type Index struct {
 
 // App binds the current directory, registry home and subprocess output.
 type App struct {
-	Cwd     string
-	Home    string
-	Out     io.Writer
-	Reviews ReviewClient
-	PRs     PRClient
+	Cwd      string
+	Home     string
+	Out      io.Writer
+	Reviews  ReviewClient
+	PRs      PRClient
+	Notifier func(Notification) error
 }
 
 // New constructs a workspace application.

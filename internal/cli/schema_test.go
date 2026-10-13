@@ -65,7 +65,7 @@ func TestConfigurationSchemaArtifactIsCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored, err := os.ReadFile(filepath.Join("..", "..", ".wtf", "schema.json"))
+	stored, err := os.ReadFile(filepath.Join("testdata", "config-schema.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +90,11 @@ func TestConfigurationSchemaDocumentsTypesAliasesAndNestedCommands(t *testing.T)
 	if !bytes.Equal(a, b) {
 		t.Fatal("alias schema differs")
 	}
+	sw := schemaAt(t, doc, "properties", "commands", "properties", "sw")
+	c, _ := json.Marshal(sw)
+	if !bytes.Equal(c, b) {
+		t.Fatal("sw alias schema differs")
+	}
 	port := schemaAt(t, doc, "properties", "commands", "definitions", "ports claim", "definitions", "port")
 	if port["type"] != "integer" {
 		t.Fatalf("nested command schema missing: %+v", port)
@@ -101,6 +106,14 @@ func TestConfigurationSchemaDocumentsTypesAliasesAndNestedCommands(t *testing.T)
 	command := schemaAt(t, doc, "properties", "tasks", "additionalProperties", "properties", "command")
 	if command["minItems"] != float64(1) {
 		t.Fatal("empty command argv would be accepted")
+	}
+	creation := schemaAt(t, doc, "properties", "new")
+	if creation["additionalProperties"] != false {
+		t.Fatal("unknown creation hook fields would be accepted")
+	}
+	hooks := schemaAt(t, doc, "properties", "new", "properties", "hooks")
+	if hooks["type"] != "array" || schemaAt(t, hooks, "items")["type"] != "string" {
+		t.Fatal("creation hooks need an ordered array of module names")
 	}
 	for _, name := range []string{"LS", "LiSt", "hook RUN"} {
 		patterns := schemaAt(t, doc, "properties", "commands")["patternProperties"].(map[string]any)

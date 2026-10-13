@@ -22,6 +22,19 @@ type RemovalCandidate struct {
 	Code          string   `json:"code,omitempty"`
 	Warning       string   `json:"warning,omitempty"`
 	ObservedEdits bool     `json:"observed_edits"`
+	proof         *removalProof
+}
+
+// removalProof binds preflight evidence to an exact managed workspace revision.
+// It is command-local and never reconstructed from JSON or provider caches.
+type removalProof struct {
+	id, path, revision string
+	integrated         bool
+}
+
+// RemovalOptions carries this inspection into deletion without provider reads.
+func (r RemovalCandidate) RemovalOptions(force bool) RemovalOptions {
+	return RemovalOptions{Force: force, proof: r.proof}
 }
 
 // CanRemove keeps destructive intent separate from non-overridable guards.
@@ -66,7 +79,7 @@ func (a *App) InspectRemoval(ctx context.Context, row WorkspaceView) (RemovalCan
 	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if row.Owned && row.Exists && !samePath(row.Path, inspector.repo.Root) {
-		rows := a.Metadata().Observe(bounded, []WorkspaceView{row}, MetadataRequest{PRs: true})
+		rows := a.RemovalMetadata(bounded, []WorkspaceView{row})
 		for _, refreshed := range rows {
 			row = refreshed
 		}
@@ -88,7 +101,7 @@ func (a *App) RemovalCandidates(ctx context.Context) ([]RemovalCandidate, error)
 	rows := []WorkspaceView{}
 	needsPRs := false
 	for _, row := range views(state) {
-		if row.Status != "removed" {
+		if row.Status != "removed" && row.Exists {
 			rows = append(rows, row)
 			needsPRs = needsPRs || row.Owned && row.Exists && !samePath(row.Path, r.Root)
 		}
@@ -96,7 +109,7 @@ func (a *App) RemovalCandidates(ctx context.Context) ([]RemovalCandidate, error)
 	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if needsPRs {
-		rows = a.Metadata().Observe(bounded, rows, MetadataRequest{PRs: true})
+		rows = a.RemovalMetadata(bounded, rows)
 	}
 	result := make([]RemovalCandidate, 0, len(rows))
 	for _, row := range rows {
@@ -136,8 +149,13 @@ func removalBase(ctx context.Context, root string) (string, string) {
 	return "", ""
 }
 
-func (a *App) inspectRemoval(ctx context.Context, r Repo, row WorkspaceView) RemovalCandidate {
-	result := RemovalCandidate{WorkspaceView: row, Changes: []string{}}
+func (a *App) inspectRemoval(ctx context.Context, r Repo, row WorkspaceView) (result RemovalCandidate) {
+	result = RemovalCandidate{WorkspaceView: row, Changes: []string{}}
+	defer func() {
+		if result.CanRemove(true) && result.Revision != "" {
+			result.proof = &removalProof{row.ID, row.Path, result.Revision, result.Integrated}
+		}
+	}()
 	block := func(code, message string) RemovalCandidate {
 		result.Code, result.Warning, result.Selectable = code, message, false
 		return result
@@ -197,9 +215,9 @@ func (a *App) inspectRemoval(ctx context.Context, r Repo, row WorkspaceView) Rem
 			}
 		}
 	}
-	// Only a fresh, exact published head can prove a squash/rebase merge. Branch
-	// names, older cached observations and merely closed PRs are not evidence.
-	if !result.Integrated && row.GitHub != nil && row.GitHub.Lookup == "fresh" && row.GitHub.Error == "" {
+	// Reuse a successful recent observation, still requiring an exact published
+	// head. Stale observations, branch names and merely closed PRs are not proof.
+	if !result.Integrated && recentRemovalMetadata(row.GitHub) {
 		changed, diffErr := output(ctx, row.Path, "diff", "--ignore-working-copy", "--from", before.Commit, "--to", after.Commit, "--summary")
 		if diffErr == nil && changed == "" {
 			for _, pr := range row.GitHub.Matches {
@@ -247,23 +265,72 @@ func (a *App) removalWithPRs(ctx context.Context, r Repo, w Workspace) RemovalCa
 			return candidate
 		}
 	}
-	rows = a.Metadata().Observe(ctx, rows, MetadataRequest{PRs: true})
+	rows = a.RemovalMetadata(ctx, rows)
 	for _, row := range rows {
 		return a.inspectRemoval(ctx, r, row)
 	}
 	return RemovalCandidate{Code: "inspection_failed"}
 }
 
-func (a *App) checkRemovalChanges(ctx context.Context, r Repo, w Workspace, force bool) error {
+func recentRemovalMetadata(info *PRInfo) bool {
+	if info == nil || info.Error != "" || info.CheckedAt == nil || info.Lookup != "fresh" && info.Lookup != "cached" {
+		return false
+	}
+	age := time.Since(*info.CheckedAt)
+	return age >= 0 && age <= prTTL
+}
+
+// RemovalMetadata reuses the browser's repository observation. Missing or expired
+// observations use targeted discovery, without CI hydration or cache pollution.
+func (a *App) RemovalMetadata(ctx context.Context, rows []WorkspaceView) []WorkspaceView {
+	plan := a.Metadata().Prepare(ctx, rows, MetadataRequest{PRs: true})
+	if !plan.plan.NeedsRefresh {
+		return plan.Cached
+	}
+	if a.PRs == nil {
+		targets := map[string][]prSnapshot{}
+		for i := range plan.plan.Groups {
+			group := &plan.plan.Groups[i]
+			group.Transient = true
+			for _, row := range rows {
+				if row.RepositoryID == group.ID && row.Owned && row.Exists {
+					if snapshot, ok := group.Snapshot[row.Name]; ok {
+						targets[group.Repository] = append(targets[group.Repository], snapshot)
+					}
+				}
+			}
+		}
+		plan.prs.Client = removalGHClient{targets: targets}
+	}
+	return selectMetadata(plan.prs.Refresh(ctx, plan.plan), MetadataRequest{PRs: true})
+}
+
+func (a *App) checkRemovalChanges(ctx context.Context, w Workspace, options RemovalOptions) error {
 	bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	assessment := a.removalWithPRs(bounded, r, w)
-	if !assessment.CanRemove(force) {
-		code := assessment.Code
-		if code == "" {
-			code = "inspection_failed"
-		}
-		return Fail(code, assessment.Warning)
+	if _, err := output(bounded, w.Path, "status"); err != nil {
+		return Fail("inspection_failed", "Cannot inspect changes; resolve stale JJ state before cleanup")
+	}
+	revision, err := removalRevision(bounded, w.Path)
+	if err != nil {
+		return err
+	}
+	if options.Force {
+		return nil
+	}
+	proof := options.proof
+	if proof == nil || proof.id != w.ID || !samePath(proof.path, w.Path) {
+		return Fail("inspection_failed", "Removal requires an assessment of this workspace")
+	}
+	if proof.integrated && proof.revision == revision.Commit {
+		return nil
+	}
+	diff, err := output(bounded, w.Path, "diff", "--ignore-working-copy", "--summary")
+	if err != nil {
+		return err
+	}
+	if diff != "" {
+		return Fail("workspace_has_changes", "Changes remain; inspect the workspace again before removal")
 	}
 	return nil
 }

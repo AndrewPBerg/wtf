@@ -26,6 +26,7 @@ func TestMixedCaseCommandsAliasesAndFlags(t *testing.T) {
 		{"LS", "-KJ", "--HELP"},
 		{"Ls", "--JsOn", "--hElP"},
 		{"RM", "--JsOn", "--HELP"},
+		{"ChAnGe", "--JsOn", "--HeLp"},
 		{"SeTuP", "--JsOn", "--HeLp"},
 		{"SeTuP", "TeArDoWn", "-J", "--HeLp"},
 	} {

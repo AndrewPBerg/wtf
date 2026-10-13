@@ -70,13 +70,19 @@ func (s *Session) command(use, short, long string, args cobra.PositionalArgs, fn
 		s.Ran = true
 		s.Command = c.CommandPath()
 		var e error
-		s.Data, e = fn(c, args)
+		s.Data, e = s.invokeHooks(c, args, fn)
+		if e != nil {
+			// A cancelled picker suppresses its success result. A subsequent
+			// hook failure still needs an error report.
+			s.Emitted = false
+		}
 		return e
 	}
 	return c
 }
 func (s *Session) group(use, short string) *cobra.Command {
 	c := s.command(use, short, short+". Use a subcommand; --json --help returns structured help.", cobra.NoArgs, func(c *cobra.Command, _ []string) (any, error) { s.Data = helpData(c); return s.Data, nil })
+	c.Annotations = map[string]string{"wtf.no-hooks": "true"}
 	return c
 }
 func helpData(c *cobra.Command) any {
@@ -138,11 +144,12 @@ func helpData(c *cobra.Command) any {
 // New constructs the WTF command tree.
 func New(app *core.App, out, errOut io.Writer) *Session {
 	s := &Session{App: app, Out: out, Err: errOut}
+	app.Notifier = s.notify
 	root := &cobra.Command{Use: "wtf", Short: "Opinionated JJ workspace management", Long: "WorkTreeForge: opinionated JJ workspace management for Omarchy, Zed, and Linear Workflows.", SilenceErrors: true, SilenceUsage: true}
 	root.Args = cobra.NoArgs
 	var showVersion bool
 	root.PersistentPreRunE = func(c *cobra.Command, _ []string) error {
-		if showVersion || c.Name() == "version" {
+		if showVersion || c.Name() == "version" || c.Name() == "completion" {
 			return nil
 		}
 		err := s.applyDefaults(c)
@@ -191,16 +198,30 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 		return nil
 	}
 	var from, message string
-	n := s.command("new PATH [-- HOOK_ARGS...]", "Create or prepare a workspace at a destination path", "Resolve PATH relative to the current directory (absolute paths also work). An existing JJ workspace root is registered and prepared; a missing path creates an owned JJ workspace at that exact location, named after its basename. --from defaults to trunk() and only applies to creation. Existing directories that are not workspace roots are rejected. Both modes run the init override; only creation runs the new override, which may block before mutation. Repeated calls preserve identity, ownership and reusable stages. JSON registration codes are initialized or already_initialized. Project arguments after -- keep their case. Examples: wtf new .; wtf new ../agent-a -f @ -- --compose.", pathHookArgs, func(c *cobra.Command, args []string) (any, error) {
+	n := s.command("new PATH [-- HOOK_ARGS...]", "Create or prepare a workspace at a destination path", "Bare names resolve beside the registered main repository, even from another workspace or subdirectory, without a repository prefix or suffix. Explicit relative paths resolve from the current directory; absolute paths also work. An existing JJ workspace root is registered and prepared; a missing path creates an owned JJ workspace at that exact location, named after its basename. --from defaults to trunk() and only applies to creation. Existing directories that are not workspace roots are rejected. Both modes run the init override; only creation runs the new override, which may block before mutation. Repeated calls preserve identity, ownership and reusable stages. JSON registration codes are initialized or already_initialized. Project arguments after -- keep their case. Examples: wtf new .; wtf new agent-a -f @ -- --compose.", pathHookArgs, func(c *cobra.Command, args []string) (any, error) {
 		options := core.NewWorkspaceOptions{}
 		if c.Flags().Changed("message") {
 			options.Message = &message
 		}
 		return app.NewWorkspaceWithOptions(c.Context(), args[0], from, options, args[1:]...)
 	})
+	n.Long += " New workspaces copy .wtf/config.toml, schema.json, hooks/ and tasks/ from the invoking workspace before initialization and creation callbacks, with independent files and local ignore rules. Local artifacts and runtime state are excluded. Existing-workspace preparation preserves its configuration."
 	n.Flags().StringVarP(&from, "from", "f", "trunk()", "JJ parent revision when creating a missing destination")
 	n.Flags().StringVarP(&message, "message", "m", "", "Workspace description shown below the selected row in list and remove; empty clears it")
 	root.AddCommand(n)
+	var changedMessage string
+	change := s.command("change [NAME]", "Change a workspace message", "Replace the message on a registered workspace by name or ID in the current repository. Omit NAME to change the current workspace, including from a subdirectory. --message replaces the description; an empty string clears it. Without a requested change, show help without modifying anything or running hooks. Does not create or prepare workspaces. Examples: wtf change testing-msg -m \"Picking this up tomorrow\"; wtf change testing-msg -m \"\"; wtf change -m \"Picking this up tomorrow\".", cobra.MaximumNArgs(1), func(c *cobra.Command, args []string) (any, error) {
+		if !c.Flags().Changed("message") {
+			return helpData(c), nil
+		}
+		name := ""
+		if len(args) > 0 {
+			name = args[0]
+		}
+		return app.ChangeWorkspace(c.Context(), name, changedMessage)
+	})
+	change.Flags().StringVarP(&changedMessage, "message", "m", "", "Replace the workspace description; empty clears it")
+	root.AddCommand(change)
 	setup := s.command("setup", "Create local WTF configuration, hooks and tasks directories", "Create .wtf in the current directory with config.toml, the generated editor schema, and completely empty hooks and tasks directories. Its .gitignore contains only * so all scaffold files stay local and untracked. Existing files are preserved; repeated setup fills in missing files. Does not run hooks, install dependencies or register a workspace. No repository is required. Use setup teardown to remove the local .wtf directory after a yes/no confirmation. Examples: wtf setup; wtf setup --json; wtf setup teardown.", cobra.NoArgs, func(c *cobra.Command, _ []string) (any, error) {
 		schema, err := ConfigurationSchema(root)
 		if err != nil {
@@ -213,7 +234,7 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 	}))
 	root.AddCommand(setup)
 	var global, here, all bool
-	list := s.command("list [NAME]", "Browse and switch workspaces", "Browse active workspaces with arrow keys; Enter selects, Esc cancels. The view paginates to your terminal size. list and ls are the same command. An optional NAME resolves a workspace directly.\n\nInside a repository, show its workspaces; from a parent directory, show repositories beneath it. --global includes all registered repositories, --all includes removed records.\n\n--hook adds local stages, not CI. --pr adds GitHub PR status; each invocation performs a bounded live lookup. JSON and redirected output never prompt. With shell integration, selection changes your directory.\n\nExamples:\n  wtf list\n  wtf ls -p\n  wtf ls --all --json", cobra.MaximumNArgs(1), func(c *cobra.Command, args []string) (any, error) {
+	list := s.command("list [NAME]", "Browse and switch workspaces", "Browse active workspaces with arrow keys; Enter selects, Esc cancels. The view paginates to your terminal size. list and ls are the same command. An optional NAME resolves a workspace directly.\n\nInside a repository, show its workspaces; from a parent directory, show repositories beneath it. --global includes all registered repositories, --all includes unavailable and removed records.\n\n--hook adds local stages, not CI. --pr adds GitHub PR status; each invocation performs a bounded live lookup. JSON and redirected output never prompt. With shell integration, selection changes your directory.\n\nExamples:\n  wtf list\n  wtf ls -p\n  wtf ls --all --json", cobra.MaximumNArgs(1), func(c *cobra.Command, args []string) (any, error) {
 		rows, e := app.List(c.Context(), global, here)
 		if e != nil {
 			return rows, e
@@ -221,7 +242,7 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 		if !all {
 			active := make([]core.WorkspaceView, 0, len(rows))
 			for _, row := range rows {
-				if row.Status != "removed" {
+				if row.Status != "removed" && (row.Exists || len(args) == 1) {
 					active = append(active, row)
 				}
 			}
@@ -255,10 +276,10 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 		}
 		return rows, nil
 	})
-	list.Aliases = []string{"ls"}
+	list.Aliases = []string{"ls", "sw"}
 	list.Flags().BoolVar(&global, "global", false, "List all registered repositories")
 	list.Flags().BoolVar(&here, "here", false, "Only the current managed workspace")
-	list.Flags().BoolVarP(&all, "all", "a", false, "Include removed workspace records; active workspaces are shown by default")
+	list.Flags().BoolVarP(&all, "all", "a", false, "Include unavailable and removed workspace records; available workspaces are shown by default")
 	list.Flags().BoolVar(&s.SelectPath, "select", false, "Return only the selected path; render the picker on stderr for shell navigation")
 	list.Flags().BoolVarP(&s.ShowStages, "hook", "k", false, "Show local hook stages (successful/recorded), not GitHub CI")
 	list.Flags().BoolVarP(&s.ShowPRs, "pr", "p", true, "Show PRs with Linear-first review links and GitHub fallback")
@@ -318,9 +339,10 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 	root.AddCommand(ports)
 	root.AddCommand(s.command("version", "Show pilot version", "Show the local pilot version; does not update any installed binary. Example: wtf version --json.", cobra.NoArgs, func(_ *cobra.Command, _ []string) (any, error) { return map[string]string{"version": Version}, nil }))
 	root.CompletionOptions.DisableDefaultCmd = true
+	s.addCompletion()
 	for _, command := range root.Commands() {
 		switch command.Name() {
-		case "list", "new", "remove":
+		case "list", "new", "change", "remove":
 			command.GroupID = "essentials"
 		case "hook", "run":
 			command.GroupID = "hooks"
@@ -343,6 +365,9 @@ func current(ctx context.Context, a *core.App) (core.Repo, core.Workspace, error
 
 // Execute runs a command and returns its process exit code.
 func (s *Session) Execute(ctx context.Context, args []string) int {
+	if len(args) > 0 && (strings.EqualFold(args[0], "__complete") || strings.EqualFold(args[0], "__completeNoDesc")) {
+		return s.complete(ctx, args[1:])
+	}
 	input := prepareInput(s.Root, args)
 	// This survives parse errors and does not mistake child argv or flag values for JSON.
 	s.JSON = input.JSON

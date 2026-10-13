@@ -20,17 +20,23 @@ type StageOptions struct {
 	Env            map[string]string `json:"-"`
 	TimeoutSeconds int               `json:"timeout_seconds"`
 	Reuse          bool              `json:"reuse"`
+	Cwd            string            `json:"cwd,omitempty"`
+	EnvUnset       []string          `json:"-"`
+	NoInheritEnv   bool              `json:"-"`
 }
 
 func fingerprint(ctx context.Context, root string, argv []string, o StageOptions) (string, error) {
 	h := sha256.New()
 	b, e := json.Marshal(struct {
-		Argv    []string
-		Env     map[string]string
-		Inputs  []string
-		Check   []string
-		Timeout int
-	}{argv, o.Env, o.Inputs, o.Check, o.TimeoutSeconds})
+		Argv         []string
+		Env          map[string]string
+		Inputs       []string
+		Check        []string
+		Timeout      int
+		Cwd          string
+		Unset        []string
+		NoInheritEnv bool
+	}{argv, o.Env, o.Inputs, o.Check, o.TimeoutSeconds, o.Cwd, o.EnvUnset, o.NoInheritEnv})
 	if e != nil {
 		return "", e
 	}
@@ -102,6 +108,25 @@ func (a *App) Stage(ctx context.Context, r Repo, w Workspace, name string, argv 
 	if o.Reuse && len(o.Inputs) == 0 && len(o.Check) == 0 {
 		return Stage{}, Fail("invalid_reuse", "Reusable stages require inputs or a live check")
 	}
+	if o.Cwd == "" {
+		o.Cwd = "."
+	}
+	dir, e := relative(w.Path, o.Cwd)
+	if e != nil {
+		return Stage{}, e
+	}
+	info, e := os.Stat(dir)
+	if e != nil {
+		return Stage{}, e
+	}
+	if !info.IsDir() {
+		return Stage{}, Fail("invalid_path", "Stage cwd must be a directory")
+	}
+	o.EnvUnset = append([]string{}, o.EnvUnset...)
+	sort.Strings(o.EnvUnset)
+	if _, e := childEnvironment(o.Env, o.EnvUnset, !o.NoInheritEnv); e != nil {
+		return Stage{}, e
+	}
 	fp, e := fingerprint(ctx, w.Path, argv, o)
 	if e != nil {
 		return Stage{}, e
@@ -112,8 +137,12 @@ func (a *App) Stage(ctx context.Context, r Repo, w Workspace, name string, argv 
 	}
 	prior := s.Workspaces[w.ID].Stages[name]
 	timeout := taskTimeout(o.TimeoutSeconds)
+	execute := func(argv []string, quiet bool) error {
+		_, err := a.RunCommand(ctx, dir, argv, CommandOptions{Env: o.Env, Unset: o.EnvUnset, NoInheritEnv: o.NoInheritEnv, Timeout: timeout, Capture: quiet})
+		return err
+	}
 	if o.Reuse && prior.Status == "succeeded" && prior.Fingerprint == fp {
-		if len(o.Check) == 0 || a.Exec(ctx, w.Path, o.Check, o.Env, timeout, true) == nil {
+		if len(o.Check) == 0 || execute(o.Check, true) == nil {
 			prior.Reused = true
 			e = r.Update(ctx, w.ID, func(w *Workspace) { w.Stages[name] = prior })
 			return prior, e
@@ -124,9 +153,9 @@ func (a *App) Stage(ctx context.Context, r Repo, w Workspace, name string, argv 
 		return st, e
 	}
 	_, _ = fmt.Fprintln(a.Out, "stage:", name)
-	e = a.Exec(ctx, w.Path, argv, o.Env, timeout, false)
+	e = execute(argv, false)
 	if e == nil && len(o.Check) > 0 {
-		e = a.Exec(ctx, w.Path, o.Check, o.Env, timeout, false)
+		e = execute(o.Check, false)
 	}
 	now := time.Now().UTC()
 	st.FinishedAt = &now

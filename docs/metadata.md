@@ -116,19 +116,21 @@ for _, row := range observed {
 }
 ```
 
-This shared observation is preview evidence. Actual removal still revalidates
-workspace identity and local changes and requires fresh exact-head evidence when
-using a merged PR to prove integration. A cached preview cannot authorize deletion.
+Removal reuses successful observations within the two-minute metadata lifetime.
+The picker binds integration evidence to the exact workspace identity and revision;
+deletion revalidates identity and local changes before and after hooks without
+refetching provider metadata. Stale or failed observations cannot prove integration.
 `InspectRemoval` remains available as a self-contained single-workspace operation.
 
 ## Transport and Lua boundary
 
-The current transport still uses repository-wide `gh pr list` requests. The
-targeted GraphQL spike in `scripts/github-graphql-spike.py` is separate; it has
-not replaced the production transport or changed its concurrency limits.
-Targeted discovery, PR-number hydration and aggregate CI counts belong behind
-this API. They need a cache contract that records target coverage and handles
-pagination and partial GraphQL errors before adoption.
+The workspace browser uses repository-wide `gh pr list` requests. Removal reuses
+that observation first. Missing or expired observations use the discovery phase
+from `scripts/github-graphql-spike.py`: deduplicated commit and bookmark targets,
+up to 50 aliases per request, and at most two pages of 100 PRs per target. Cleanup
+omits CI hydration. Partial errors, missing response fields, and exhausted page
+bounds remain unavailable observations. Targeted subsets never overwrite the
+browser's repository-wide cache. Concurrency and provider deadlines remain bounded.
 
 Lua provider APIs are not exposed by this change. The request fields have stable
 JSON names (`prs`, `ci`, `reviews`, `force_reviews`) suitable for a future table

@@ -229,7 +229,7 @@ func TestRemovalRefusesWrongIdentityAndChangedSource(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	marker := filepath.Join(child.Path, ".wtf", "workspace.json")
+	marker := workspaceMarkerPath(child.Path)
 	original, e := os.ReadFile(marker)
 	if e != nil {
 		t.Fatal(e)

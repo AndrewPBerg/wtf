@@ -58,11 +58,14 @@ func (a *App) create(ctx context.Context, r Repo, path, name, from string, optio
 		_ = r.Update(p, id, func(w *Workspace) { w.Status = "creation_failed"; w.LastError = e.Error() })
 		return w, e
 	}
-	if e = os.MkdirAll(filepath.Join(path, ".wtf"), 0700); e == nil {
-		e = writeAtomic(filepath.Join(path, ".wtf", "workspace.json"), map[string]string{"id": id, "repository_id": s.RepositoryID})
+	e = inheritWorkspaceConfig(ctx, r.Root, path)
+	if e == nil {
+		e = writeAtomic(workspaceMarkerPath(path), map[string]string{"id": id, "repository_id": s.RepositoryID})
 	}
 	if e != nil {
-		_ = r.Update(ctx, id, func(w *Workspace) { w.Status = "creation_failed"; w.LastError = e.Error() })
+		p, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = r.Update(p, id, func(w *Workspace) { w.Status = "creation_failed"; w.LastError = e.Error() })
 		return w, e
 	}
 	w.Status = "ready"
@@ -71,7 +74,8 @@ func (a *App) create(ctx context.Context, r Repo, path, name, from string, optio
 }
 
 // NewWorkspace prepares an existing workspace root or creates one at the exact
-// destination path. Relative paths resolve from the invoking directory.
+// destination path. Bare names resolve beside the registered repository anchor;
+// explicit relative paths resolve from the invoking directory.
 func (a *App) NewWorkspace(ctx context.Context, path, from string, args ...string) (Initialization, error) {
 	return a.NewWorkspaceWithOptions(ctx, path, from, NewWorkspaceOptions{}, args...)
 }
@@ -90,10 +94,7 @@ func (a *App) NewWorkspaceWithOptions(ctx context.Context, path, from string, op
 	if path == "" || strings.ContainsRune(path, 0) {
 		return Initialization{}, Fail("invalid_path", "A workspace destination path is required")
 	}
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(a.Cwd, path)
-	}
-	path, err := filepath.Abs(path)
+	path, err := a.ResolveWorkspacePath(ctx, path)
 	if err != nil {
 		return Initialization{}, err
 	}
@@ -176,10 +177,16 @@ func (a *App) createWorkspace(ctx context.Context, path, from string, options Ne
 		return w, e
 	}
 	e = rt.Override("new", name, from, defaultFn, args...)
+	if e == nil && created {
+		e = rt.runCreationHooks(w.Name, from, args)
+	}
 	if e != nil && w.ID != "" {
 		p, c := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer c()
 		_ = r.Update(p, w.ID, func(w *Workspace) { w.Status = "hook_failed"; w.LastError = e.Error() })
+		if current, err := r.Select(w.ID); err == nil {
+			w = current
+		}
 	}
 	if e == nil && !created {
 		return w, Fail("invalid_override", "Pilot new overrides must delegate to default creation")
@@ -294,6 +301,7 @@ func (a *App) Remove(ctx context.Context, name string) (Workspace, error) {
 // RemovalOptions controls whether remaining source changes may be discarded.
 type RemovalOptions struct {
 	Force bool
+	proof *removalProof
 }
 
 // RemoveWithOptions retains identity, ownership, and lifecycle checks in force mode.
@@ -315,12 +323,25 @@ func (a *App) RemoveWithOptions(ctx context.Context, name string, options Remova
 	if e = verifyIdentity(ctx, r, w); e != nil {
 		return w, e
 	}
+	if !options.Force && options.proof == nil {
+		bounded, cancel := context.WithTimeout(ctx, 15*time.Second)
+		assessment := a.removalWithPRs(bounded, r, w)
+		cancel()
+		if !assessment.CanRemove(false) {
+			code := assessment.Code
+			if code == "" {
+				code = "inspection_failed"
+			}
+			return w, Fail(code, assessment.Warning)
+		}
+		options.proof = assessment.proof
+	}
 	unlock, e := r.LockWorkspace(ctx, w.ID)
 	if e != nil {
 		return w, e
 	}
 	defer unlock()
-	if e = a.checkRemovalChanges(ctx, r, w, options.Force); e != nil {
+	if e = a.checkRemovalChanges(ctx, w, options); e != nil {
 		return w, e
 	}
 	target := Repo{w.Path, r.Store}
@@ -346,7 +367,7 @@ func (a *App) RemoveWithOptions(ctx context.Context, name string, options Remova
 				return w, Fail("cleanup_required", "Teardown must release external resource claims before removal")
 			}
 		}
-		if e = a.checkRemovalChanges(ctx, r, w, options.Force); e != nil {
+		if e = a.checkRemovalChanges(ctx, w, options); e != nil {
 			return w, e
 		}
 		if _, e = output(ctx, r.Root, "workspace", "forget", w.Name); e != nil {
@@ -391,7 +412,12 @@ func verifyIdentity(ctx context.Context, r Repo, w Workspace) error {
 		return Fail("identity_mismatch", "Native JJ workspace path does not match the managed identity")
 	}
 	var marker map[string]string
-	if e = readJSON(filepath.Join(w.Path, ".wtf", "workspace.json"), &marker); e != nil {
+	e = readJSON(workspaceMarkerPath(w.Path), &marker)
+	if os.IsNotExist(e) {
+		// Existing workspaces retain their original identity until migrated.
+		e = readJSON(filepath.Join(w.Path, ".wtf", "workspace.json"), &marker)
+	}
+	if e != nil {
 		return Fail("identity_mismatch", "Workspace marker is missing or unreadable")
 	}
 	s, e := r.Load()
@@ -402,6 +428,11 @@ func verifyIdentity(ctx context.Context, r Repo, w Workspace) error {
 		return Fail("identity_mismatch", "Workspace marker belongs to a different identity")
 	}
 	return nil
+}
+
+// JJ excludes its workspace metadata directory independently of source ignores.
+func workspaceMarkerPath(root string) string {
+	return filepath.Join(root, ".jj", "wtf-workspace.json")
 }
 
 // Hook runs a named hook under the current workspace lock.
@@ -483,7 +514,10 @@ func (a *App) Doctor(ctx context.Context, configurationErrors ...error) (Health,
 	}
 	h.Configuration = DiagnosticCheck{Code: "configuration_valid", Status: "ready", Message: "Configuration and Lua entrypoint syntax are valid"}
 	configuration, configErr := LoadConfig(root)
-	if configErr == nil && configuration.Lua == "" {
+	if configErr == nil && len(configuration.hookModules()) > 0 {
+		h.Configuration.Message = "Configuration and selected Lua hook syntax are valid"
+	}
+	if configErr == nil && configuration.Lua == "" && len(configuration.hookModules()) == 0 {
 		h.Configuration = DiagnosticCheck{Code: "hooks_not_configured", Status: "ready", Message: "TOML configuration is valid; no Lua hook entrypoint configured"}
 		directory := filepath.Join(root, ".wtf")
 		if _, err := os.Stat(directory); os.IsNotExist(err) {

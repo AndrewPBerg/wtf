@@ -177,6 +177,7 @@ func TestRemovalLazyLoadingKeepsWorkspaceRowsAndRequiresSafetyResults(t *testing
 		{Workspace: core.Workspace{ID: "feature", Name: "feature", Path: "/repo-feature", Status: "ready", Owned: true}, Exists: true},
 	}
 	m := newRemovalPicker(removalPreview(initial, "/repo"), "/repo", humanPresentation(&bytes.Buffer{}))
+	m.p.Links = true
 	m.loading = true
 	calls := 0
 	m.inspect = func(row core.WorkspaceView) (core.RemovalCandidate, error) {
@@ -190,7 +191,7 @@ func TestRemovalLazyLoadingKeepsWorkspaceRowsAndRequiresSafetyResults(t *testing
 		return core.RemovalCandidate{WorkspaceView: row, Integrated: true, Base: "main", Selectable: true}, nil
 	}
 	first := m.View()
-	for _, name := range []string{"default", "feature", "../repo-feature", "MAIN", "CHANGES", "↻"} {
+	for _, name := range []string{"default", "feature", "zed://file/repo-feature", "MAIN", "CHANGES", "↻"} {
 		if !strings.Contains(first, name) {
 			t.Fatalf("initial view missing %q: %s", name, first)
 		}

@@ -6,8 +6,24 @@ Create or prepare a JJ workspace at an exact destination path.
 wtf new PATH [--from REVISION] [--message TEXT] [--json] [-- HOOK_ARGS...]
 ```
 
-Relative paths resolve from the invoking directory. Absolute paths also work.
+Bare names create siblings of the registered main repository, without a repository
+prefix or suffix. This stays flat when invoked from another workspace or a
+subdirectory. Explicit relative paths (`./...`, `../...`, or paths containing `/`)
+resolve from the invoking directory. Absolute paths also work. Outside a JJ
+repository, a relative name can still prepare an existing workspace in that directory.
 Bare `wtf` shows help; use `wtf new .` to prepare the current workspace.
+
+```text
+projects/
+  my_repo/
+  new_work/       # wtf new new_work from my_repo
+  another_work/  # wtf new another_work from new_work
+```
+
+`wtf list` / `wtf ls` shows workspaces inside the main repository with their
+relative placement, such as `./hello_vert` or `./work/deep`. Sibling workspaces
+keep their plain names. These display labels do not change native JJ names or
+JSON identity fields.
 
 | Destination | Behavior |
 |---|---|
@@ -22,6 +38,27 @@ underscores or dashes, starting with a letter or digit. Parent paths retain thei
 case and may contain spaces. The source must be a registered JJ repository;
 run `wtf new .` there first. No bookmark is created.
 
+WTF stores its local identity marker in `.jj/wtf-workspace.json`, outside source
+tracking. Creating a workspace does not require a project `.gitignore` rule for
+this metadata. Existing `.wtf/workspace.json` markers remain readable for compatibility.
+
+New workspaces inherit `.wtf/config.toml`, `.wtf/schema.json`, `.wtf/hooks/`,
+and `.wtf/tasks/` from the invoking workspace root, even when invoked from a
+subdirectory. This happens before initialization and creation callbacks. Files
+are independent copies; nested directories and empty hook/task directories are
+included. The source workspace's `.wtf/.gitignore` is copied, or `*` is created
+when absent. Explicit legacy Lua entrypoints outside `hooks/` are copied too.
+
+Source configuration wins over matching files checked out from the chosen JJ
+revision. Existing-workspace preparation never transfers configuration or
+overwrites customizations. `.wtf/local/`, identity markers, runtime state, and
+other top-level `.wtf` artifacts are excluded; use explicit hooks for those.
+Symlinks inside hook/task trees retain their target spelling, without following
+their targets. Structural configuration entries must be real files/directories.
+Copying is bounded to 8 MiB per file, 32 MiB total, and 1024 entries. Copy failures
+stop preparation and retain the failed workspace for inspection; file writes are
+atomic, but the complete configuration transfer is not a single transaction.
+
 | Flag | Short | Default | Meaning |
 |---|---|---|---|
 | `--from` | `-f` | `trunk()` | JJ revision for creation; unused for existing workspaces |
@@ -32,10 +69,10 @@ run `wtf new .` there first. No bookmark is created.
 # Prepare the current workspace
 wtf new .
 
-# Create a sibling at the exact path, based on the current revision
-wtf new ../AgentCase -f @
+# Create a sibling, based on the current revision
+wtf new AgentCase -f @
 
-# Create at a local path (no automatic sibling placement or repository suffix)
+# Choose an explicit local path
 wtf new ./experiment -f @
 
 # Describe a workspace

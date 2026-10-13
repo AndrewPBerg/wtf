@@ -241,6 +241,8 @@ func TestDoctorDistinguishesMissingAndMalformedHookConfiguration(t *testing.T) {
 		{name: "missing Lua file", directory: true, files: map[string]string{"config.toml": "version=1\nlua='missing.lua'\n"}, code: "hook_missing", status: "failed", message: "missing.lua", fails: true},
 		{name: "malformed Lua", directory: true, files: map[string]string{"config.toml": "version=1\nlua='hooks.lua'\n", "hooks.lua": "return {broken syntax"}, code: "invalid_hook", status: "failed", fails: true},
 		{name: "valid Lua", directory: true, files: map[string]string{"config.toml": "version=1\nlua='hooks.lua'\n", "hooks.lua": `error("must not execute")`}, code: "configuration_valid", status: "ready", message: "Lua entrypoint syntax are valid"},
+		{name: "creation hooks", directory: true, files: map[string]string{"config.toml": "version=1\n[new]\nhooks=['hello']\n", "hooks/hello.lua": `error("must not execute")`}, code: "configuration_valid", status: "ready", message: "selected Lua hook syntax are valid"},
+		{name: "invocation hooks", directory: true, files: map[string]string{"config.toml": "version=1\n[invocation]\nbefore=['hello']\n", "hooks/hello.lua": `error("must not execute")`}, code: "configuration_valid", status: "ready", message: "selected Lua hook syntax are valid"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a, _, anchor := fixture(t)
@@ -250,6 +252,9 @@ func TestDoctorDistinguishesMissingAndMalformedHookConfiguration(t *testing.T) {
 				}
 			}
 			for path, content := range tc.files {
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(anchor.Path, ".wtf", path)), 0700); err != nil {
+					t.Fatal(err)
+				}
 				if err := os.WriteFile(filepath.Join(anchor.Path, ".wtf", path), []byte(content), 0600); err != nil {
 					t.Fatal(err)
 				}
