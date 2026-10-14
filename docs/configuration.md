@@ -41,7 +41,8 @@ Use ordered before/after/failed/finally arrays on new/list/remove/invocation.
 Lua registration entrypoint with `lua = "hooks/init.lua"`; entrypoint and
 declarative phase arrays cannot be combined. [Hooks](hooks.md) covers both modes.
 
-Only the named modules run. New workspaces copy configuration, schema, hooks,
+Only the named modules run. New workspaces copy the `.wtf/AGENTS.md` agent guide and template checksum,
+configuration, schema, hooks,
 tasks, and ignore rules before preparation; existing workspaces preserve edits.
 `.wtf/local/` and runtime metadata are excluded. Task files are carried with the
 tree but never automatically discovered as executable tasks.

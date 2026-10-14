@@ -3,7 +3,9 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,7 +32,7 @@ func TestSetupCreatesIgnoredValidScaffoldAndPreservesEdits(t *testing.T) {
 	if err := json.Unmarshal(encoded, &first); err != nil {
 		t.Fatal(err)
 	}
-	names := []string{".wtf/hooks/", ".wtf/tasks/", ".wtf/.gitignore", ".wtf/schema.json", ".wtf/config.toml"}
+	names := []string{".wtf/hooks/", ".wtf/tasks/", ".wtf/.gitignore", ".wtf/schema.json", ".wtf/config.toml", ".wtf/AGENTS.md", ".wtf/.agents-template.sha256"}
 	if first.Path != filepath.Join(root, ".wtf") || !reflect.DeepEqual(first.Created, names) || len(first.Existing) != 0 {
 		t.Fatalf("unexpected scaffold report: %+v", first)
 	}
@@ -56,6 +58,10 @@ func TestSetupCreatesIgnoredValidScaffoldAndPreservesEdits(t *testing.T) {
 	if err != nil || !bytes.Equal(schema, wantSchema) {
 		t.Fatalf("generated schema differs from command registry: %v", err)
 	}
+	guide, err := os.ReadFile(filepath.Join(root, ".wtf/AGENTS.md"))
+	if err != nil || !strings.Contains(string(guide), "# WTF workspace and Lua guide for agents") || !strings.Contains(string(guide), "claim_port") {
+		t.Fatalf("missing agent guide: %v", err)
+	}
 	if b, err := exec.Command("git", "init", "--quiet", root).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v %s", err, b)
 	}
@@ -69,6 +75,7 @@ func TestSetupCreatesIgnoredValidScaffoldAndPreservesEdits(t *testing.T) {
 		".wtf/hooks/init.lua": "error(\"setup executed project code\")\n",
 		".wtf/schema.json":    "{\"user\": true}\n",
 		".wtf/.gitignore":     "*\n# user edit\n",
+		".wtf/AGENTS.md":      "# Project-specific agent guide\n",
 	}
 	for name, body := range edits {
 		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(name)), []byte(body), 0600); err != nil {
@@ -89,6 +96,9 @@ func TestSetupCreatesIgnoredValidScaffoldAndPreservesEdits(t *testing.T) {
 	}
 	if len(repeated.Created) != 0 || !reflect.DeepEqual(repeated.Existing, names) {
 		t.Fatalf("repeat setup report: %+v", repeated)
+	}
+	if !reflect.DeepEqual(repeated.UpdateAvailable, []string{".wtf/AGENTS.md"}) || len(repeated.Updated) != 0 {
+		t.Fatalf("custom guide update report: %+v", repeated)
 	}
 	for name, body := range edits {
 		got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
@@ -113,7 +123,7 @@ func TestSetupCreatesIgnoredValidScaffoldAndPreservesEdits(t *testing.T) {
 }
 
 func TestSetupRejectsPathConflictsWithoutFollowingSymlinks(t *testing.T) {
-	for _, name := range []string{".wtf", ".wtf/hooks", ".wtf/tasks", ".wtf/config.toml"} {
+	for _, name := range []string{".wtf", ".wtf/hooks", ".wtf/tasks", ".wtf/config.toml", ".wtf/AGENTS.md", ".wtf/.agents-template.sha256", ".wtf/.setup.lock"} {
 		for _, symlink := range []bool{false, true} {
 			t.Run(name+"/symlink="+map[bool]string{false: "false", true: "true"}[symlink], func(t *testing.T) {
 				root, target := t.TempDir(), t.TempDir()
@@ -125,7 +135,7 @@ func TestSetupRejectsPathConflictsWithoutFollowingSymlinks(t *testing.T) {
 				switch {
 				case symlink:
 					err = os.Symlink(target, path)
-				case name == ".wtf/config.toml":
+				case name == ".wtf/config.toml" || name == ".wtf/AGENTS.md" || name == ".wtf/.agents-template.sha256" || name == ".wtf/.setup.lock":
 					err = os.Mkdir(path, 0755)
 				default:
 					err = os.WriteFile(path, []byte("preserve me"), 0600)
@@ -159,6 +169,47 @@ func TestSetupHumanOutputAndArgumentFailures(t *testing.T) {
 		if code == 0 || result.Error == nil || result.Error.Code != "invalid_arguments" {
 			t.Fatalf("arguments %v: %+v", args, result)
 		}
+	}
+}
+
+func TestSetupGuideRefreshReporting(t *testing.T) {
+	a := core.New(t.TempDir(), t.TempDir(), nil)
+	if _, err := a.Setup(t.Context(), []byte("{}\n")); err != nil {
+		t.Fatal(err)
+	}
+	guidePath := filepath.Join(a.Cwd, ".wtf/AGENTS.md")
+	latest, err := os.ReadFile(guidePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := []byte("# Older generated guide\n")
+	if err := os.WriteFile(guidePath, old, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(a.Cwd, ".wtf/.agents-template.sha256"), []byte(fmt.Sprintf("%x\n", sha256.Sum256(old))), 0600); err != nil {
+		t.Fatal(err)
+	}
+	result, code, logs := invoke(t, a, "SeTuP", "-J")
+	if code != 0 || !result.OK || logs != "" {
+		t.Fatalf("refresh: %+v logs=%q", result, logs)
+	}
+	data, ok := result.Data.(map[string]any)
+	if !ok || len(data["updated"].([]any)) != 2 || len(data["update_available"].([]any)) != 0 {
+		t.Fatalf("missing JSON upgrade report: %+v", result)
+	}
+	actual, err := os.ReadFile(guidePath)
+	if err != nil || !bytes.Equal(actual, latest) {
+		t.Fatal("CLI did not refresh guide")
+	}
+	if err := os.WriteFile(guidePath, []byte("# Custom project guide\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, logsBuffer bytes.Buffer
+	if code := New(a, &out, &logsBuffer).Execute(t.Context(), []string{"setup"}); code != 0 {
+		t.Fatalf("customized guide: %s", logsBuffer.String())
+	}
+	if !strings.Contains(out.String(), "Update available") || !strings.Contains(out.String(), ".wtf/AGENTS.md") || strings.Contains(out.String(), "\x1b") || strings.Contains(out.String(), `"update_available"`) {
+		t.Fatalf("missing human update report: %q", out.String())
 	}
 }
 

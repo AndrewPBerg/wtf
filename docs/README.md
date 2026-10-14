@@ -16,6 +16,7 @@ history and have a historical banner; they do not describe this release.
 
 - [Complete command reference](cli.md)
 - [Setup and teardown](setup.md)
+- [Self-contained agent guide](../internal/core/scaffold/AGENTS.md) (generated as `.wtf/AGENTS.md`)
 - [New and configuration inheritance](new.md)
 - [Workspace messages](change.md)
 - [Shell completion](completion.md)

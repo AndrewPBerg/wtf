@@ -468,7 +468,7 @@
               "type": "boolean"
             }
           },
-          "description": "Create .wtf in the current directory with config.toml, the generated editor schema, and completely empty hooks and tasks directories. Its .gitignore contains only * so all scaffold files stay local and untracked. Existing files are preserved; repeated setup fills in missing files. Does not run hooks, install dependencies or register a workspace. No repository is required. Use setup teardown to remove the local .wtf directory after a yes/no confirmation. Examples: wtf setup; wtf setup --json; wtf setup teardown.",
+          "description": "Create .wtf in the current directory with config.toml, the generated editor schema, a self-contained AGENTS.md reference, its template checksum, and completely empty hooks and tasks directories. Its .gitignore contains only * so all scaffold files stay local and untracked. Config/schema edits are preserved; repeated setup fills in missing files and refreshes guides matching the previously installed checksum. Customized or unknown guides are preserved with an update-available report. The guide and checksum are inherited by newly created workspaces. Uses the installed binary's embedded template without a network lookup. Does not run hooks, install dependencies or register a workspace. No repository is required. Use setup teardown to remove the local .wtf directory after a yes/no confirmation. Examples: wtf setup; wtf setup --json; wtf setup teardown.",
           "patternProperties": {
             "^[jJ][sS][oO][nN]$": {
               "$ref": "#/properties/commands/definitions/setup/definitions/json"

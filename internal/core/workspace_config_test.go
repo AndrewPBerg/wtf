@@ -15,6 +15,7 @@ func TestNewInheritsConfigurationBeforeHooksAndFromInvokingWorkspace(t *testing.
 		"verify.lua": `return function(event)
   local fs=require("wtf.fs")
   assert(fs.exists(".wtf/config.toml"))
+  assert(fs.exists(".wtf/AGENTS.md"))
   assert(fs.read(".wtf/schema.json")=="{}\n")
   assert(fs.exists(".wtf/hooks/lib/helper.lua"))
   assert(fs.exists(".wtf/tasks/nested/example.lua"))
@@ -40,7 +41,7 @@ end`,
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"config.toml", "schema.json", ".gitignore", "hooks/verify.lua", "hooks/lib/helper.lua", "tasks/nested/example.lua"} {
+	for _, name := range []string{"config.toml", "schema.json", ".gitignore", guideChecksumFile, "hooks/verify.lua", "hooks/lib/helper.lua", "tasks/nested/example.lua"} {
 		original, err := os.ReadFile(filepath.Join(source.Path, ".wtf", name))
 		if err != nil {
 			t.Fatal(err)
@@ -57,6 +58,11 @@ end`,
 	if _, err := os.Stat(filepath.Join(child.Path, ".wtf/other.txt")); !os.IsNotExist(err) {
 		t.Fatal("unselected artifact inherited")
 	}
+	guide, err := os.ReadFile(filepath.Join(child.Path, ".wtf/AGENTS.md"))
+	if err != nil || string(guide) != string(workspaceGuide) {
+		t.Fatalf("agent guide was not inherited: %v", err)
+	}
+	write(child.Path, ".wtf/AGENTS.md", "# Child agent instructions\n")
 	write(child.Path, ".wtf/tasks/nested/example.lua", "return 'child task'\n")
 	write(child.Path, ".wtf/hooks/lib/helper.lua", "return 'child'\n")
 	if _, err := a.NewWorkspace(t.Context(), child.Path, ""); err != nil {
@@ -66,10 +72,18 @@ end`,
 	if err != nil || string(data) != "return 'child task'\n" {
 		t.Fatal("preparation overwrote child configuration")
 	}
+	guide, err = os.ReadFile(filepath.Join(child.Path, ".wtf/AGENTS.md"))
+	if err != nil || string(guide) != "# Child agent instructions\n" {
+		t.Fatal("preparation overwrote child guide")
+	}
 	a.Cwd = filepath.Join(child.Path, ".wtf/tasks")
 	grandchild, err := a.NewWorkspace(t.Context(), "inherit-grandchild", "@")
 	if err != nil {
 		t.Fatal(err)
+	}
+	guide, err = os.ReadFile(filepath.Join(grandchild.Path, ".wtf/AGENTS.md"))
+	if err != nil || string(guide) != "# Child agent instructions\n" {
+		t.Fatalf("did not inherit invoking workspace guide: %v", err)
 	}
 	for _, name := range []string{"tasks/nested/example.lua", "hooks/lib/helper.lua"} {
 		inherited, err := os.ReadFile(filepath.Join(grandchild.Path, ".wtf", name))
