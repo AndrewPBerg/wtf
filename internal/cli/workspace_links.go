@@ -25,10 +25,18 @@ func workspaceDisplayName(row core.WorkspaceView) string {
 // The visible name can be truncated; the editor always receives the
 // exact absolute workspace root. Missing and removed records are not actionable.
 func workspaceLinkPresentation(p presentation, row core.WorkspaceView, label string) string {
-	label = plain(label)
+	return workspaceStyledLink(p, row, plain(label))
+}
+
+// Labels here have already been sanitized before adding theme styles.
+func workspaceStyledLink(p presentation, row core.WorkspaceView, label string) string {
 	if !p.Links || !row.Exists || row.Status == "removed" || !filepath.IsAbs(row.Path) || plain(row.Path) != row.Path {
 		return label
 	}
 	target := (&url.URL{Scheme: "zed", Host: "file", Path: filepath.ToSlash(row.Path)}).String()
 	return ansi.SetHyperlink(target) + label + ansi.ResetHyperlink()
+}
+
+func workspaceSearchLink(p presentation, row core.WorkspaceView, search pickerSearch) string {
+	return workspaceStyledLink(p, row, search.highlight(p, workspaceDisplayName(row)))
 }

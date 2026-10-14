@@ -24,6 +24,12 @@ cleanup warning. Descriptions are also visible during the removal review.
 - `j`/`k` move down/up and accept counts such as `4j`/`4k`, wrapping through the list.
 - `gg` goes to the top of the current page; `G` goes to its bottom. Left/Right, `h`/`l` (also `H`/`L`), and PageUp/PageDown move between pages. These motions also work in the review.
 - Space selects or clears a workspace.
+- `/` fuzzy-searches names and messages, ignoring case, with matching characters
+  highlighted in the active theme's accent color and underlined. Enter applies
+  the filter and returns to navigation; Esc clears it. Backspace edits the query
+  and Ctrl+U clears the input. Typing in search never triggers picker actions.
+  Selections survive filtering; `a` acts on matching rows only. Review always
+  shows every selected workspace, including those hidden by the filter.
 - `f` toggles force mode, initially OFF. Force ON allows selecting workspaces
   with remaining changes. Turning it OFF clears selections requiring force.
 - `a` selects clean workspaces verified in main/master. Press it again to clear those selections.

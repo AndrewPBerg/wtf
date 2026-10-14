@@ -125,6 +125,7 @@ type removalPicker struct {
 	p                   presentation
 	cursor, height      int
 	motions             pickerMotions
+	search              pickerSearch
 	selected            map[string]bool
 	confirming, loading bool
 	force               bool
@@ -183,7 +184,13 @@ func (m removalPicker) visible() []core.RemovalCandidate {
 	if m.confirming {
 		return m.picked()
 	}
-	return m.rows
+	rows := []core.RemovalCandidate{}
+	for _, row := range m.rows {
+		if m.search.matches(row.WorkspaceView) {
+			rows = append(rows, row)
+		}
+	}
+	return rows
 }
 
 func (m removalPicker) hasMessages() bool {
@@ -197,6 +204,9 @@ func (m removalPicker) hasMessages() bool {
 
 func (m removalPicker) pageSize() int {
 	reserved := 9
+	if !m.confirming && m.search.hint() != "" {
+		reserved++
+	}
 	if m.hasMessages() {
 		reserved++
 	}
@@ -216,11 +226,12 @@ func (m removalPicker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.metadata = nil
+		m.cursor = max(0, min(m.cursor, len(m.visible())-1))
 		return m, m.Init()
 	case removalCandidatesMsg:
 		for i, row := range m.rows {
 			if row.ID == msg.id {
-				if !m.confirming && i == m.cursor && m.message == row.Warning {
+				if !m.confirming && m.message == row.Warning {
 					m.message = ""
 				}
 				if msg.err != nil {
@@ -234,11 +245,20 @@ func (m removalPicker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.nextInspection++
 		m.loading = m.nextInspection < len(m.rows)
+		m.cursor = max(0, min(m.cursor, len(m.visible())-1))
 		return m, m.inspectRow(m.nextInspection + removalInspectionWorkers - 1)
 	case tea.WindowSizeMsg:
 		m.p.Width, m.height = max(1, msg.Width), max(1, msg.Height)
 	case tea.KeyMsg:
 		m.message = ""
+		oldQuery := m.search.query
+		if !m.confirming && m.search.update(msg) {
+			m.motions = pickerMotions{}
+			if oldQuery != m.search.query {
+				m.cursor = 0
+			}
+			return m, nil
+		}
 		if cursor, handled := m.motions.move(msg.String(), m.cursor, len(m.visible()), m.pageSize()); handled {
 			if m.err == nil {
 				m.cursor = cursor
@@ -394,7 +414,12 @@ func (m removalPicker) View() string {
 		return value + strings.Repeat(" ", max(0, n-lipgloss.Width(value)))
 	}
 	lines := []string{m.p.Muted.Render(clip("      " + cell("WORKSPACE", nameWidth) + "  " + cell("MAIN", statusWidth) + "  " + cell("CHANGES", changesWidth) + "  " + cell("AGE", ageWidth)))}
-	if !m.loading && len(rows) == 0 {
+	if !m.confirming && m.search.hint() != "" {
+		lines = append(lines, m.p.Title.Render(clip(m.search.hint())))
+	}
+	if len(rows) == 0 && m.search.query != "" {
+		lines = append(lines, m.p.Muted.Render(clip("No matching workspaces.")))
+	} else if !m.loading && len(rows) == 0 {
 		lines = append(lines, m.p.Muted.Render(clip("No active workspaces in this repository.")))
 	}
 	for i, row := range rows {
@@ -428,13 +453,13 @@ func (m removalPicker) View() string {
 		if len(row.Changes) > 0 {
 			changes = fmt.Sprintf("! %d", len(row.Changes))
 		}
-		label := pointer + " " + mark + " " + cell(workspaceLinkPresentation(m.p, row.WorkspaceView, workspaceDisplayName(row.WorkspaceView)), nameWidth) + "  " + cell(removalStatus(row), statusWidth) + "  " + cell(changes, changesWidth) + "  " + cell(workspaceAge(row.CreatedAt, now), ageWidth)
+		label := pointer + " " + mark + " " + cell(workspaceSearchLink(m.p, row.WorkspaceView, m.search), nameWidth) + "  " + cell(removalStatus(row), statusWidth) + "  " + cell(changes, changesWidth) + "  " + cell(workspaceAge(row.CreatedAt, now), ageWidth)
 		lines = append(lines, style.Render(clip(label)))
 	}
 	if m.hasMessages() {
 		text := ""
 		if m.cursor >= 0 && m.cursor < len(rows) && rows[m.cursor].Message != "" {
-			text = "Message: " + plain(rows[m.cursor].Message)
+			text = "Message: " + m.search.highlight(m.p, rows[m.cursor].Message)
 		}
 		lines = append(lines, m.p.Text.Render(clip(text)))
 	}
@@ -489,7 +514,7 @@ func (m removalPicker) View() string {
 	}
 	lines = append(lines, m.p.Muted.Render(clip(hint)))
 	if !m.confirming {
-		lines = append(lines, m.p.Muted.Render(clip("Enter review · Esc close")))
+		lines = append(lines, m.p.Muted.Render(clip("/ search · Enter review · Esc close")))
 	}
 	if m.height < 8 || width < 12 {
 		return ansi.Truncate(title+" "+strings.Join(strings.Fields(ansi.Strip(strings.Join(lines, " "))), " "), width, "…")

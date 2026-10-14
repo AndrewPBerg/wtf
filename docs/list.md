@@ -18,6 +18,13 @@ select the top/bottom of the current page. Left/Right, h/l, and PageUp/PageDown
 change pages. Enter selects; Esc cancels. Terminal hyperlinks open workspace
 folders through Zed's URL handler. Messages appear under the selected row.
 
+Press `/` to fuzzy-search workspace names and messages as you type (ignoring
+case). Matching characters use the active theme's accent color and an underline.
+Enter applies the filter and returns to navigation; press Enter again to select.
+`/` edits the query, Backspace deletes a character, Ctrl+U clears the input, and
+Esc clears the search before closing the picker. Repository pages include only
+matching workspaces; metadata refreshes preserve the filter.
+
 By default, unavailable/removed paths are hidden. `--all` includes retained
 records; `--here` restricts to the current workspace; `--global` covers registered
 repositories. `--global` and `--here` cannot be combined. The stage column uses

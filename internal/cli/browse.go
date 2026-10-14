@@ -62,6 +62,8 @@ func (s *Session) browse(ctx context.Context, rows []core.WorkspaceView) (any, e
 
 type browser struct {
 	rows                []core.WorkspaceView
+	allRows             []core.WorkspaceView
+	search              pickerSearch
 	cwd                 string
 	p                   presentation
 	cursor, height      int
@@ -114,6 +116,9 @@ func (m browser) hasMessages() bool {
 
 func (m browser) pageSize() int {
 	reserved := 7
+	if m.search.hint() != "" {
+		reserved++
+	}
 	if m.hasMessages() {
 		reserved++
 	}
@@ -127,7 +132,13 @@ func (m *browser) setRows(rows []core.WorkspaceView) {
 	if m.cursor >= 0 && m.cursor < len(m.rows) {
 		selected = m.rows[m.cursor]
 	}
-	m.rows = append([]core.WorkspaceView(nil), rows...)
+	m.allRows = append([]core.WorkspaceView(nil), rows...)
+	m.rows = nil
+	for _, row := range rows {
+		if m.search.matches(row) {
+			m.rows = append(m.rows, row)
+		}
+	}
 	paths := map[string]string{}
 	for _, row := range m.rows {
 		paths[row.RepositoryID] = row.RepositoryPath
@@ -209,6 +220,15 @@ func (m browser) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.p.Width, m.height = max(1, msg.Width), max(1, msg.Height)
 	case tea.KeyMsg:
 		m.message = ""
+		oldQuery := m.search.query
+		if m.search.update(msg) {
+			m.motions = pickerMotions{}
+			if oldQuery != m.search.query {
+				m.setRows(m.allRows)
+				m.cursor = 0
+			}
+			return m, nil
+		}
 		pages, pageIndex := m.pages()
 		page := pages[pageIndex]
 		doubleG := msg.String() == "g" && m.motions.g
@@ -290,6 +310,7 @@ func (m browser) View() string {
 	if page.repos > 1 {
 		hint = "↑↓/jk · [N]j/k · gg/G · ←→/hl page · Tab/S-Tab repo · Enter select · Esc close"
 	}
+	hint = "/ search · " + hint
 	nameWidth, prWidth, ciWidth, ageWidth := 9, 2, 2, 3
 	now := time.Now()
 	for _, row := range m.rows[page.start:page.end] {
@@ -340,6 +361,9 @@ func (m browser) View() string {
 		inner = max(1, width-4)
 	}
 	lines := []string{}
+	if hint := m.search.hint(); hint != "" {
+		lines = append(lines, m.p.Title.Render(clip(hint)))
+	}
 	header := "    " + cell("WORKSPACE", nameWidth) + "  "
 	if m.showPRs {
 		header += cell("PR", prWidth) + "  "
@@ -353,7 +377,11 @@ func (m browser) View() string {
 	header += cell("AGE", ageWidth)
 	lines = append(lines, m.p.Muted.Render(clip(header)))
 	if len(m.rows) == 0 {
-		lines = append(lines, m.p.Muted.Render(clip("No active workspaces in this scope.")))
+		empty := "No active workspaces in this scope."
+		if m.search.query != "" {
+			empty = "No matching workspaces."
+		}
+		lines = append(lines, m.p.Muted.Render(clip(empty)))
 	}
 	for i, row := range m.rows {
 		if i < page.start || i >= page.end {
@@ -369,7 +397,7 @@ func (m browser) View() string {
 		if !row.Exists || row.Status == "removed" {
 			current = "!"
 		}
-		label := pointer + " " + current + " " + cell(workspaceLinkPresentation(m.p, row, workspaceDisplayName(row)), nameWidth) + "  "
+		label := pointer + " " + current + " " + cell(workspaceSearchLink(m.p, row, m.search), nameWidth) + "  "
 		if m.showPRs {
 			label += cell(prPresentation(m.p, row.GitHub), prWidth) + "  "
 		}
@@ -395,7 +423,7 @@ func (m browser) View() string {
 	if m.hasMessages() {
 		text := ""
 		if m.cursor >= 0 && m.cursor < len(m.rows) && m.rows[m.cursor].Message != "" {
-			text = "Message: " + plain(m.rows[m.cursor].Message)
+			text = "Message: " + m.search.highlight(m.p, m.rows[m.cursor].Message)
 		}
 		lines = append(lines, m.p.Text.Render(clip(text)))
 	}
