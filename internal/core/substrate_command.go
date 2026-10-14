@@ -15,6 +15,7 @@ import (
 
 const commandOutputLimit = 1 << 20
 
+// CommandOptions configures bounded execution and the child environment.
 type CommandOptions struct {
 	Env          map[string]string
 	Unset        []string
@@ -24,6 +25,7 @@ type CommandOptions struct {
 	Capture      bool
 }
 
+// CommandResult reports execution status and bounded captured output.
 type CommandResult struct {
 	Started         bool   `json:"started"`
 	OK              bool   `json:"ok"`

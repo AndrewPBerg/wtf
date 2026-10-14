@@ -105,7 +105,7 @@ func (a *App) TeardownSetup(ctx context.Context, confirmed bool) (SetupTeardownR
 	if err != nil {
 		return result, err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	info, err := root.Lstat(".wtf")
 	if errors.Is(err, os.ErrNotExist) {
 		result.Status = "not_configured"

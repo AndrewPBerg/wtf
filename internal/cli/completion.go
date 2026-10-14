@@ -19,7 +19,7 @@ type completionScript struct {
 }
 
 func (s *Session) addCompletion() {
-	command := s.command("completion SHELL", "Generate Bash, Zsh or Fish shell completions", "Print a shell script for bash, zsh or fish. Source it in your shell to complete commands, aliases, flags, live workspace names and configured project tasks. Workspace and task matches include fuzzy subsequences. No hooks or network lookups run. Example: source <(wtf completion bash). See docs/completion.md for installation and shell aliases.", cobra.ExactArgs(1), func(c *cobra.Command, args []string) (any, error) {
+	command := s.command("completion SHELL", "Generate Bash, Zsh or Fish shell completions", "Print a shell script for bash, zsh or fish. Source it in your shell to complete commands, aliases, flags, live workspace names and configured project tasks. Workspace and task matches include fuzzy subsequences. No hooks or network lookups run. Example: source <(wtf completion bash). See docs/completion.md for installation and shell aliases.", cobra.ExactArgs(1), func(_ *cobra.Command, args []string) (any, error) {
 		shell := strings.ToLower(args[0])
 		script, ok := completionScripts[shell]
 		if !ok {
@@ -69,11 +69,12 @@ func (s *Session) complete(ctx context.Context, words []string) int {
 						continue
 					}
 					if flag.NoOptDefVal == "" {
-						if i+1 < len(name) {
+						switch {
+						case i+1 < len(name):
 							flags[flag.Name] = name[i+1:]
-						} else if attached {
+						case attached:
 							flags[flag.Name] = value
-						} else {
+						default:
 							pending = flag
 						}
 						break
@@ -84,11 +85,12 @@ func (s *Session) complete(ctx context.Context, words []string) int {
 					}
 				}
 			} else if flag := findFlag(command, strings.ToLower(name), false); flag != nil {
-				if attached {
+				switch {
+				case attached:
 					flags[flag.Name] = value
-				} else if flag.NoOptDefVal == "" {
+				case flag.NoOptDefVal == "":
 					pending = flag
-				} else {
+				default:
 					flags[flag.Name] = flag.NoOptDefVal
 				}
 			}
@@ -115,16 +117,17 @@ func (s *Session) complete(ctx context.Context, words []string) int {
 		}
 	}
 	directive := cobra.ShellCompDirectiveNoFileComp
-	if separated {
+	switch {
+	case separated:
 		directive = cobra.ShellCompDirectiveDefault
-	} else if pending != nil {
+	case pending != nil:
 		if pending.Value.Type() == "bool" {
 			add("true", "", false)
 			add("false", "", false)
 		} else if pending.Name != "from" && pending.Name != "message" {
 			directive = cobra.ShellCompDirectiveDefault
 		}
-	} else if strings.HasPrefix(partial, "-") {
+	case strings.HasPrefix(partial, "-"):
 		name, _, attached := strings.Cut(partial, "=")
 		if attached {
 			flag := findFlag(command, strings.ToLower(strings.TrimLeft(name, "-")), !strings.HasPrefix(name, "--"))
@@ -148,7 +151,7 @@ func (s *Session) complete(ctx context.Context, words []string) int {
 				parent.PersistentFlags().VisitAll(visit)
 			}
 		}
-	} else if len(args) == 0 {
+	case len(args) == 0:
 		for _, child := range command.Commands() {
 			if child.Hidden {
 				continue
@@ -182,7 +185,7 @@ func (s *Session) complete(ctx context.Context, words []string) int {
 		case "wtf new":
 			directive = cobra.ShellCompDirectiveDefault
 		}
-	} else if command.CommandPath() == "wtf run" {
+	case command.CommandPath() == "wtf run":
 		directive = cobra.ShellCompDirectiveDefault
 	}
 	names := make([]string, 0, len(candidates))

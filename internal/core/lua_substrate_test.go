@@ -210,7 +210,7 @@ func TestSubstrateCancelledFileAndCommandOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	_, err = runtime.writeFile(root, "cancelled", []byte("never committed"), true)
 	if err == nil {
 		t.Fatal("cancelled write succeeded")

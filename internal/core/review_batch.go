@@ -51,7 +51,7 @@ func (NativeReviewClient) ResolveBatch(ctx context.Context, lookups []ReviewLook
 	if err != nil {
 		return fallback("invalid_review_batch")
 	}
-	data, runErr, code := invokeReviewAdapter(ctx, lookups[0].Root, []string{"--batch", "true"}, bytes.NewReader(input))
+	data, code, runErr := invokeReviewAdapter(ctx, lookups[0].Root, []string{"--batch", "true"}, bytes.NewReader(input))
 	if code != "" {
 		return fallback(code)
 	}

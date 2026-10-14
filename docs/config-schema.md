@@ -1,6 +1,6 @@
 # TOML editor assistance
 
-The pilot's `.wtf/config.toml` selects the generated schema locally:
+WTF's `.wtf/config.toml` selects the generated schema locally:
 
 ```toml
 #:schema ./schema.json

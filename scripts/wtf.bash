@@ -3,7 +3,7 @@ wtf() {
     local binary="${WTF_BINARY:-$HOME/.local/bin/wtf}"
     local subcommand="${1,,}" argument destination
     case "$subcommand" in
-        list|ls)
+        list|ls|sw)
             if [[ -t 0 && -t 1 ]]; then
                 for argument in "$@"; do
                     case "${argument,,}" in

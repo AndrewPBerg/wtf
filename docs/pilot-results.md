@@ -1,3 +1,6 @@
+> Historical design or 0.x reference. This page is not the WTF 1.0.0 contract.
+> Start with the [current documentation](README.md) and [migration guide](migration.md).
+
 # First hook pilot — local evidence
 
 The isolated `wtf/v1-hook-pilot` workspace replaces the previous Go runtime with a

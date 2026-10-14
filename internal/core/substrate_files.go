@@ -195,7 +195,7 @@ func (r *Runtime) readFile(root *os.Root, name string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
 		return nil, fileError(err)
@@ -215,11 +215,12 @@ func (r *Runtime) readFile(root *os.Root, name string) ([]byte, error) {
 
 func fileInfo(info os.FileInfo) fileRecord {
 	kind := "other"
-	if info.Mode().IsRegular() {
+	switch {
+	case info.Mode().IsRegular():
 		kind = "file"
-	} else if info.IsDir() {
+	case info.IsDir():
 		kind = "directory"
-	} else if info.Mode()&os.ModeSymlink != 0 {
+	case info.Mode()&os.ModeSymlink != 0:
 		kind = "symlink"
 	}
 	return fileRecord{Name: info.Name(), Type: kind, Size: info.Size(), Mode: uint32(info.Mode().Perm())}
@@ -263,7 +264,7 @@ func (r *Runtime) listFiles(root *os.Root, name string) ([]fileRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	entries, err := f.ReadDir(fileEntryLimit + 1)
 	if err != nil && err != io.EOF {
 		return nil, fileError(err)
@@ -314,7 +315,7 @@ func (r *Runtime) writeFile(root *os.Root, name string, data []byte, replace boo
 	if err != nil {
 		return result, fileError(err)
 	}
-	defer root.Remove(temp)
+	defer func() { _ = root.Remove(temp) }()
 	_, writeErr := f.Write(data)
 	syncErr := f.Sync()
 	closeErr := f.Close()
@@ -375,7 +376,7 @@ func (r *Runtime) symlinkFile(source *os.Root, src string, dest *os.Root, dst st
 	if err := dest.Symlink(target, temp); err != nil {
 		return result, fileError(err)
 	}
-	defer dest.Remove(temp)
+	defer func() { _ = dest.Remove(temp) }()
 	if err := r.Context.Err(); err != nil {
 		return result, err
 	}
@@ -551,7 +552,7 @@ func (r *Runtime) copyFile(source *os.Root, src string, dest *os.Root, dst strin
 		return result, err
 	}
 	temp := filepath.Join(filepath.Dir(dst), ".wtf-copy-"+id)
-	defer dest.RemoveAll(temp)
+	defer func() { _ = dest.RemoveAll(temp) }()
 	if err := r.copyNode(source, src, dest, temp, options, &copyBudget{directories: map[string]bool{}}); err != nil {
 		return result, err
 	}
@@ -562,11 +563,12 @@ func (r *Runtime) copyFile(source *os.Root, src string, dest *os.Root, dst strin
 	if err != nil {
 		return result, fileError(err)
 	}
-	if options.Replace {
+	switch {
+	case options.Replace:
 		err = dest.Rename(temp, dst)
-	} else if staged.IsDir() {
+	case staged.IsDir():
 		err = commitNewDirectory(dest, temp, dst)
-	} else {
+	default:
 		err = dest.Link(temp, dst)
 	}
 	if !options.Replace && errors.Is(err, os.ErrExist) {

@@ -14,7 +14,7 @@ import (
 )
 
 // Version identifies the installed WTF build.
-var Version = "v1-pilot"
+var Version = "1.0.0"
 
 // Envelope is the versioned JSON command result.
 type Envelope struct {
@@ -337,7 +337,7 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 		return map[string]string{"released": args[0]}, e
 	}))
 	root.AddCommand(ports)
-	root.AddCommand(s.command("version", "Show pilot version", "Show the local pilot version; does not update any installed binary. Example: wtf version --json.", cobra.NoArgs, func(_ *cobra.Command, _ []string) (any, error) { return map[string]string{"version": Version}, nil }))
+	root.AddCommand(s.command("version", "Show installed version", "Show the installed WTF version. Example: wtf version --json.", cobra.NoArgs, func(_ *cobra.Command, _ []string) (any, error) { return map[string]string{"version": Version}, nil }))
 	root.CompletionOptions.DisableDefaultCmd = true
 	s.addCompletion()
 	for _, command := range root.Commands() {

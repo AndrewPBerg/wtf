@@ -122,11 +122,12 @@ func TestSetupRejectsPathConflictsWithoutFollowingSymlinks(t *testing.T) {
 					t.Fatal(err)
 				}
 				var err error
-				if symlink {
+				switch {
+				case symlink:
 					err = os.Symlink(target, path)
-				} else if name == ".wtf/config.toml" {
+				case name == ".wtf/config.toml":
 					err = os.Mkdir(path, 0755)
-				} else {
+				default:
 					err = os.WriteFile(path, []byte("preserve me"), 0600)
 				}
 				if err != nil {

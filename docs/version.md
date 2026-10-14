@@ -1,20 +1,13 @@
-# wtf version
+# Version
 
-Print the current version of wtf.
-
-## Usage
-
-```bash
+```sh
 wtf version
+wtf --version
+wtf -v
+wtf version -j
 ```
 
-## Examples
-
-```bash
-$ wtf version
-wtf version 0.11.2
-```
-
-## Build-time Version
-
-The source carries the current release version. Release builds may override it with Go linker flags (`-ldflags`).
+Human output is `WTF 1.0.0`. JSON returns the versioned envelope with
+`data.version = "1.0.0"`. Version/help never load project hooks or require a
+registered workspace. Source carries the release version; tagged builds inject
+the same version through the Go linker. Version does not update the binary.

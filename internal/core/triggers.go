@@ -178,7 +178,7 @@ func (a *App) InvokeHooks(ctx context.Context, invocation HookInvocation, operat
 	return data, err
 }
 
-func luaResult(L *lua.LState, data any) (lua.LValue, error) {
+func luaResult(state *lua.LState, data any) (lua.LValue, error) {
 	encoded, err := json.Marshal(data)
 	if err != nil {
 		return nil, Fail("invalid_hook_result", "Command result cannot be exposed to hooks: "+err.Error())
@@ -187,10 +187,10 @@ func luaResult(L *lua.LState, data any) (lua.LValue, error) {
 	if err := json.Unmarshal(encoded, &decoded); err != nil {
 		return nil, err
 	}
-	return luaJSON(L, decoded), nil
+	return luaJSON(state, decoded), nil
 }
 
-func luaJSON(L *lua.LState, value any) lua.LValue {
+func luaJSON(state *lua.LState, value any) lua.LValue {
 	switch value := value.(type) {
 	case nil:
 		return lua.LNil
@@ -201,15 +201,15 @@ func luaJSON(L *lua.LState, value any) lua.LValue {
 	case float64:
 		return lua.LNumber(value)
 	case []any:
-		table := L.NewTable()
+		table := state.NewTable()
 		for _, item := range value {
-			table.Append(luaJSON(L, item))
+			table.Append(luaJSON(state, item))
 		}
 		return table
 	case map[string]any:
-		table := L.NewTable()
+		table := state.NewTable()
 		for key, item := range value {
-			table.RawSetString(key, luaJSON(L, item))
+			table.RawSetString(key, luaJSON(state, item))
 		}
 		return table
 	default:

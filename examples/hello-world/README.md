@@ -1,7 +1,7 @@
 # Repeatable Lua hello world
 
-The local development `.wtf/` contains this example already. The canonical copies
-here are tracked so tests and other checkouts can reproduce it.
+These tracked examples can be installed into local `.wtf/` configuration.
+Fresh `wtf setup` does not install or register them automatically.
 
 `hello_world_new.lua` runs after creation; `hello_world_list.lua` runs after list.
 Both use `lib/hello_world.lua` to exercise files, links, command capture, cwd,

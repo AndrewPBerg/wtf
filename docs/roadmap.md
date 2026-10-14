@@ -1,3 +1,6 @@
+> Historical design or 0.x reference. This page is not the WTF 1.0.0 contract.
+> Start with the [current documentation](README.md) and [migration guide](migration.md).
+
 # WTF Roadmap — V1 and v1.1 Hooks
 
 > Planning document · v1.1 is the planned hooks release. Proposed APIs are

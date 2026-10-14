@@ -68,7 +68,7 @@ their original target spelling; their targets may be missing or inaccessible.
 Limits: 8 MiB per read/write/copied file, 32 MiB per directory copy, and 1024
 entries per listing or copy. Failed writes/copies do not publish partial contents;
 private staging entries are removed. Cancellation is checked before committing.
-Atomic directory copy currently requires Linux, matching this pilot's platform.
+Atomic directory copy currently requires Linux, matching the supported release platform.
 
 ## Commands
 

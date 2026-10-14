@@ -1,3 +1,6 @@
+> Historical design or 0.x reference. This page is not the WTF 1.0.0 contract.
+> Start with the [current documentation](README.md) and [migration guide](migration.md).
+
 # `.wtf.toml` manifest
 
 WTF optionally reads a strict, versioned `.wtf.toml` from a project root. If the

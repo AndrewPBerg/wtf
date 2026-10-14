@@ -512,7 +512,7 @@
               "type": "boolean"
             }
           },
-          "description": "Show the local pilot version; does not update any installed binary. Example: wtf version --json.",
+          "description": "Show the installed WTF version. Example: wtf version --json.",
           "patternProperties": {
             "^[jJ][sS][oO][nN]$": {
               "$ref": "#/properties/commands/definitions/version/definitions/json"

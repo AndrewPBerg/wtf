@@ -101,6 +101,7 @@ func summarizeChecks(head string, raw json.RawMessage) (*CheckSummary, error) {
 // MetadataState separates absence from provider freshness and failures.
 type MetadataState string
 
+// Provider observation states retain missing, pending and unavailable distinctions.
 const (
 	MetadataPresent       MetadataState = "present"
 	MetadataNone          MetadataState = "none"

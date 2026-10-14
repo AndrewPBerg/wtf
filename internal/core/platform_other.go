@@ -9,7 +9,7 @@ import (
 )
 
 func lock(context.Context, string) (func(), error) {
-	return nil, Fail("unsupported_platform", "This local pilot currently supports Linux")
+	return nil, Fail("unsupported_platform", "WTF 1.0 supports Linux")
 }
 func configureCommand(cmd *exec.Cmd) {}
 func finishCommand(cmd *exec.Cmd)    {}

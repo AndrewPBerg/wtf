@@ -57,7 +57,7 @@ func runReviewBridge(ctx context.Context, root, prURL string, doctor bool) Revie
 	if doctor {
 		arguments = []string{"--doctor", "true"}
 	}
-	data, runErr, code := invokeReviewAdapter(ctx, root, arguments, nil)
+	data, code, runErr := invokeReviewAdapter(ctx, root, arguments, nil)
 	if code != "" {
 		r.Code = code
 		return r

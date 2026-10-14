@@ -6,9 +6,9 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-func luaOptions(L *lua.LState, value lua.LValue, keys ...string) (*lua.LTable, error) {
+func luaOptions(state *lua.LState, value lua.LValue, keys ...string) (*lua.LTable, error) {
 	if value == lua.LNil {
-		return L.NewTable(), nil
+		return state.NewTable(), nil
 	}
 	options, ok := value.(*lua.LTable)
 	if !ok {
@@ -20,7 +20,7 @@ func luaOptions(L *lua.LState, value lua.LValue, keys ...string) (*lua.LTable, e
 	}
 	var bad string
 	var invalid bool
-	options.ForEach(func(key, value lua.LValue) {
+	options.ForEach(func(key, _ lua.LValue) {
 		if key.Type() != lua.LTString || !allowed[key.String()] {
 			bad = key.String()
 			invalid = true

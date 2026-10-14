@@ -1,8 +1,8 @@
 # Project hook modules
 
-This page describes the current pilot. The planned v1.1 Lua substrate and recipes
-are tracked in the [roadmap](roadmap.md#v11--hooks) and
-[v1.1 hooks plan](v1.1-hooks-plan.md); proposed APIs there are not yet supported.
+This page describes WTF 1.0.0. Files, commands, and environment helpers are
+available in the [Lua substrate](lua-substrate.md); older roadmap proposals are
+historical and do not define supported APIs.
 
 Hooks are explicit project code. TOML selects the modules and their order.
 Unlisted files have no effect on their own.
@@ -297,7 +297,7 @@ wtf hook run inspect -- --anything ValueCase
 Arguments after `--` reach `request.args` unchanged. The project interprets them;
 they do not become framework flags. `ctx:hook(name, request)` composes named hooks
 synchronously; omitting `request` forwards the current one. A failure stops the
-sequence. Core creation/removal must still be delegated exactly once in this pilot.
+sequence. Core creation/removal must still be delegated exactly once.
 
 ## Useful recipes
 
@@ -308,34 +308,22 @@ sequence. Core creation/removal must still be delegated exactly once in this pil
 | Recoverable setup | Declare inputs and a live readiness check | Recorded stages, reuse, cancellation, workspace locking |
 | Compose sandbox | Choose ports, project name, image, health check, teardown | Atomic claims and persistent ownership records |
 
-## Try the Compose recipe
+## Try the tracked examples
 
-The checked-in registration supports `--compose` and `--test`. Default `new` only
-runs the small Go check. The recipe uses a cached `redis:7-alpine` image, loopback
-ports, UUID-named projects, ownership labels, and bounded container resources.
-Docker provisioning and environment policy stay entirely in project Lua/YAML.
-
-```sh
-./bin/wtf-pilot new ../sandbox -f @ -- --compose --test
-```
-
-From the printed workspace path, using the pilot binary's absolute path:
+Install the [hello-world callbacks](../examples/hello-world/README.md) or the
+[copy callback](../examples/copy/README.md) explicitly. Fresh setup is empty.
+The hello-world example exercises file writes/copies/links, child commands,
+environment settings, repeated list callbacks, and themed messages. The copy
+example transfers selected ignored mock inputs and preserves destination edits.
 
 ```sh
-wtf-pilot hook run prepare       # reusable local preparation
-wtf-pilot hook run start         # start/recheck the owned Compose sandbox
-wtf-pilot hook run test          # Redis ping, or focused Go tests without Compose
-wtf-pilot hook run stop          # remove services while keeping source
+wtf setup
+# Copy the selected example files/config according to its README.
+wtf new .
+wtf new ../sandbox -f @
+wtf list --pr=false --checks=false
 ```
 
-Return to the parent pilot workspace before removal:
-
-```sh
-./bin/wtf-pilot remove sandbox
-```
-
-Teardown verifies Docker ownership labels before deleting the project. Changed
-source blocks this recipe's removal before service teardown. Failed startup or
-cleanup retains claims for inspection and repair; stopping services does not delete
-source. The recipe never pulls images automatically. Cross-repository port claims
-and arbitrary Compose-file safety are not enforced by the Go core.
+Creation inherits the callback package/config into the child automatically.
+Project service recipes can compose the same stages/claims and explicit teardown,
+but no Compose registration or service startup is provided by default.

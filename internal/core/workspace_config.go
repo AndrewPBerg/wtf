@@ -17,7 +17,7 @@ func inheritWorkspaceConfig(ctx context.Context, sourcePath, destinationPath str
 	if err != nil {
 		return err
 	}
-	defer source.Close()
+	defer func() { _ = source.Close() }()
 	info, err := source.Lstat(".wtf")
 	if os.IsNotExist(err) {
 		return nil
@@ -32,7 +32,7 @@ func inheritWorkspaceConfig(ctx context.Context, sourcePath, destinationPath str
 	if err != nil {
 		return err
 	}
-	defer dest.Close()
+	defer func() { _ = dest.Close() }()
 	if err := dest.MkdirAll(".wtf", 0755); err != nil {
 		return err
 	}

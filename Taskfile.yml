@@ -2,15 +2,15 @@ version: "3"
 
 tasks:
   build:
-    desc: Build the local V1 pilot without replacing installed WTF
+    desc: Build WTF without replacing the installed binary
     cmds:
-      - go build -p 1 -o bin/wtf-pilot ./cmd/wtf
+      - GOMAXPROCS=1 go build -p 1 -o bin/wtf ./cmd/wtf
   test:
-    desc: Run the focused pilot contract and lifecycle tests
+    desc: Run the contract and lifecycle tests
     cmds:
-      - go test -p 1 ./internal/...
+      - GOMAXPROCS=1 go test -p 1 ./internal/...
   check:
-    desc: Validate the pilot with one build worker
+    desc: Validate WTF with one build worker
     cmds:
-      - go vet -p 1 ./internal/...
-      - go test -p 1 ./internal/...
+      - GOMAXPROCS=1 go vet -p 1 ./internal/...
+      - GOMAXPROCS=1 go test -p 1 ./internal/...

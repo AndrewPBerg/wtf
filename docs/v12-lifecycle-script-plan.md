@@ -1,3 +1,6 @@
+> Historical design or 0.x reference. This page is not the WTF 1.0.0 contract.
+> Start with the [current documentation](README.md) and [migration guide](migration.md).
+
 # v0.12+ Lifecycle Script Proposal
 
 > **Status:** deferred proposal. v0.11 shipped only typed file/port resources and

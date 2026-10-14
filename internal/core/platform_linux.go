@@ -65,12 +65,12 @@ func commitNewDirectory(root *os.Root, staged, destination string) error {
 	if err != nil {
 		return err
 	}
-	defer parent.Close()
+	defer func() { _ = parent.Close() }()
 	f, err := parent.Open(".")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return unix.Renameat2(int(f.Fd()), filepath.Base(staged), int(f.Fd()), filepath.Base(destination), unix.RENAME_NOREPLACE)
 }
 
