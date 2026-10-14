@@ -307,6 +307,9 @@ type RemovalOptions struct {
 // RemoveWithOptions retains identity, ownership, and lifecycle checks in force mode.
 func (a *App) RemoveWithOptions(ctx context.Context, name string, options RemovalOptions) (Workspace, error) {
 	r, e := Discover(ctx, a.Cwd)
+	if ErrorCode(e) == "not_a_jj_repository" {
+		return a.removeFromParent(ctx, name, options)
+	}
 	if e != nil {
 		return Workspace{}, e
 	}

@@ -49,10 +49,11 @@ type RemovalInspector struct {
 	repo Repo
 }
 
-// RemovalInspector binds cleanup inspection to the current repository.
+// RemovalInspector uses the current repository, or each row's repository when
+// invoked from a parent directory, matching List's default scope.
 func (a *App) RemovalInspector(ctx context.Context) (*RemovalInspector, error) {
 	repo, err := Discover(ctx, a.Cwd)
-	if err != nil {
+	if err != nil && ErrorCode(err) != "not_a_jj_repository" {
 		return nil, err
 	}
 	return &RemovalInspector{app: a, repo: repo}, nil
@@ -62,7 +63,15 @@ func (a *App) RemovalInspector(ctx context.Context) (*RemovalInspector, error) {
 func (s *RemovalInspector) Inspect(ctx context.Context, row WorkspaceView) (RemovalCandidate, error) {
 	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	result := s.app.inspectRemoval(bounded, s.repo, row)
+	repo := s.repo
+	if repo.Store == "" {
+		var err error
+		repo, err = Discover(bounded, row.RepositoryPath)
+		if err != nil {
+			return RemovalCandidate{}, err
+		}
+	}
+	result := s.app.inspectRemoval(bounded, repo, row)
 	if ctx.Err() != nil {
 		return result, Fail("command_cancelled", ctx.Err().Error())
 	}
@@ -78,7 +87,7 @@ func (a *App) InspectRemoval(ctx context.Context, row WorkspaceView) (RemovalCan
 	}
 	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	if row.Owned && row.Exists && !samePath(row.Path, inspector.repo.Root) {
+	if row.Owned && row.Exists && !samePath(row.Path, a.Cwd) {
 		rows := a.RemovalMetadata(bounded, []WorkspaceView{row})
 		for _, refreshed := range rows {
 			row = refreshed
@@ -90,22 +99,23 @@ func (a *App) InspectRemoval(ctx context.Context, row WorkspaceView) (RemovalCan
 // RemovalCandidates observes active workspaces before an interactive cleanup.
 // Normal JJ snapshotting captures on-disk edits; no hooks or removals run here.
 func (a *App) RemovalCandidates(ctx context.Context) ([]RemovalCandidate, error) {
-	r, err := Discover(ctx, a.Cwd)
+	rows, err := a.List(ctx, false, false)
 	if err != nil {
 		return nil, err
 	}
-	state, err := r.Load()
+	inspector, err := a.RemovalInspector(ctx)
 	if err != nil {
 		return nil, err
 	}
-	rows := []WorkspaceView{}
+	active := []WorkspaceView{}
 	needsPRs := false
-	for _, row := range views(state) {
+	for _, row := range rows {
 		if row.Status != "removed" && row.Exists {
-			rows = append(rows, row)
-			needsPRs = needsPRs || row.Owned && row.Exists && !samePath(row.Path, r.Root)
+			active = append(active, row)
+			needsPRs = needsPRs || row.Owned && !samePath(row.Path, a.Cwd)
 		}
 	}
+	rows = active
 	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if needsPRs {
@@ -113,7 +123,11 @@ func (a *App) RemovalCandidates(ctx context.Context) ([]RemovalCandidate, error)
 	}
 	result := make([]RemovalCandidate, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, a.inspectRemoval(bounded, r, row))
+		candidate, err := inspector.Inspect(bounded, row)
+		if err != nil {
+			return result, err
+		}
+		result = append(result, candidate)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	if ctx.Err() != nil {

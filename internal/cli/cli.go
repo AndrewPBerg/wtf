@@ -14,7 +14,7 @@ import (
 )
 
 // Version identifies the installed WTF build.
-var Version = "1.0.0"
+var Version = "1.0.1"
 
 // Envelope is the versioned JSON command result.
 type Envelope struct {
@@ -205,7 +205,7 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 		}
 		return app.NewWorkspaceWithOptions(c.Context(), args[0], from, options, args[1:]...)
 	})
-	n.Long += " New workspaces copy .wtf/config.toml, schema.json, hooks/ and tasks/ from the invoking workspace before initialization and creation callbacks, with independent files and local ignore rules. Local artifacts and runtime state are excluded. Existing-workspace preparation preserves its configuration."
+	n.Long += " New workspaces copy .wtf/config.toml, schema.json, hooks/ and tasks/ from the invoking workspace before initialization and creation callbacks, with independent files and local ignore rules. Declarative phase hooks also inherit from ancestor .wtf/config.toml files, outermost first; their imports remain in the declaring hook package. Local artifacts and runtime state are excluded. Existing-workspace preparation preserves its configuration."
 	n.Flags().StringVarP(&from, "from", "f", "trunk()", "JJ parent revision when creating a missing destination")
 	n.Flags().StringVarP(&message, "message", "m", "", "Workspace description shown below the selected row in list and remove; empty clears it")
 	root.AddCommand(n)
@@ -288,6 +288,7 @@ func New(app *core.App, out, errOut io.Writer) *Session {
 	list.MarkFlagsMutuallyExclusive("global", "here")
 	root.AddCommand(list)
 	rm := s.command("remove [NAME]", "Select and remove workspaces and their owned resources", "Open an inline multi-select cleanup picker. Space toggles a workspace; f toggles force mode to discard remaining source changes; a selects clean workspaces verified in main/master; Enter reviews, then confirms removal. Current and adopted workspaces are protected. Changes outside main/master block removal unless force mode is enabled in the picker. Integration uses local JJ ancestry or a fresh merged GitHub PR with an exact matching head and main/master base. Local bookmarks and remote bookmarks reflect their last fetched state. Normal JJ snapshotting captures on-disk changes during inspection.\n\nAn explicit NAME removes one workspace directly. JSON and redirected output with no NAME report cleanup candidates without removing them. Teardown hooks and identity/resource checks are revalidated for each removal. Failures retain cleanup state.\n\nExamples:\n  wtf remove\n  wtf rm agent-a --json\n  wtf remove --json", cobra.MaximumNArgs(1), func(c *cobra.Command, args []string) (any, error) { return s.remove(c.Context(), args) })
+	rm.Long += "\n\nInside a repository, removal uses that repository. From a parent directory, it includes registered repositories beneath it, just like switch; no --global flag is required. Repeated names require a workspace ID or running inside the intended repository."
 	rm.Aliases = []string{"rm"}
 	root.AddCommand(rm)
 	root.AddCommand(s.command("run TASK [ARGS...]", "Run a project task", "Run an argv-based TOML task in the current managed workspace, recording its result. Arguments after -- are forwarded literally. Tasks do not reuse results by default. Example: wtf run test -- tests/auth.", cobra.MinimumNArgs(1), func(c *cobra.Command, args []string) (any, error) { return app.Task(c.Context(), args[0], args[1:]) }))

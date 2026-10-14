@@ -2,6 +2,12 @@
 
 Run `wtf remove` or `wtf rm` to open the inline cleanup picker.
 
+Inside a repository, removal uses that repository. From a parent directory such
+as `Work`, it includes registered repositories beneath that directory, just like
+`wtf sw`. No `--global` flag is needed. An explicit name must be unique within
+that scope; use the workspace ID or run inside the intended repository when names
+are repeated. Each selected repository's removal hooks and safety checks still run.
+
 Listing reconciles confirmed missing, idle workspace registrations. It forgets
 their JJ registration, removes only their stale Git administrative entry, and
 drops them from WTF's registry, allowing their names and paths to be reused.

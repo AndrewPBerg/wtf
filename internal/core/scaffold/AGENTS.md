@@ -234,6 +234,9 @@ Do not parse human tables or treat a `data` field alone as success. Check both
 exit status and `ok`. JSON never opens interactive prompts.
 
 Bare `remove -j` or redirected removal previews candidates without deleting.
+Removal uses the same scope as switch: the current repository, or registered
+repositories beneath the current parent directory. No `--global` flag is needed.
+Repeated names require a workspace ID or invocation inside the intended repository.
 Terminal list/removal pickers use arrows or j/k, counts, gg/G, and h/l/page keys.
 Removal uses Space to select, `f` for force mode, `a` for clean verified work, then
 Enter to review and Enter to confirm. Esc goes back/cancels and Ctrl+C cancels.
@@ -386,8 +389,10 @@ empty configuration. Command defaults and lifecycle registrations are different:
   global > factory default. Explicit false and empty values remain meaningful.
 - Command/flag keys ignore case and aliases normalize to their canonical names.
   Use the generated schema for valid keys/types; unknown entries fail.
-- Hook phase arrays, task definitions, and Lua entrypoints belong to the selected
-  workspace. Their arrays do not merge through command-default inheritance.
+- Declarative hook phases inherit from ancestor `.wtf/config.toml` files,
+  outermost first, with imports isolated to each declaring hook package.
+  Tasks and Lua entrypoints belong to the selected workspace. Command defaults
+  are resolved separately from hook inheritance.
 - Configure declarative phases OR a Lua registration entrypoint. Do not combine
   `lua = "..."` with nonempty new/list/remove/invocation hook arrays. Tasks and
   command defaults may coexist with either registration mode.

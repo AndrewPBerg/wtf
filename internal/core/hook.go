@@ -30,6 +30,7 @@ type Runtime struct {
 	Request       *lua.LTable
 	Destination   string
 	CreationHooks []string
+	Parents       []*Runtime
 }
 
 func (a *App) runtime(ctx context.Context, r Repo, w Workspace) (*Runtime, error) {
@@ -47,6 +48,9 @@ func (a *App) runtimeWithConfig(ctx context.Context, r Repo, w Workspace, c Conf
 	complete := false
 	defer func() {
 		if !complete {
+			for _, parent := range rt.Parents {
+				parent.Close()
+			}
 			cancel()
 		}
 	}()
@@ -70,10 +74,22 @@ func (a *App) runtimeWithConfig(ctx context.Context, r Repo, w Workspace, c Conf
 		_, _ = fmt.Fprintln(a.Out)
 		return 0
 	}))
-	pkg, err := projectHooks(r.Root, c)
+	local := c
+	if c.local != nil {
+		local = *c.local
+	}
+	packageRoot := r.Root
+	if c.packageRoot != "" {
+		packageRoot = c.packageRoot
+	}
+	pkg, err := projectHooks(packageRoot, local)
 	if err == nil {
 		err = rt.registerPackage(pkg)
 	}
+	if err == nil {
+		err = rt.registerParents(c.parents)
+	}
+	rt.CreationHooks = append([]string{}, c.New.Hooks...)
 	if err != nil {
 		L.Close()
 		return nil, err
@@ -83,7 +99,13 @@ func (a *App) runtimeWithConfig(ctx context.Context, r Repo, w Workspace, c Conf
 }
 
 // Close cancels hook execution and closes the Lua interpreter.
-func (r *Runtime) Close() { r.Cancel(); r.L.Close() }
+func (r *Runtime) Close() {
+	for _, parent := range r.Parents {
+		parent.Close()
+	}
+	r.Cancel()
+	r.L.Close()
+}
 
 // Bind sets the current registered workspace in the hook context.
 func (r *Runtime) Bind(w Workspace) {

@@ -1,6 +1,6 @@
 # Installation
 
-WTF 1.0.0 publishes Linux binaries for amd64, arm64, arm (GOARM=7), and 386.
+WTF 1.0.1 publishes Linux binaries for amd64, arm64, arm (GOARM=7), and 386.
 Install JJ 0.46 or newer separately and configure its user name/email.
 This release is validated with JJ 0.46, including native Git colocation and
 missing-workspace reconciliation. Older JJ versions are not supported.
@@ -8,15 +8,15 @@ GitHub CLI, Node.js, Codex's configured Linear MCP connection, and Zed are optio
 for their respective integrations. Omarchy is optional; plain terminals work.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/AndrewPBerg/wtf/v1.0.0/install.sh -o /tmp/wtf-install.sh
+curl -fsSL https://raw.githubusercontent.com/AndrewPBerg/wtf/v1.0.1/install.sh -o /tmp/wtf-install.sh
 mkdir -p "$HOME/.local/bin"
-VERSION=1.0.0 INSTALL_DIR="$HOME/.local/bin" bash /tmp/wtf-install.sh
+VERSION=1.0.1 INSTALL_DIR="$HOME/.local/bin" bash /tmp/wtf-install.sh
 wtf version
 ```
 
 The installer downloads the selected archive and `SHA256SUMS`, verifies its SHA256,
 and installs the executable. Ensure the destination exists and is on PATH. You can
-instead download assets from [GitHub Releases](https://github.com/AndrewPBerg/wtf/releases/tag/v1.0.0),
+instead download assets from [GitHub Releases](https://github.com/AndrewPBerg/wtf/releases/tag/v1.0.1),
 verify the archive, extract it, and install `wtf` manually.
 
 For Bash selection to change your shell directory, extract the release archive
