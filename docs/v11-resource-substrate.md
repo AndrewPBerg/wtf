@@ -1,3 +1,6 @@
+> Historical design or 0.x reference. This page is not the WTF 1.0.0 contract.
+> Start with the [current documentation](README.md) and [migration guide](migration.md).
+
 # v0.11 Resource Substrate
 
 > **Status:** released. The typed file/port substrate and one-project dogfood gate

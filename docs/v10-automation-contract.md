@@ -1,3 +1,6 @@
+> Historical design or 0.x reference. This page is not the WTF 1.0.0 contract.
+> Start with the [current documentation](README.md) and [migration guide](migration.md).
+
 # v0.10 Versioned Automation Contract
 
 > WorkUnit: `ec920c96-e141-428c-95c5-ed969a7cf43e`

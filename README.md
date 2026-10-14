@@ -1,218 +1,81 @@
-[![codecov](https://codecov.io/github/AndrewPBerg/wtf/graph/badge.svg?token=DTXJ31R8RX)](https://codecov.io/github/AndrewPBerg/wtf)
-[![CI](https://github.com/AndrewPBerg/wtf/actions/workflows/ci.yaml/badge.svg)](https://github.com/AndrewPBerg/wtf/actions/workflows/ci.yaml)
+# WorkTreeForge (WTF) 1.0.0
 
-# WorkTreeForge (WTF)
+WTF manages Jujutsu workspaces, local project hooks, and recorded tasks. JJ owns
+revisions and bookmarks; WTF owns workspace setup, navigation, and cleanup.
+The human CLI uses Charm's terminal UI and the active Omarchy palette when available.
+Automation gets a single versioned JSON result.
 
-A fast worktree workflow tool for **git and [Jujutsu](https://jj-vcs.github.io/jj/)**. Create, switch, and clean up git worktrees or jj workspaces with automated project setup — zero config required.
+**Supported platform: Linux.** JJ 0.46+ is required; GitHub CLI and the existing Codex
+Linear MCP connection are optional metadata integrations. No model turns run.
 
-## Install
+```sh
+# Install the published Linux release (verify/review the installer first).
+curl -fsSL https://raw.githubusercontent.com/AndrewPBerg/wtf/v1.0.0/install.sh -o /tmp/wtf-install.sh
+mkdir -p "$HOME/.local/bin"
+VERSION=1.0.0 INSTALL_DIR="$HOME/.local/bin" bash /tmp/wtf-install.sh
 
-```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/AndrewPBerg/wtf/main/install.sh | sh
-
-# Windows (PowerShell) — download and run manually, don't pipe to iex
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/AndrewPBerg/wtf/main/install.ps1 -OutFile install.ps1
-.\install.ps1
-Remove-Item install.ps1
-
-# Go (all platforms)
-go install github.com/AndrewPBerg/wtf/cmd/wtf@latest
-```
-
-## Quickstart
-
-```bash
-# Set up shell integration (one-time)
-wtf setup shell
-
-# List / pick worktrees interactively
-wtf sw
-
-# Create a worktree for a new branch
-wtf new feature/auth
-# ✔ Created worktree at /code/myrepo--feature-auth
-
-# Create a worktree and switch to it in one step
-wtf news feature/auth
-
-# Checkout a PR by number
-wtf new --pr 42
-
-# Switch to a worktree (cd's automatically with shell wrapper)
-wtf sw auth
-
-# Switch across all registered repos
-wtf sw -g auth
-
-# Remove a worktree and its branch
-wtf rm feature/auth
-
-# Clean up merged/prunable worktrees
-wtf clean --dry-run
-wtf clean
-
-# Re-run setup in current worktree
+# Inside an existing JJ repository:
 wtf setup
+wtf new .
+wtf new feature-a -f @
+wtf ls
 ```
 
-## Git and Jujutsu
+New workspaces inherit config, schema, hooks, and tasks as independent copies.
+`.wtf/local/` remains controlled by explicit project hooks. Setup starts with
+empty hooks/tasks and ignores all local configuration. Nothing installs project
+dependencies automatically.
 
-The same commands drive both. wtf uses git worktrees in a `.git` repo and jj
-workspaces in a `.jj` repo:
-
-```bash
-$ wtf new feat/auth          # in a jj repo
-✔ Created workspace at /code/feat-auth--myrepo
-  env: .env → symlink
-  install: pnpm install
+```toml
+# .wtf/config.toml
+version = 1
+[new]
+after = ["hello_world"]
 ```
 
-This matters most for setup: jj honors `.gitignore`, so a fresh jj workspace has no
-`.env` and no installed dependencies until wtf links and installs them.
-
-A repo that is **both** (colocated — jj's default layout) is the only ambiguous case.
-wtf asks once and remembers your answer per-repo; `--vcs git|jj` and `WTF_VCS`
-override it. Non-interactive shells never prompt: wtf infers the backend from the
-checkouts the repo already has, so existing scripts are unaffected.
-
-```
-$ wtf new feat/auth
-? myrepo is both a git and a jj repo — which should wtf use?
-  [1] jj    workspace   (jj manages the working copy here)
-  [2] git   worktree
-Use which? [1-2] (saved for this repo)
+```lua
+-- .wtf/hooks/hello_world.lua
+local wtf = require("wtf")
+return function(event)
+  wtf.notify("Hello from " .. event.workspace.name, "success")
+end
 ```
 
-See [docs/jj.md](docs/jj.md) for workspace naming, bookmarks, revsets, and listing.
-
-## Automatic Setup
-
-When you create a worktree with `wtf new` or `wtf news`, WTF automatically:
-
-1. **Handles env files** (`.env`, `.env.local`, `.env.development`, `.env.development.local`) from the main worktree (symlink by default, copy with `--copy-env`)
-2. **Detects your package manager** and runs install (pnpm, bun, yarn, npm, uv, poetry, go, cargo, and more)
-
-No config file needed. Override with flags:
-
-```bash
-wtf new feature/auth --copy-env     # copy env files for isolated agent worktrees
-wtf new feature/auth --no-setup     # skip everything
-wtf new feature/auth --no-env       # skip env file handling
-wtf new feature/auth --no-install   # skip package install
-```
-
-## Shell Integration
-
-`wtf sw` prints the worktree path to stdout (a subprocess can't `cd` your shell). The shell wrapper intercepts `wtf sw` to `cd` automatically. Tab completions are also included — one line handles everything.
-
-```bash
-# Automatic setup (recommended)
-wtf setup shell
-
-# Or manually add to your profile:
-
-# bash — ~/.bashrc
-eval "$(wtf init bash)"
-
-# zsh — ~/.zshrc
-eval "$(wtf init zsh)"
-
-# fish — ~/.config/fish/config.fish
-wtf init fish | source
-```
-
-After setup, `wtf sw auth` will `cd` into the matching worktree directly, and `wtf sw <TAB>` will show available worktrees.
-
-## Worktree Path Convention
-
-Worktrees and jj workspaces are created as sibling directories to the main repo. Slashes in names become dashes:
-
-```
-/code/myrepo                    (main)
-/code/myrepo--feature-auth      (feature/auth)
-/code/myrepo--hotfix-bug        (hotfix/bug)
-```
+[Documentation](docs/README.md) · [Getting started](docs/getting-started.md) ·
+[Command reference](docs/cli.md) · [Lua API](docs/lua-substrate.md) ·
+[1.0.0 release notes](docs/releases/1.0.0.md) · [Migration](docs/migration.md)
 
 ## Commands
 
-### Worktree Operations
+| Command | Purpose |
+|---|---|
+| `new PATH` | Create or prepare a workspace |
+| `list`, `ls`, `sw` | Browse/select workspaces |
+| `change [NAME] -m TEXT` | Update a workspace description |
+| `remove`, `rm` | Review and remove owned workspaces |
+| `setup`, `setup teardown` | Scaffold/remove local configuration |
+| `hook list`, `hook run NAME` | Inspect/invoke registered hooks |
+| `run TASK` | Execute a configured task |
+| `ports list/claim/release` | Manage repository-local port claims |
+| `doctor`, `doc` | Diagnose configuration, tools, and state |
+| `completion SHELL`, `version` | Shell completion and version |
 
-| Command     | Description                                                   |
-|-------------|---------------------------------------------------------------|
-| `wtf new`   | Create or ensure a workspace (`--base`, `--pr`, `--ensure`)    |
-| `wtf sw`    | Switch/list workspaces (`--global`, `--prs`, `--json`)         |
-| `wtf rm`    | Remove a workspace (`--force`, UUID selectors)                 |
-| `wtf clean` | Remove merged/prunable workspaces (`--dry-run`)                |
-| `wtf news`  | Create a workspace and switch to it (`--base`)                 |
-
-All of these work on jj workspaces too. `--vcs git|jj` forces a backend in a repo
-that is both.
-
-### Structured workspace lifecycle
-
-| Command                    | Description                                              |
-|----------------------------|----------------------------------------------------------|
-| `wtf workspace current`    | Inspect the workspace containing the current directory   |
-| `wtf workspace inspect`    | Inspect one managed workspace by UUID, name, or path      |
-| `wtf workspace list`       | List managed workspaces through the versioned contract   |
-| `wtf cleanup plan/apply`   | Plan and apply identity-bound, fail-closed cleanup        |
-| `wtf resources`            | Inspect UUID-owned declared files, ports, leases, and debt|
-| `wtf doctor`               | Diagnose identity, VCS, resource, and cleanup health      |
-| `wtf capabilities --json` | Describe supported JSON schemas and automation contracts |
-| `wtf port`                 | Show the current workspace's allocated port              |
-
-Structured JSON results use `version: 1`. WTF workspace UUIDs are persistent random
-identities and are distinct from Agent Bridge's deterministic scope UUIDs.
-
-### Setup
-
-| Command            | Description                                            |
-|--------------------|--------------------------------------------------------|
-| `wtf setup`        | Run project setup in current worktree (`--env`, `--install`) |
-| `wtf setup shell`  | Auto-configure shell integration (one-time)            |
-| `wtf init`         | Print shell functions + tab completions for eval/source |
-| `wtf completion`   | Generate shell completion script (`--shell`, `--install`) |
-
-### Registry & Monitoring
-
-| Command          | Description                                             |
-|------------------|---------------------------------------------------------|
-| `wtf repos`      | List all registered repos                               |
-| `wtf unregister` | Remove a repo from the registry                         |
-| `wtf watch`      | Watch PRs for changes and send notifications (`-g`, `-i`) |
-
-### Tooling
-
-| Command          | Description                                      |
-|------------------|--------------------------------------------------|
-| `wtf git-diff`   | Create or refresh Zed/Git diff metadata for a JJ workspace |
-| `wtf version`    | Print version                                    |
-| `wtf update`     | Update to the latest version                     |
-| `wtf uninstall`  | Remove the wtf binary (`--force` to skip prompt) |
-
-See [docs/](docs/) for detailed command documentation, and [docs/jj.md](docs/jj.md) for Jujutsu specifics.
-
-## Pi extension
-
-The canonical Pi extension lives in [`packages/pi-extension/`](packages/pi-extension/).
-It keeps agent checkout creation on WTF's managed path instead of raw `git worktree
-add` or `jj workspace add` commands.
-
-Install or refresh it locally, then run `/reload` in existing Pi sessions:
-
-```bash
-./scripts/install-pi-extension.sh
-```
+Names, aliases, and flag spellings are case-insensitive; values preserve case.
+`-j` means JSON; `-f` means `--from`. Creation defaults to `trunk()`; `-f @`
+selects the invoking workspace's current JJ change. `sw` has the same behavior as
+`ls`. Source [scripts/wtf.bash](scripts/wtf.bash) for Bash directory navigation.
 
 ## Development
 
-Requires [Task](https://taskfile.dev):
+Go 1.26.1 and JJ are required for integration tests. Keep validation serial:
 
-```bash
-task all                 # fmt -> lint -> test -> build
-task test-coverage       # enforce the adjusted 75% coverage floor
-task pi-extension-check  # lint, typecheck, and test the Pi extension
+```sh
+GOMAXPROCS=1 go build -p 1 -o bin/wtf ./cmd/wtf
+GOMAXPROCS=1 go test -p 1 ./...
+GOMAXPROCS=1 golangci-lint run --concurrency 1
+GOMAXPROCS=1 go generate ./internal/cli
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full dev loop.
+Release archives include this README, LICENSE, docs, examples, and the Bash
+navigation wrapper. Verify downloads with `SHA256SUMS`. See
+[release procedures](docs/releasing.md) for exact-source validation.

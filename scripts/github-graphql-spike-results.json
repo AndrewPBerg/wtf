@@ -1,0 +1,1270 @@
+{
+  "timestamp": "2026-10-13T20:19:28.399729+00:00",
+  "workspaces": 53,
+  "targets": 141,
+  "batch_size": 50,
+  "matched_prs_hydrated": 32,
+  "baseline_prs_fetched": 600,
+  "baseline_workspace_matches": 34,
+  "missing_commit_objects": 32,
+  "truncated_discovery": [],
+  "measurements": {
+    "discovery": [
+      {
+        "seconds": 1.661,
+        "bytes": 12032,
+        "peak_rss_kib": 55312,
+        "lookups": 50,
+        "rate_limit": {
+          "cost": 1,
+          "remaining": 4136,
+          "used": 864,
+          "resetAt": "2026-10-13T20:22:58Z"
+        }
+      },
+      {
+        "seconds": 1.581,
+        "bytes": 14609,
+        "peak_rss_kib": 57228,
+        "lookups": 50,
+        "rate_limit": {
+          "cost": 1,
+          "remaining": 4135,
+          "used": 865,
+          "resetAt": "2026-10-13T20:22:58Z"
+        }
+      },
+      {
+        "seconds": 1.321,
+        "bytes": 10124,
+        "peak_rss_kib": 57380,
+        "lookups": 41,
+        "rate_limit": {
+          "cost": 1,
+          "remaining": 4134,
+          "used": 866,
+          "resetAt": "2026-10-13T20:22:58Z"
+        }
+      }
+    ],
+    "hydration": [
+      {
+        "seconds": 1.052,
+        "bytes": 19361,
+        "peak_rss_kib": 57392,
+        "lookups": 32,
+        "rate_limit": {
+          "cost": 1,
+          "remaining": 4133,
+          "used": 867,
+          "resetAt": "2026-10-13T20:22:58Z"
+        }
+      }
+    ],
+    "baseline": [
+      {
+        "seconds": 8.175,
+        "bytes": 303900,
+        "peak_rss_kib": 55224,
+        "repo": "AlitaHealth/alita_core",
+        "prs": 200,
+        "possibly_truncated": true
+      },
+      {
+        "seconds": 4.324,
+        "bytes": 202381,
+        "peak_rss_kib": 57440,
+        "repo": "AlitaHealth/next_gen_ui",
+        "prs": 200,
+        "possibly_truncated": true
+      },
+      {
+        "seconds": 5.679,
+        "bytes": 254088,
+        "peak_rss_kib": 57504,
+        "repo": "AlitaHealth/alita-mobile",
+        "prs": 200,
+        "possibly_truncated": true
+      }
+    ]
+  },
+  "comparisons": [
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "alita_core/andrew/ali-4336-kb-publish",
+      "baseline": [
+        1668
+      ],
+      "targeted": [
+        1668
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "alita_core/andrew/ali-4336-publish-failed-links",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "alita_core/andrew/fix-kb-link-status-permissions",
+      "baseline": [
+        1669
+      ],
+      "targeted": [
+        1669
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "andrew/ali-1920-4137-fixed-image",
+      "baseline": [
+        1644
+      ],
+      "targeted": [
+        1644
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "andrew/ali-3407-upgrade-intent-analysis-to-nova-reuse-stored-turn-embeddings",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "andrew/chat-runtime-overhead",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "andrew/classify-link-history",
+      "baseline": [
+        1655,
+        1662
+      ],
+      "targeted": [
+        1655,
+        1662
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "andrew/fix-reference-scope-refusal",
+      "baseline": [
+        1654
+      ],
+      "targeted": [
+        1654
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "andrew/improve-web-source-backfill",
+      "baseline": [
+        1655,
+        1662
+      ],
+      "targeted": [
+        1655,
+        1662
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "booking-blocked-outcomes",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "booking-calendar-context",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "booking-cleanup-20261012",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "booking-outcome-reference",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "booking-polish-20261012",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "booking-selectable-context",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "booking-timezone-copy",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "contact-consolidation",
+      "baseline": [
+        1681
+      ],
+      "targeted": [
+        1681
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "default",
+      "baseline": [
+        1677,
+        1680
+      ],
+      "targeted": [
+        1677,
+        1680
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "link-preview-share-be",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "workspace": "pr-1609",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "ali1492-web-polish-20261012",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "andrew/classify-link-history",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "andrew/fix-site-preview-relay",
+      "baseline": [
+        1568
+      ],
+      "targeted": [
+        1568
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "andrew/track-web-source-opens",
+      "baseline": [
+        1581
+      ],
+      "targeted": [
+        1581
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "booking-blocked-outcomes",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "booking-card-layout",
+      "baseline": [
+        1612
+      ],
+      "targeted": [
+        1612
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "booking-contact-details",
+      "baseline": [
+        1615
+      ],
+      "targeted": [
+        1615
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "booking-green-inbox--next_gen_ui",
+      "baseline": [
+        1620
+      ],
+      "targeted": [
+        1620
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "booking-inbox-attendee",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "calendar-always-open",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "contact-consolidation",
+      "baseline": [
+        1618
+      ],
+      "targeted": [
+        1618
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "default",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "frontend-print-spike",
+      "baseline": [
+        1529
+      ],
+      "targeted": [
+        1529
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "next_gen_ui/andrew/ali-2845-safari-preview",
+      "baseline": [
+        1599
+      ],
+      "targeted": [
+        1599
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "next_gen_ui/andrew/ali-4279-truncate-agent-header",
+      "baseline": [
+        1597
+      ],
+      "targeted": [
+        1597
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "next_gen_ui/andrew/ali-4336-kb-publish",
+      "baseline": [
+        1591
+      ],
+      "targeted": [
+        1591
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "next_gen_ui/andrew/ali-4336-link-only-warning",
+      "baseline": [
+        1600
+      ],
+      "targeted": [
+        1600
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "next_gen_ui/andrew/ali-4336-publish-failed-links",
+      "baseline": [
+        1598
+      ],
+      "targeted": [
+        1598
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "next_gen_ui/andrew/ali-4344-mobile-logo",
+      "baseline": [
+        1601
+      ],
+      "targeted": [
+        1601
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "next_gen_ui/andrew/fix-kb-link-status-permissions",
+      "baseline": [
+        1592
+      ],
+      "targeted": [
+        1592
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "next_gen_ui/andrew/link-access-warning",
+      "baseline": [
+        1590
+      ],
+      "targeted": [
+        1590
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "next_gen_ui/andrew/tv-dashboard-main",
+      "baseline": [
+        1602
+      ],
+      "targeted": [
+        1602
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "next_gen_ui/andrew/tv-dashboard-release-2-20-2",
+      "baseline": [
+        1603
+      ],
+      "targeted": [
+        1603
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "next_gen_ui/andrew/tv-silk-layout",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "pr-1529",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "pr-1545",
+      "baseline": [
+        1545
+      ],
+      "targeted": [
+        1545
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "remove-confetti",
+      "baseline": [
+        1616
+      ],
+      "targeted": [
+        1616
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "workspace": "tv-auto-refresh",
+      "baseline": [
+        1606
+      ],
+      "targeted": [
+        1606
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita-mobile",
+      "workspace": "ali1492-mobile-polish-20261012",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita-mobile",
+      "workspace": "andrew/track-web-source-opens",
+      "baseline": [
+        214
+      ],
+      "targeted": [
+        214
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita-mobile",
+      "workspace": "booking-hide-unavailable",
+      "baseline": [
+        224
+      ],
+      "targeted": [
+        224
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita-mobile",
+      "workspace": "booking-parity--alita-mobile",
+      "baseline": [],
+      "targeted": [],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    },
+    {
+      "repo": "AlitaHealth/alita-mobile",
+      "workspace": "default",
+      "baseline": [
+        216
+      ],
+      "targeted": [
+        216
+      ],
+      "missing_from_targeted": [],
+      "additional_targeted": []
+    }
+  ],
+  "matched_prs_compared": 32,
+  "check_differences": [],
+  "limitations": [
+    "One live sample, not sustained-load validation",
+    "Baseline is limited to 200 PRs per repo",
+    "Discovery pages limited to 20; truncation is reported, not silently treated as empty",
+    "Local-only commits may have no GitHub object",
+    "Commit association alone does not prove a merged PR has the same head",
+    "No production changes"
+  ],
+  "raw_owner_shape_differences": [
+    {
+      "repo": "AlitaHealth/alita_core",
+      "number": 1681,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "number": 1680,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "number": 1677,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "number": 1669,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "number": 1668,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "number": 1662,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "number": 1655,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "number": 1654,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/alita_core",
+      "number": 1644,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1620,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1618,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1616,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1615,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1612,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1606,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1603,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1602,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1601,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1600,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1599,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1598,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1597,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1592,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1591,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1590,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1581,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1568,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1545,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/next_gen_ui",
+      "number": 1529,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/alita-mobile",
+      "number": 224,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/alita-mobile",
+      "number": 216,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    },
+    {
+      "repo": "AlitaHealth/alita-mobile",
+      "number": 214,
+      "fields": [
+        "headRepositoryOwner"
+      ]
+    }
+  ],
+  "metadata_differences": [],
+  "owner_shape_explanation": "Original comparison compared entire owner objects. gh includes owner id; targeted query selected only login. Live check on PR 1681 confirmed matching login. New script compares login only.",
+  "ci_aggregate_probe": {
+    "measurement": {
+      "seconds": 0.951,
+      "bytes": 24039,
+      "peak_rss_kib": 57304
+    },
+    "rate_limit": {
+      "cost": 1,
+      "remaining": 4109,
+      "used": 891,
+      "resetAt": "2026-10-13T20:22:58Z"
+    },
+    "comparisons": [
+      {
+        "repo": "AlitaHealth/alita-mobile",
+        "number": 214,
+        "contexts": 5,
+        "truncated": false,
+        "node_states": {
+          "SUCCESS": 5
+        },
+        "aggregate_states": {
+          "SUCCESS": 5
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/alita-mobile",
+        "number": 216,
+        "contexts": 5,
+        "truncated": false,
+        "node_states": {
+          "SUCCESS": 5
+        },
+        "aggregate_states": {
+          "SUCCESS": 5
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/alita-mobile",
+        "number": 224,
+        "contexts": 5,
+        "truncated": false,
+        "node_states": {
+          "SUCCESS": 5
+        },
+        "aggregate_states": {
+          "SUCCESS": 5
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/alita_core",
+        "number": 1644,
+        "contexts": 6,
+        "truncated": false,
+        "node_states": {
+          "SKIPPED": 3,
+          "SUCCESS": 3
+        },
+        "aggregate_states": {
+          "SKIPPED": 3,
+          "SUCCESS": 3
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/alita_core",
+        "number": 1654,
+        "contexts": 6,
+        "truncated": false,
+        "node_states": {
+          "SKIPPED": 3,
+          "SUCCESS": 3
+        },
+        "aggregate_states": {
+          "SKIPPED": 3,
+          "SUCCESS": 3
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/alita_core",
+        "number": 1655,
+        "contexts": 3,
+        "truncated": false,
+        "node_states": {
+          "SUCCESS": 3
+        },
+        "aggregate_states": {
+          "SUCCESS": 3
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/alita_core",
+        "number": 1662,
+        "contexts": 3,
+        "truncated": false,
+        "node_states": {
+          "SKIPPED": 3
+        },
+        "aggregate_states": {
+          "SKIPPED": 3
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/alita_core",
+        "number": 1668,
+        "contexts": 3,
+        "truncated": false,
+        "node_states": {
+          "SUCCESS": 3
+        },
+        "aggregate_states": {
+          "SUCCESS": 3
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/alita_core",
+        "number": 1669,
+        "contexts": 6,
+        "truncated": false,
+        "node_states": {
+          "SKIPPED": 3,
+          "SUCCESS": 3
+        },
+        "aggregate_states": {
+          "SKIPPED": 3,
+          "SUCCESS": 3
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/alita_core",
+        "number": 1677,
+        "contexts": 3,
+        "truncated": false,
+        "node_states": {
+          "SUCCESS": 3
+        },
+        "aggregate_states": {
+          "SUCCESS": 3
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/alita_core",
+        "number": 1680,
+        "contexts": 9,
+        "truncated": false,
+        "node_states": {
+          "SKIPPED": 3,
+          "SUCCESS": 6
+        },
+        "aggregate_states": {
+          "SKIPPED": 3,
+          "SUCCESS": 6
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/alita_core",
+        "number": 1681,
+        "contexts": 5,
+        "truncated": false,
+        "node_states": {
+          "SUCCESS": 5
+        },
+        "aggregate_states": {
+          "SUCCESS": 5
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1529,
+        "contexts": 5,
+        "truncated": false,
+        "node_states": {
+          "SUCCESS": 5
+        },
+        "aggregate_states": {
+          "SUCCESS": 5
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1545,
+        "contexts": 0,
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1568,
+        "contexts": 0,
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1581,
+        "contexts": 0,
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1590,
+        "contexts": 0,
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1591,
+        "contexts": 0,
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1592,
+        "contexts": 0,
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1597,
+        "contexts": 0,
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1598,
+        "contexts": 0,
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1599,
+        "contexts": 0,
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1600,
+        "contexts": 0,
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1601,
+        "contexts": 0,
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1602,
+        "contexts": 0,
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1603,
+        "contexts": 0,
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1606,
+        "contexts": 4,
+        "truncated": false,
+        "node_states": {
+          "SKIPPED": 2,
+          "SUCCESS": 2
+        },
+        "aggregate_states": {
+          "SKIPPED": 2,
+          "SUCCESS": 2
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1612,
+        "contexts": 7,
+        "truncated": false,
+        "node_states": {
+          "FAILURE": 1,
+          "SKIPPED": 4,
+          "SUCCESS": 2
+        },
+        "aggregate_states": {
+          "FAILURE": 1,
+          "SKIPPED": 4,
+          "SUCCESS": 2
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1615,
+        "contexts": 3,
+        "truncated": false,
+        "node_states": {
+          "SUCCESS": 3
+        },
+        "aggregate_states": {
+          "SUCCESS": 3
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1616,
+        "contexts": 7,
+        "truncated": false,
+        "node_states": {
+          "FAILURE": 1,
+          "SKIPPED": 4,
+          "SUCCESS": 2
+        },
+        "aggregate_states": {
+          "FAILURE": 1,
+          "SKIPPED": 4,
+          "SUCCESS": 2
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1618,
+        "contexts": 7,
+        "truncated": false,
+        "node_states": {
+          "FAILURE": 1,
+          "CANCELLED": 1,
+          "SKIPPED": 3,
+          "SUCCESS": 2
+        },
+        "aggregate_states": {
+          "CANCELLED": 1,
+          "FAILURE": 1,
+          "SKIPPED": 3,
+          "SUCCESS": 2
+        },
+        "matches": true
+      },
+      {
+        "repo": "AlitaHealth/next_gen_ui",
+        "number": 1620,
+        "contexts": 3,
+        "truncated": false,
+        "node_states": {
+          "SKIPPED": 3
+        },
+        "aggregate_states": {
+          "SKIPPED": 3
+        },
+        "matches": true
+      }
+    ],
+    "mismatches": 0,
+    "scope": "32 live matched PRs; compares grouped counts to all available raw contexts in the same response"
+  },
+  "summary": {
+    "targeted_seconds": 5.615,
+    "targeted_bytes": 56126,
+    "baseline_serial_seconds": 18.178,
+    "baseline_bytes": 760369,
+    "association_mismatches": 0
+  },
+  "recommended_strategy": {
+    "transport": "Retain gh authentication; use gh api graphql with JSON input via stdin",
+    "batching": "Up to 50 deduplicated lookup aliases per request; one process at a time is the configuration measured here",
+    "cold_refresh": "Discover by branch plus current and parent commit; hydrate only PRs matching existing association rules",
+    "warm_refresh": "Batch known PR numbers for state and CI; repeat discovery on identity changes and bounded TTL to find newly created PRs",
+    "ci": "Use totalCount and checkRunCountsByState/statusContextCountsByState; same-response probe matched all 32 PRs and avoids the 100-context truncation problem",
+    "shared_ls_rm": "One command-owned observation plan, deduplicated across workspace rows. rm must retain fresh local revision and exact published head validation before deletion",
+    "cache": "Version targeted cache separately from full repository lists and record target coverage so an unfetched branch cannot look unassociated",
+    "failures": "Handle GraphQL errors, null repositories and per-connection truncation explicitly; preserve prior observations and distinguish unavailable from unassociated. Respect throttling and Retry-After",
+    "linear": "Use matched PR URLs only; share account/workspace verification for a refresh. GitHub GraphQL does not replace the Linear MCP transport",
+    "not_validated": "Production integration, fork fixtures, deleted-branch cases, history beyond the capped baseline, concurrency or sustained polling. No runtime behavior changed"
+  }
+}

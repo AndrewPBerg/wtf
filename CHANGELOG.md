@@ -4,6 +4,116 @@ All notable changes to WorkTreeForge (wtf) will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-10-13
+
+WorkTreeForge 1.0.0 manages Jujutsu workspaces through explicit Lua project policy,
+local TOML configuration, an inline terminal browser, and JSON automation. This
+release replaces the older 0.x Git/worktree command suite. **Linux with JJ 0.46+ is supported**;
+macOS, Windows, and BSD workspace mutations are not supported by this backend.
+
+### Workspace lifecycle and configuration
+
+- `new PATH` creates an owned workspace or registers/prepares an existing JJ root.
+  Bare names stay beside the registered repository, including from children and
+  subdirectories. Explicit relative/absolute paths are supported. Repeated
+  preparation preserves identity, ownership, messages, and reusable stages.
+- New workspaces copy config, schema, hooks, tasks, and ignore rules from the
+  invoking workspace before initialization/creation callbacks. Independent files,
+  nested modules and empty directories are included. Source settings win over
+  matching checkout files. Existing workspaces preserve their customizations.
+- `.wtf/local/`, identity, runtime registry state, and unrelated artifacts are
+  excluded. Explicit project hooks select additional copies/symlinks. Canonical
+  identity lives in `.jj`; legacy `.wtf/workspace.json` markers remain readable.
+- Setup generates local config/schema and completely empty hook/task directories,
+  ignoring all scaffold files. No registration, dependency installs or callbacks
+  happen. Teardown requires yes/no terminal confirmation, default No; JSON and
+  redirected requests require confirmation and delete nothing.
+
+### Hook engine and Lua substrate
+
+- `new`, `list`, `remove`, and `invocation` expose ordered before/after/failed/finally
+  modules returning `function(event)`. Only explicit modules execute. `[new].hooks`
+  remains post-creation shorthand. Advanced Lua entrypoints return hooks/overrides
+  tables; they cannot mix with declarative arrays. Imports stay within the package.
+- Events expose request, workspace/project context, trigger, result, and typed
+  errors. Before can block mutation. Failed/finally attempt all cleanup, preserve
+  the original error, and run with bounded cancellation-independent contexts.
+  Help, inspection, doctor, version, and setup teardown never invoke callbacks.
+- `require("wtf")` and namespace imports expose filesystem, commands, environment,
+  policy, resource claims, and hook composition. Legacy colon-style context APIs
+  remain available; `wtf.setup` offers Neovim-style callback registration.
+- Files support binary reads, inspection, sorted lists, atomic writes/copies,
+  explicit symlink follow/preserve policies, mkdir and guarded removal. Existing
+  destinations are preserved by default. Replacement changes the entry without
+  writing through destination links. Bounds: 8 MiB/file, 32 MiB/copy or config
+  transfer, and 1024 entries; roots/VCS/identity metadata remain protected.
+- Commands accept literal argv, cwd, stdin, explicit env/unsets, inheritance,
+  timeouts, and optional failure checks. Captured streams are capped at 1 MiB each.
+  Linux cancellation kills process groups. Captured output and env values never
+  enter host records. Commands have caller permissions; they are not sandboxed.
+- Environment helpers read/select/merge without mutating the caller. Recorded
+  stages incorporate cwd/env/input/live checks for reuse. TOML tasks rerun by default.
+- `wtf.notify` styles info/success/warning/error through the active theme. JSON and
+  non-color logs stay plain; notification severity alone never fails a callback.
+
+### Navigation, metadata, and cleanup
+
+- Commands/aliases/flags ignore case; opaque values and child argv preserve it.
+  `-j` aliases JSON and `-f` aliases --from. Creation defaults to `trunk()`;
+  use `-f @` to branch from the current working-copy change.
+- `list`, `ls`, and `sw` share inline browsing, counted Vim motions, pagination,
+  workspace messages/age/stages, and Zed links. The Bash wrapper supports all three
+  and changes the caller's directory. `change [NAME] -m TEXT` updates descriptions.
+- Bash/Zsh/Fish completion includes commands, aliases, flags, available workspaces,
+  explicit tasks and fuzzy matches without callbacks or network metadata.
+- PR links prefer verified Linear reviews with identical GitHub fallback. CI counts
+  use their own column. Bounded requests preserve GitHub observations on failures
+  and never cache transient failures as missing reviews. Provider diagnostics stay
+  in doctor/JSON. The existing Codex MCP OAuth connection starts no model turn.
+- Removal includes selection/review/confirmation, exact-head integration checks,
+  current/adopted workspace protection, identity/resource revalidation, and
+  retained cleanup state. Force discards source changes without bypassing guards.
+  Listing reconciles missing idle registrations without deleting source folders.
+- Every command/group/alias supports useful help and one versioned JSON envelope,
+  including argument errors. JSON never prompts; logs use stderr. Per-flag TOML
+  priority is CLI > leaf > nearest parent > outer parents > global, including false.
+
+### Documentation, packaging, and migration
+
+The documentation suite covers installation, quickstart, all commands, config,
+hooks/Lua, tasks, ports, JSON, safety, troubleshooting, migration, and releasing.
+Historical 0.x/design pages are marked. Copy and hello-world examples use mock
+values and demonstrate repeated safe runs. The editor schema has clean-checkout
+drift tests. Tracked Python helper bytecode was removed and is now ignored.
+
+Linux amd64/arm64/arm/386 archives include docs, examples, README, LICENSE, and the
+Bash wrapper, with SHA256SUMS. The legacy PowerShell installer serves historical
+0.x artifacts only. Source and release binaries identify themselves as 1.0.0.
+
+Old .wtf.toml/.wt-forge.toml resource intent and Git-only flows are not this config
+contract. Public init/register/repos/unregister/watch/clean/news/update/uninstall/
+resources commands are absent. Use setup and port behavior explicitly to TOML/Lua.
+Global/repository state retains `~/.wtf-v1/` and `.jj/repo/wtf-v1-pilot/`; WTF_HOME
+selects an isolated global index. No general automatic 0.x manifest conversion
+is promised. See [migration](docs/migration.md) and [all docs](docs/README.md).
+
+### Verification and limits
+
+The release gate runs lint, complete internal tests/coverage, command-package
+checks and generated-schema checks. Behavioral tests cover the 4×4 trigger
+matrix, files/commands/env, inheritance across workspaces, repeatable examples,
+case/JSON contracts, removal guards and completion. Linux amd64 archive/runtime
+verification complements hosted cross-builds; other architectures are not claimed
+as natively exercised.
+
+No daemon, process supervisor, native Docker provider, remote executor,
+cross-repository port leases, or automatic dependency installation is included.
+Inherited symlinks retain their spelling and can share targets. Configuration
+transfer is atomic per file, not for the whole tree; failures retain partial
+copies for inspection. Existing-workspace preparation does not overwrite those
+copies to retry a failed transfer.
+
+
 ## [0.11.2] — 2026-08-23
 
 ### Fixed

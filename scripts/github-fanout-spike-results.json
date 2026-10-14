@@ -1,0 +1,444 @@
+{
+  "date": "2026-10-13",
+  "scope": "Live installed gh pr list with production fields, state all, limit 200, rotating AlitaHealth/alita_core, next_gen_ui, alita-mobile. No CLI changes.",
+  "runs_in_order": [
+    3,
+    32,
+    16
+  ],
+  "runs": {
+    "3": {
+      "concurrency": 3,
+      "workload": "one repeated GHClient burst; three repositories rotated",
+      "wall_seconds": 8.296,
+      "p50_seconds": 4.552,
+      "p95_seconds": 8.291,
+      "over_production_8s_budget": 1,
+      "statuses": {
+        "ok": 3
+      },
+      "peak": {
+        "active_cli": 3,
+        "rss_kib": 164840,
+        "cpu_seconds": 0.29
+      },
+      "memory": {
+        "min_available_kib": 15022320,
+        "max_swap_used_delta_kib": 0
+      },
+      "quota_before": {
+        "core": {
+          "limit": 5000,
+          "used": 0,
+          "remaining": 5000,
+          "reset": 1791926008
+        },
+        "graphql": {
+          "limit": 5000,
+          "used": 6,
+          "remaining": 4994,
+          "reset": 1791925491
+        },
+        "search": {
+          "limit": 30,
+          "used": 0,
+          "remaining": 30,
+          "reset": 1791922468
+        }
+      },
+      "quota_after": {
+        "core": {
+          "limit": 5000,
+          "used": 0,
+          "remaining": 5000,
+          "reset": 1791926017
+        },
+        "graphql": {
+          "limit": 5000,
+          "used": 6,
+          "remaining": 4994,
+          "reset": 1791925491
+        },
+        "search": {
+          "limit": 30,
+          "used": 0,
+          "remaining": 30,
+          "reset": 1791922477
+        }
+      },
+      "results": [
+        {
+          "status": "ok",
+          "seconds": 8.291,
+          "response_bytes": 303900
+        },
+        {
+          "status": "ok",
+          "seconds": 3.822,
+          "response_bytes": 202074
+        },
+        {
+          "status": "ok",
+          "seconds": 4.552,
+          "response_bytes": 254088
+        }
+      ]
+    },
+    "32": {
+      "concurrency": 32,
+      "workload": "one repeated GHClient burst; three repositories rotated",
+      "wall_seconds": 5.058,
+      "p50_seconds": 5.013,
+      "p95_seconds": 5.046,
+      "over_production_8s_budget": 0,
+      "statuses": {
+        "ok": 15,
+        "provider_error": 17
+      },
+      "peak": {
+        "active_cli": 32,
+        "rss_kib": 1736360,
+        "cpu_seconds": 4.45
+      },
+      "memory": {
+        "min_available_kib": 12644360,
+        "max_swap_used_delta_kib": 267964
+      },
+      "quota_before": {
+        "core": {
+          "limit": 5000,
+          "used": 0,
+          "remaining": 5000,
+          "reset": 1791926023
+        },
+        "graphql": {
+          "limit": 5000,
+          "used": 6,
+          "remaining": 4994,
+          "reset": 1791925491
+        },
+        "search": {
+          "limit": 30,
+          "used": 0,
+          "remaining": 30,
+          "reset": 1791922483
+        }
+      },
+      "quota_after": null,
+      "results": [
+        {
+          "status": "provider_error",
+          "seconds": 5.047,
+          "response_bytes": 0
+        },
+        {
+          "status": "ok",
+          "seconds": 4.255,
+          "response_bytes": 202074
+        },
+        {
+          "status": "ok",
+          "seconds": 4.496,
+          "response_bytes": 254088
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.046,
+          "response_bytes": 0
+        },
+        {
+          "status": "ok",
+          "seconds": 4.142,
+          "response_bytes": 202074
+        },
+        {
+          "status": "ok",
+          "seconds": 4.76,
+          "response_bytes": 254088
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.043,
+          "response_bytes": 0
+        },
+        {
+          "status": "ok",
+          "seconds": 4.435,
+          "response_bytes": 202074
+        },
+        {
+          "status": "ok",
+          "seconds": 4.49,
+          "response_bytes": 254088
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.045,
+          "response_bytes": 0
+        },
+        {
+          "status": "ok",
+          "seconds": 4.221,
+          "response_bytes": 202074
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.033,
+          "response_bytes": 0
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.037,
+          "response_bytes": 0
+        },
+        {
+          "status": "ok",
+          "seconds": 3.779,
+          "response_bytes": 202074
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.041,
+          "response_bytes": 0
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.034,
+          "response_bytes": 0
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.036,
+          "response_bytes": 0
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.036,
+          "response_bytes": 0
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.036,
+          "response_bytes": 0
+        },
+        {
+          "status": "ok",
+          "seconds": 4.486,
+          "response_bytes": 202074
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.028,
+          "response_bytes": 0
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.027,
+          "response_bytes": 0
+        },
+        {
+          "status": "ok",
+          "seconds": 4.313,
+          "response_bytes": 202074
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.023,
+          "response_bytes": 0
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.026,
+          "response_bytes": 0
+        },
+        {
+          "status": "ok",
+          "seconds": 4.462,
+          "response_bytes": 202074
+        },
+        {
+          "status": "ok",
+          "seconds": 4.493,
+          "response_bytes": 254088
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.017,
+          "response_bytes": 0
+        },
+        {
+          "status": "ok",
+          "seconds": 4.112,
+          "response_bytes": 202074
+        },
+        {
+          "status": "ok",
+          "seconds": 4.429,
+          "response_bytes": 254088
+        },
+        {
+          "status": "provider_error",
+          "seconds": 5.013,
+          "response_bytes": 0
+        },
+        {
+          "status": "ok",
+          "seconds": 4.204,
+          "response_bytes": 202074
+        }
+      ]
+    },
+    "16": {
+      "concurrency": 16,
+      "workload": "one repeated GHClient burst; three repositories rotated",
+      "wall_seconds": 6.563,
+      "p50_seconds": 4.649,
+      "p95_seconds": 6.56,
+      "over_production_8s_budget": 0,
+      "statuses": {
+        "ok": 16
+      },
+      "peak": {
+        "active_cli": 16,
+        "rss_kib": 917684,
+        "live_process_cpu_seconds": 2.32
+      },
+      "memory": {
+        "min_available_kib": 14300560,
+        "max_swap_used_delta_kib": 0
+      },
+      "resource_stop": false,
+      "quota_before": {
+        "core": {
+          "limit": 5000,
+          "used": 0,
+          "remaining": 5000,
+          "reset": 1791926050
+        },
+        "graphql": {
+          "limit": 5000,
+          "used": 18,
+          "remaining": 4982,
+          "reset": 1791925491
+        },
+        "search": {
+          "limit": 30,
+          "used": 0,
+          "remaining": 30,
+          "reset": 1791922510
+        }
+      },
+      "quota_after": {
+        "core": {
+          "limit": 5000,
+          "used": 0,
+          "remaining": 5000,
+          "reset": 1791926057
+        },
+        "graphql": {
+          "limit": 5000,
+          "used": 18,
+          "remaining": 4982,
+          "reset": 1791925491
+        },
+        "search": {
+          "limit": 30,
+          "used": 0,
+          "remaining": 30,
+          "reset": 1791922517
+        }
+      },
+      "results": [
+        {
+          "status": "ok",
+          "seconds": 6.56,
+          "response_bytes": 303900
+        },
+        {
+          "status": "ok",
+          "seconds": 5.023,
+          "response_bytes": 201769
+        },
+        {
+          "status": "ok",
+          "seconds": 4.357,
+          "response_bytes": 254088
+        },
+        {
+          "status": "ok",
+          "seconds": 5.891,
+          "response_bytes": 303900
+        },
+        {
+          "status": "ok",
+          "seconds": 4.704,
+          "response_bytes": 201769
+        },
+        {
+          "status": "ok",
+          "seconds": 4.649,
+          "response_bytes": 254088
+        },
+        {
+          "status": "ok",
+          "seconds": 5.569,
+          "response_bytes": 303900
+        },
+        {
+          "status": "ok",
+          "seconds": 4.245,
+          "response_bytes": 201769
+        },
+        {
+          "status": "ok",
+          "seconds": 4.56,
+          "response_bytes": 254088
+        },
+        {
+          "status": "ok",
+          "seconds": 5.326,
+          "response_bytes": 303900
+        },
+        {
+          "status": "ok",
+          "seconds": 3.945,
+          "response_bytes": 201769
+        },
+        {
+          "status": "ok",
+          "seconds": 4.512,
+          "response_bytes": 254088
+        },
+        {
+          "status": "ok",
+          "seconds": 5.082,
+          "response_bytes": 303900
+        },
+        {
+          "status": "ok",
+          "seconds": 3.917,
+          "response_bytes": 201769
+        },
+        {
+          "status": "ok",
+          "seconds": 4.443,
+          "response_bytes": 254088
+        },
+        {
+          "status": "ok",
+          "seconds": 5.318,
+          "response_bytes": 303900
+        }
+      ]
+    }
+  },
+  "interpretation": {
+    "32": "Initial harness stopped on system-wide swap delta >256 MiB and terminated active gh processes. The 17 provider_error labels in this original record represent terminated commands, not evidence of 17 GitHub failures. Attribution to the spike is unproven.",
+    "16": "All 16 succeeded within 8s, no sampled swap increase. One burst is not sustained-load validation.",
+    "50_and_64": "Not run after resource stop; resumed only at lower concurrency.",
+    "quota": "Rate-limit endpoint snapshots did not immediately reflect calls; do not infer zero API cost. No throttling message detected.",
+    "limits": "Sampled aggregate RSS is for spike gh children only, excludes pre-existing apps. System-wide swap delta includes unrelated activity. No direct proof of UI responsiveness.",
+    "recommendation": "Keep 50 as an experimental ceiling pending further validation. Deduplicate per repository and use one shared command-wide limiter; preserve separate Linear capacity. This spike does not change production limits."
+  },
+  "github_limits_source": "https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api"
+}

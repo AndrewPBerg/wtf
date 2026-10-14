@@ -1,3 +1,6 @@
+> Historical design or 0.x reference. This page is not the WTF 1.0.0 contract.
+> Start with the [current documentation](README.md) and [migration guide](migration.md).
+
 # wtf capabilities
 
 Describe WTF's versioned machine-readable contracts without inferring support from

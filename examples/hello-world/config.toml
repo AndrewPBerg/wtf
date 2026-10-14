@@ -1,0 +1,9 @@
+#:schema ./schema.json
+
+version = 1
+
+[new]
+after = ["hello_world_new"]
+
+[list]
+after = ["hello_world_list"]

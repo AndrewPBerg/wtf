@@ -1,3 +1,6 @@
+> Historical design or 0.x reference. This page is not the WTF 1.0.0 contract.
+> Start with the [current documentation](README.md) and [migration guide](migration.md).
+
 # wtf update
 
 Update wtf to the latest version by downloading and running the install script.

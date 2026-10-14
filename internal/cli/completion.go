@@ -2,120 +2,229 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"fmt"
-	"os"
-	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
-	"github.com/AndrewPBerg/wtf/internal/setup"
+	"github.com/AndrewPBerg/wtf/internal/core"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
-func init() {
-	rootCmd.AddCommand(completionCmd)
+type completionScript struct {
+	Shell  string `json:"shell"`
+	Script string `json:"script"`
 }
 
-var completionCmd = &cobra.Command{
-	Use:   "completion [--shell bash|zsh|fish|powershell]",
-	Short: "Generate shell completion script",
-	Long: `Generate the autocompletion script for wtf.
+func (s *Session) addCompletion() {
+	command := s.command("completion SHELL", "Generate Bash, Zsh or Fish shell completions", "Print a shell script for bash, zsh or fish. Source it in your shell to complete commands, aliases, flags, live workspace names and configured project tasks. Workspace and task matches include fuzzy subsequences. No hooks or network lookups run. Example: source <(wtf completion bash). See docs/completion.md for installation and shell aliases.", cobra.ExactArgs(1), func(_ *cobra.Command, args []string) (any, error) {
+		shell := strings.ToLower(args[0])
+		script, ok := completionScripts[shell]
+		if !ok {
+			return nil, core.Fail("invalid_arguments", "Expected bash, zsh or fish")
+		}
+		return completionScript{shell, script}, nil
+	})
+	command.Annotations = map[string]string{"wtf.no-hooks": "true"}
+	s.Root.AddCommand(command)
+}
 
-By default, detects your current shell from $SHELL.
-Use --shell to override.
-
-Example:
-  # Auto-detect and write to stdout
-  wtf completion
-
-  # Force a specific shell
-  wtf completion --shell zsh`,
-	Args: cobra.NoArgs,
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		shell, _ := cmd.Flags().GetString("shell")
-		if shell == "" {
-			var err error
-			shell, err = detectShell()
-			if err != nil {
-				return err
+// complete is the shell-only protocol; it never executes a command or applies defaults.
+func (s *Session) complete(ctx context.Context, words []string) int {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if len(words) == 0 {
+		words = []string{""}
+	}
+	partial := words[len(words)-1]
+	words = prepareInput(s.Root, words[:len(words)-1]).Args
+	command := s.Root
+	args := []string{}
+	var pending *pflag.Flag
+	flags := map[string]string{}
+	separated := false
+	for _, word := range words {
+		if pending != nil {
+			flags[pending.Name] = word
+			pending = nil
+			continue
+		}
+		if word == "--" {
+			separated = true
+			continue
+		}
+		if separated {
+			args = append(args, word)
+			continue
+		}
+		if strings.HasPrefix(word, "-") && word != "-" {
+			name, value, attached := strings.Cut(strings.TrimLeft(word, "-"), "=")
+			short := !strings.HasPrefix(word, "--")
+			if short {
+				for i := 0; i < len(name); i++ {
+					flag := findFlag(command, strings.ToLower(name[i:i+1]), true)
+					if flag == nil {
+						continue
+					}
+					if flag.NoOptDefVal == "" {
+						switch {
+						case i+1 < len(name):
+							flags[flag.Name] = name[i+1:]
+						case attached:
+							flags[flag.Name] = value
+						default:
+							pending = flag
+						}
+						break
+					}
+					flags[flag.Name] = flag.NoOptDefVal
+					if attached {
+						flags[flag.Name] = value
+					}
+				}
+			} else if flag := findFlag(command, strings.ToLower(name), false); flag != nil {
+				switch {
+				case attached:
+					flags[flag.Name] = value
+				case flag.NoOptDefVal == "":
+					pending = flag
+				default:
+					flags[flag.Name] = flag.NoOptDefVal
+				}
+			}
+			continue
+		}
+		matched := false
+		if len(args) == 0 {
+			for _, child := range command.Commands() {
+				if commandMatches(child, word) {
+					command = child
+					matched = true
+					break
+				}
 			}
 		}
-
-		install, _ := cmd.Flags().GetBool("install")
-		if install {
-			return runCompletionInstall(cmd, shell)
+		if !matched {
+			args = append(args, word)
 		}
-
-		out := cmd.OutOrStdout()
-		switch shell {
-		case "bash":
-			return cmd.Root().GenBashCompletionV2(out, true)
-		case "zsh":
-			return cmd.Root().GenZshCompletion(out)
-		case "fish":
-			return cmd.Root().GenFishCompletion(out, true)
-		case "powershell":
-			return cmd.Root().GenPowerShellCompletionWithDesc(out)
-		default:
-			return fmt.Errorf("unsupported shell: %s (valid: bash, zsh, fish, powershell)", shell)
+	}
+	candidates := map[string]string{}
+	add := func(name, description string, fuzzy bool) {
+		if completionMatch(name, partial, fuzzy) {
+			candidates[name] = plain(strings.ReplaceAll(strings.ReplaceAll(description, "\n", " "), "\t", " "))
 		}
-	},
+	}
+	directive := cobra.ShellCompDirectiveNoFileComp
+	switch {
+	case separated:
+		directive = cobra.ShellCompDirectiveDefault
+	case pending != nil:
+		if pending.Value.Type() == "bool" {
+			add("true", "", false)
+			add("false", "", false)
+		} else if pending.Name != "from" && pending.Name != "message" {
+			directive = cobra.ShellCompDirectiveDefault
+		}
+	case strings.HasPrefix(partial, "-"):
+		name, _, attached := strings.Cut(partial, "=")
+		if attached {
+			flag := findFlag(command, strings.ToLower(strings.TrimLeft(name, "-")), !strings.HasPrefix(name, "--"))
+			if flag != nil && flag.Value.Type() == "bool" {
+				for _, value := range []string{"true", "false"} {
+					add(name+"="+value, "", false)
+				}
+			}
+		} else {
+			visit := func(flag *pflag.Flag) {
+				if !flag.Hidden {
+					add("--"+flag.Name, flag.Usage, false)
+					if flag.Shorthand != "" {
+						add("-"+flag.Shorthand, flag.Usage, false)
+					}
+				}
+			}
+			command.InitDefaultHelpFlag()
+			command.Flags().VisitAll(visit)
+			for parent := command; parent != nil; parent = parent.Parent() {
+				parent.PersistentFlags().VisitAll(visit)
+			}
+		}
+	case len(args) == 0:
+		for _, child := range command.Commands() {
+			if child.Hidden {
+				continue
+			}
+			add(child.Name(), child.Short, false)
+			for _, alias := range child.Aliases {
+				add(alias, child.Short, false)
+			}
+		}
+		switch command.CommandPath() {
+		case "wtf list", "wtf remove", "wtf change":
+			rows, _ := s.App.CompletionWorkspaces(ctx, strings.EqualFold(flags["global"], "true"), strings.EqualFold(flags["here"], "true"))
+			for _, row := range rows {
+				if row.Exists && row.Status != "removed" {
+					add(row.Name, row.Message, true)
+				}
+			}
+		case "wtf run":
+			// Discover resolves subdirectories to the same workspace config used by run.
+			if repo, err := core.Discover(ctx, s.App.Cwd); err == nil {
+				if config, err := core.LoadConfig(repo.Root); err == nil {
+					for name, task := range config.Tasks {
+						add(name, strings.Join(task.Command, " "), true)
+					}
+				}
+			}
+		case "wtf completion":
+			for _, shell := range []string{"bash", "zsh", "fish"} {
+				add(shell, "", false)
+			}
+		case "wtf new":
+			directive = cobra.ShellCompDirectiveDefault
+		}
+	case command.CommandPath() == "wtf run":
+		directive = cobra.ShellCompDirectiveDefault
+	}
+	names := make([]string, 0, len(candidates))
+	for name := range candidates {
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		left := strings.HasPrefix(strings.ToLower(names[i]), strings.ToLower(partial))
+		right := strings.HasPrefix(strings.ToLower(names[j]), strings.ToLower(partial))
+		if left != right {
+			return left
+		}
+		return names[i] < names[j]
+	})
+	var output bytes.Buffer
+	for _, name := range names {
+		fmt.Fprintln(&output, name+"\t"+candidates[name])
+	}
+	fmt.Fprintf(&output, ":%d\n", directive)
+	if _, err := s.Out.Write(output.Bytes()); err != nil {
+		return 1
+	}
+	return 0
 }
 
-func init() {
-	completionCmd.Flags().String("shell", "", "shell type: bash, zsh, fish, powershell")
-	completionCmd.Flags().Bool("install", false, "install completion file to standard user-local path")
-}
-
-func runCompletionInstall(cmd *cobra.Command, shell string) error {
-	setupShell, err := setup.ParseShellName(shell)
-	if err != nil {
-		return fmt.Errorf("--install does not support %q (supported: bash, zsh, fish)", shell)
+func completionMatch(name, query string, fuzzy bool) bool {
+	name, query = strings.ToLower(name), strings.ToLower(query)
+	if strings.HasPrefix(name, query) {
+		return true
 	}
-
-	var buf bytes.Buffer
-	switch shell {
-	case "bash":
-		err = cmd.Root().GenBashCompletionV2(&buf, true)
-	case "zsh":
-		err = cmd.Root().GenZshCompletion(&buf)
-	case "fish":
-		err = cmd.Root().GenFishCompletion(&buf, true)
-	default:
-		return fmt.Errorf("--install does not support %q (supported: bash, zsh, fish)", shell)
+	if !fuzzy {
+		return false
 	}
-	if err != nil {
-		return fmt.Errorf("generating completion script: %w", err)
+	for _, character := range query {
+		index := strings.IndexRune(name, character)
+		if index < 0 {
+			return false
+		}
+		name = name[index+len(string(character)):]
 	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("getting home directory: %w", err)
-	}
-
-	path, err := setup.WriteCompletionFile(setupShell, home, buf.String())
-	if err != nil {
-		return err
-	}
-
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s Installed completions to %s\n", greenBold("✔"), cyan(path))
-	return nil
-}
-
-// detectShell reads $SHELL and returns a normalized shell name.
-func detectShell() (string, error) {
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		return "", fmt.Errorf("$SHELL is not set; use --shell to specify (bash, zsh, fish, powershell)")
-	}
-	base := filepath.Base(shell)
-	// Handle versioned names like bash5, zsh5.9, etc.
-	base = strings.TrimRight(base, "0123456789.")
-	switch base {
-	case "bash", "zsh", "fish":
-		return base, nil
-	case "pwsh", "powershell":
-		return "powershell", nil
-	default:
-		return "", fmt.Errorf("unsupported shell %q from $SHELL; use --shell to specify (bash, zsh, fish, powershell)", shell)
-	}
+	return true
 }

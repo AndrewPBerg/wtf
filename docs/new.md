@@ -1,120 +1,112 @@
 # wtf new
 
-Create a new worktree for a branch, from a remote branch, or from a pull request.
+Create or prepare a JJ workspace at an exact destination path.
 
-## Usage
-
-```bash
-wtf new <branch> [--base <branch>]
-wtf new <number>
-wtf new --branch <name>
-wtf new --pr <number|branch|title>
+```sh
+wtf new PATH [--from REVISION] [--message TEXT] [--json] [-- HOOK_ARGS...]
 ```
 
-## Flags
+Bare names create siblings of the registered main repository, without a repository
+prefix or suffix. This stays flat when invoked from another workspace or a
+subdirectory. Explicit relative paths (`./...`, `../...`, or paths containing `/`)
+resolve from the invoking directory. Absolute paths also work. Outside a JJ
+repository, a relative name can still prepare an existing workspace in that directory.
+Bare `wtf` shows help; use `wtf new .` to prepare the current workspace.
 
-| Flag              | Short | Default | Description                                          |
-|-------------------|-------|---------|------------------------------------------------------|
-| `--base`          |       | `main`  | Base branch to create from (positional mode only)    |
-| `--branch`        | `-b`  |         | Fetch and track an existing remote branch            |
-| `--pr`            | `-P`  |         | Checkout a pull request (number, branch, or title)   |
-| `--no-setup`      |       |         | Skip all post-create setup (env files and install)   |
-| `--no-env`        |       |         | Skip env file handling                               |
-| `--copy-env`      |       |         | Copy env files instead of symlinking (agent-safe)    |
-| `--no-install`    |       |         | Skip package manager install                         |
-| `--no-serve`      |       |         | Skip starting the detected development server        |
-| `--no-git-diff`   |       |         | Skip default Git metadata for jj editor diffs        |
-| `--ensure`        |       |         | Idempotently return an existing matching workspace   |
-| `--vcs`           |       |         | Force a backend in a colocated repo: `git` or `jj`   |
-
-The positional branch, `--branch`, and `--pr` modes are mutually exclusive.
-
-Numeric positional arguments (e.g. `42` or `#42`) are automatically detected as PR numbers -- no `--pr` flag needed.
-
-## Jujutsu (jj)
-
-In a jj repo this creates a **workspace** rather than a worktree, and the branch
-argument names the workspace. Git-aware editor metadata is created by default;
-use `--no-git-diff` or `WTF_JJ_GIT_DIFF=0` to opt out. `--base` accepts any jj
-revset (a bookmark, `trunk()`,
-or a change id); with no `--base`, wtf uses `trunk()` when it resolves to real work.
-No bookmark is created — that stays yours via `jj bookmark create` or `jj git push -c`.
-
-```bash
-$ wtf new feat/auth
-✔ Created workspace at /code/feat-auth--myrepo
-  env: .env → symlink
-  install: pnpm install
+```text
+projects/
+  my_repo/
+  new_work/       # wtf new new_work from my_repo
+  another_work/  # wtf new another_work from new_work
 ```
 
-Env linking and install matter more here than under git: jj honors `.gitignore`, so
-`.env` and `node_modules/` are not carried into a new workspace at all. See
-[jj.md](jj.md).
+`wtf list` / `wtf ls` shows workspaces inside the main repository with their
+relative placement, such as `./hello_vert` or `./work/deep`. Sibling workspaces
+keep their plain names. These display labels do not change native JJ names or
+JSON identity fields.
 
-## Examples
+| Destination | Behavior |
+|---|---|
+| Existing JJ workspace root | Register and prepare it in place |
+| Missing path | Create a workspace at that exact location, then prepare it |
+| Existing file or ordinary directory | Return an error without changing it |
+| Directory inside a workspace | Return an error; specify the workspace root |
 
-```bash
-# Create worktree for a new branch
-$ wtf new feature/auth
-✔ Created worktree at /code/myrepo--feature-auth
+For creation, the destination basename supplies the native JJ workspace name.
+It must be unique in the repository and contain 1–80 letters, digits, dots,
+underscores or dashes, starting with a letter or digit. Parent paths retain their
+case and may contain spaces. The source must be a registered JJ repository;
+run `wtf new .` there first. No bookmark is created.
 
-# Create from a specific base
-$ wtf new hotfix/bug --base release/v2
-✔ Created worktree at /code/myrepo--hotfix-bug
+WTF stores its local identity marker in `.jj/wtf-workspace.json`, outside source
+tracking. Creating a workspace does not require a project `.gitignore` rule for
+this metadata. Existing `.wtf/workspace.json` markers remain readable for compatibility.
 
-# Fetch and track a remote branch
-$ wtf new --branch feature-x
-✔ Created worktree at /code/myrepo--feature-x
+New workspaces inherit `.wtf/config.toml`, `.wtf/schema.json`, `.wtf/hooks/`,
+and `.wtf/tasks/` from the invoking workspace root, even when invoked from a
+subdirectory. This happens before initialization and creation callbacks. Files
+are independent copies; nested directories and empty hook/task directories are
+included. The source workspace's `.wtf/.gitignore` is copied, or `*` is created
+when absent. Explicit legacy Lua entrypoints outside `hooks/` are copied too.
 
-# Checkout PR by number (auto-detected)
-$ wtf new 42
-→ Detected PR number, checking out PR #42…
-✔ Checked out #42 → /code/myrepo--pr-42
+Source configuration wins over matching files checked out from the chosen JJ
+revision. Existing-workspace preparation never transfers configuration or
+overwrites customizations. `.wtf/local/`, identity markers, runtime state, and
+other top-level `.wtf` artifacts are excluded; use explicit hooks for those.
+Symlinks inside hook/task trees retain their target spelling, without following
+their targets. Structural configuration entries must be real files/directories.
+Copying is bounded to 8 MiB per file, 32 MiB total, and 1024 entries. Copy failures
+stop preparation and retain the failed workspace for inspection; file writes are
+atomic, but the complete configuration transfer is not a single transaction.
 
-# Same thing with a hash prefix
-$ wtf new #42
-→ Detected PR number, checking out PR #42…
-✔ Checked out #42 → /code/myrepo--pr-42
+| Flag | Short | Default | Meaning |
+|---|---|---|---|
+| `--from` | `-f` | `trunk()` | JJ revision for creation; unused for existing workspaces |
+| `--message` | `-m` | unset | Workspace description; an empty string clears it |
+| `--json` | `-j` | `false` | Emit one versioned JSON result |
 
-# Checkout PR by branch name or title (requires --pr flag)
-$ wtf new -P feature-auth
-✔ Checked out #42 → /code/myrepo--pr-42
+```sh
+# Prepare the current workspace
+wtf new .
 
-$ wtf new -P "fix login"
-✔ Checked out #43 → /code/myrepo--pr-43
+# Create a sibling, based on the current revision
+wtf new AgentCase -f @
 
-# Create worktree without running setup
-$ wtf new feature/auth --no-setup
+# Choose an explicit local path
+wtf new ./experiment -f @
 
-# Create agent-safe worktree with copied env files
-$ wtf new feature/auth --copy-env
+# Describe a workspace
+wtf new hello_world -m "hello this me testing"
 
-# Create worktree but skip package install
-$ wtf new feature/auth --no-install
+# Prepare an existing workspace, even from outside a repository
+wtf new /code/AgentCase
+
+# Pass project-owned options unchanged to preparation hooks
+wtf new ../sandbox -f @ -- --compose --test
+
+# Retry preparation at the same path
+wtf new ../sandbox -- --compose --test
 ```
 
-## Worktree Path Convention
+Both modes invoke the configured Lua `init` override. Only creation invokes the
+Lua `new` override first, allowing checks to block before mutation. Creation
+requests include `request.name`, `request.from`, `request.path` (the fixed absolute
+destination), and `request.args`. Project arguments must follow `--`.
 
-Worktrees are created as sibling directories to the main repo:
-- Main repo: `/code/myrepo`
-- Branch `feature/auth` → `/code/myrepo--feature-auth`
+Preparation failures remain errors and retain the workspace and completed stages.
+Repeated calls preserve identity, ownership, and reusable stage records. Registering
+an existing native workspace never grants WTF permission to delete it. Symlinks to
+workspace roots resolve to the same identity. JSON data includes `code: initialized`
+for first registration or creation, and `code: already_initialized` on retries.
+Hook messages, child output, and diagnostics go to stderr.
 
-Slashes in branch names are replaced with dashes.
+Descriptions appear below the selected row in `list`/`ls` and `remove`/`rm`,
+alongside any removal safety warning. They retain their case and original text in
+JSON's `message` field and in Lua's `ctx.workspace.message`. Display truncates long
+descriptions to fit the terminal and sanitizes terminal controls. Repeated `new`
+without a message preserves the existing description; supplying `-m` updates it,
+and `-m ""` clears it. Inherited `[commands.new]` message defaults use the common
+flag precedence. Descriptions survive failed preparation and require no migration.
 
-## Automatic Setup
-
-After creating the worktree, `wtf new` automatically:
-
-1. **Handles env files** from the main worktree (`.env`, `.env.local`, `.env.development`, `.env.development.local` -- only files that exist), symlinking by default or copying with `--copy-env`
-2. **Auto-detects the package manager** from lockfiles and runs install
-
-No config file needed. Use `--copy-env` for isolated agent worktrees, or `--no-setup`, `--no-env`, or `--no-install` to skip.
-
-Setup failures are reported as warnings -- the worktree is still created successfully. See [setup](setup.md) for details.
-
-## PR Authentication
-
-When using `--pr`, authentication reuses existing CLI tokens:
-
-- **GitHub**: `gh auth token` (install [gh](https://cli.github.com/))
-- **GitLab**: `glab auth token` or `GITLAB_TOKEN` env var (install [glab](https://gitlab.com/gitlab-org/cli))
+Initialization remains an internal lifecycle phase; `new PATH` is its public
+entry point. See [hooks](hooks.md) for project preparation.

@@ -1,3 +1,6 @@
+> Historical design or 0.x reference. This page is not the WTF 1.0.0 contract.
+> Start with the [current documentation](README.md) and [migration guide](migration.md).
+
 # v0.8 identity kernel work unit
 
 > WorkUnit tracking UUID: `6d77417a-6754-44a2-851c-739faed74cd5`

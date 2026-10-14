@@ -1,0 +1,15 @@
+services:
+  cache:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:${WTF_DEMO_PORT:?provided by the Lua hook}:6379"
+    labels:
+      wtf.workspace: "${WTF_DEMO_ID:?provided by the Lua hook}"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 1s
+      retries: 15
+    mem_limit: 64m
+    cpus: 0.20
+    pids_limit: 64

@@ -1,3 +1,6 @@
+> Historical design or 0.x reference. This page is not the WTF 1.0.0 contract.
+> Start with the [current documentation](README.md) and [migration guide](migration.md).
+
 # wtf news
 
 Create a new worktree and switch to it in one step. Combines `wtf new` and `wtf sw`.

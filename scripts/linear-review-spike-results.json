@@ -1,0 +1,80 @@
+{
+  "date": "2026-10-13",
+  "scope": "Read-only live timing probes of the existing embedded Linear MCP bridge. No production edits. No model turns. Existing Codex OAuth and workspace verification preserved.",
+  "verified_workspace": {
+    "slug": "alitahealth",
+    "server": "linear-alita",
+    "profile": "alita"
+  },
+  "single_lookup": {
+    "pr": "https://github.com/AlitaHealth/alita_core/pull/1680",
+    "reason": "review_found",
+    "timings_ms": {
+      "discovery": 100,
+      "initialize": 149,
+      "thread_start": 68,
+      "workspace": 790,
+      "get_diff": 221
+    },
+    "measured_phase_total_ms": 1328,
+    "setup_ms": 1107
+  },
+  "shared_session": {
+    "prs": [
+      "https://github.com/AlitaHealth/alita_core/pull/1680",
+      "https://github.com/AlitaHealth/next_gen_ui/pull/1612",
+      "https://github.com/AlitaHealth/alita-mobile/pull/216"
+    ],
+    "results": [
+      "review_found",
+      "review_found",
+      "review_found"
+    ],
+    "timings_ms": {
+      "discovery": 97,
+      "initialize": 151,
+      "thread_start": 82,
+      "workspace": 570,
+      "get_diff": [
+        202,
+        203,
+        177
+      ]
+    },
+    "measured_phase_total_ms": 1482,
+    "setup_ms": 900,
+    "workspace_verifications": 1,
+    "lookup_concurrency": 1
+  },
+  "current_code_findings": [
+    "WithReviewLinks has a shared eight-second budget and resolves unique cache misses sequentially.",
+    "Each NativeReviewClient.Resolve starts Node, discovers Codex configuration, starts a Codex app-server, creates an ephemeral thread, verifies the workspace, calls get_diff and shuts down.",
+    "The previous change deduplicates duplicate PR URLs within a repository/account scope, but distinct PRs still repeat connection setup.",
+    "Successful Linear review links have a five-minute cache; confirmed missing reviews have a one-minute cache. Transient failures are not cached as missing."
+  ],
+  "recommended_strategy": [
+    "Add a batched review provider method behind MetadataService; commands and later Lua bindings keep the same metadata request.",
+    "Resolve connection selection per repository first; reuse a session only when selected account/profile/configuration match. Cache keys remain scoped per repository and account configuration.",
+    "Verify workspace once per session before any review lookup; retain exact PR URL and Linear review workspace validation per result.",
+    "Start with sequential requests through one reused session, then measure a small bounded concurrency if needed.",
+    "Publish GitHub PR/CI observations independently of optional Linear enrichment so a slow review lookup cannot delay all visible metadata.",
+    "Keep successful/missing review caches and deduplicate pending work. Preserve cancellation, unavailable-vs-missing semantics and GitHub fallback.",
+    "Treat rate-limit responses explicitly and honor provider backoff; do not assume GitHub concurrency limits apply to Linear MCP.",
+    "Consider direct Linear GraphQL only after supported authentication and review/diff schema are verified; do not extract or repurpose Codex MCP OAuth credentials."
+  ],
+  "limitations": [
+    "One single-PR probe and one three-PR reused-session probe; no sustained-load or large-batch validation.",
+    "Measured phase totals exclude binary lookup, some local parsing and process cleanup. These are not full CLI wall-clock times.",
+    "One verified Alita account was used deliberately across three repository URLs. Automatic multi-repository connection grouping is not implemented or validated.",
+    "Linear public GraphQL rate limits do not establish the rate limits of the MCP transport.",
+    "Targeted GitHub GraphQL remains a separate prototype; the production metadata API still uses the old GitHub transport."
+  ],
+  "probe_sources": [
+    "/tmp/wtf-linear-timing.mjs",
+    "/tmp/wtf-linear-batch-timing.mjs"
+  ],
+  "sources": [
+    "https://linear.app/docs/mcp",
+    "https://linear.app/developers/rate-limiting"
+  ]
+}

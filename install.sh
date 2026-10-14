@@ -10,8 +10,7 @@ ARCH="$(uname -m)"
 
 case "$OS" in
   Linux)  os="linux" ;;
-  Darwin) os="darwin" ;;
-  *)      echo "Unsupported OS: $OS (try the Windows zip from GitHub Releases)"; exit 1 ;;
+  *)      echo "Unsupported OS: $OS. WTF 1.0 supports Linux."; exit 1 ;;
 esac
 
 case "$ARCH" in
