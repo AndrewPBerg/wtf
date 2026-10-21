@@ -62,6 +62,12 @@ func (s *Session) human(out io.Writer, err error) error {
 		for _, path := range data.Existing {
 			text += "\n  " + p.Muted.Render("Preserved") + "  " + p.Text.Render(plain(path))
 		}
+		for _, path := range data.Updated {
+			text += "\n  " + p.Good.Render("Updated") + "  " + p.Text.Render(plain(path))
+		}
+		for _, path := range data.UpdateAvailable {
+			text += "\n  " + p.Warning.Render("Update available") + "  " + p.Text.Render(plain(path)) + " (local edits or unknown template; preserved)"
+		}
 	case removalResult:
 		text = removalReport(p, data)
 	case []core.RemovalCandidate:

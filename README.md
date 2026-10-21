@@ -1,4 +1,4 @@
-# WorkTreeForge (WTF) 1.0.0
+# WorkTreeForge (WTF) 1.0.1
 
 WTF manages Jujutsu workspaces, local project hooks, and recorded tasks. JJ owns
 revisions and bookmarks; WTF owns workspace setup, navigation, and cleanup.
@@ -10,9 +10,9 @@ Linear MCP connection are optional metadata integrations. No model turns run.
 
 ```sh
 # Install the published Linux release (verify/review the installer first).
-curl -fsSL https://raw.githubusercontent.com/AndrewPBerg/wtf/v1.0.0/install.sh -o /tmp/wtf-install.sh
+curl -fsSL https://raw.githubusercontent.com/AndrewPBerg/wtf/v1.0.1/install.sh -o /tmp/wtf-install.sh
 mkdir -p "$HOME/.local/bin"
-VERSION=1.0.0 INSTALL_DIR="$HOME/.local/bin" bash /tmp/wtf-install.sh
+VERSION=1.0.1 INSTALL_DIR="$HOME/.local/bin" bash /tmp/wtf-install.sh
 
 # Inside an existing JJ repository:
 wtf setup
@@ -43,7 +43,7 @@ end
 
 [Documentation](docs/README.md) · [Getting started](docs/getting-started.md) ·
 [Command reference](docs/cli.md) · [Lua API](docs/lua-substrate.md) ·
-[1.0.0 release notes](docs/releases/1.0.0.md) · [Migration](docs/migration.md)
+[1.0.1 release notes](docs/releases/1.0.1.md) · [Migration](docs/migration.md)
 
 ## Commands
 

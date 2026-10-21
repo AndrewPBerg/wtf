@@ -21,7 +21,7 @@ type Task struct {
 
 // HookTriggers selects explicit modules for lifecycle phases.
 type HookTriggers struct {
-	Hooks   []string `toml:"hooks" schema:"Compatibility shorthand for after. For new, runs inside native creation; other surfaces run these before explicit after hooks. Modules return function(event), names preserve case, and lists do not inherit. Prefer explicit phase arrays."`
+	Hooks   []string `toml:"hooks" schema:"Compatibility shorthand for after. For new, runs inside native creation; other surfaces run these before explicit after hooks. Modules return function(event), names preserve case, and ancestor phase lists run before workspace lists. Prefer explicit phase arrays."`
 	Before  []string `toml:"before" schema:"Ordered modules run before the operation. A failure blocks the operation. Modules return function(event)."`
 	After   []string `toml:"after" schema:"Ordered modules run after a successful operation. A failure stops the sequence and fails the command."`
 	Failed  []string `toml:"failed" schema:"Modules run on failure with event.error. All are attempted; they cannot hide the primary error."`
@@ -49,14 +49,17 @@ func (c Config) hookModules() []string {
 
 // Config contains project hooks, tasks and command defaults.
 type Config struct {
-	Version    int                       `toml:"version" schema:"WTF configuration format version." schema-required:"true" schema-const:"1"`
-	Lua        string                    `toml:"lua" schema:"Explicit Lua registration module relative to .wtf, such as hooks/init.lua. Filenames never register hooks; the returned hooks/overrides table does. Project modules may be imported with require."`
-	New        HookTriggers              `toml:"new" schema:"Hooks around creation of a missing destination. Existing JJ workspace preparation does not run these phases. No registration entrypoint is needed."`
-	List       HookTriggers              `toml:"list" schema:"Hooks around the list command, including aliases. after receives the listing or selection as event.result."`
-	Remove     HookTriggers              `toml:"remove" schema:"Hooks around the remove command, including aliases. Native removal safety checks remain authoritative."`
-	Invocation HookTriggers              `toml:"invocation" schema:"Hooks around execution commands. Inspection, help, version and setup teardown never invoke callbacks. Wraps command-specific phases."`
-	Tasks      map[string]Task           `toml:"tasks" schema:"Named project tasks. Tasks use the selected project's configuration rather than inherited command defaults."`
-	Commands   map[string]map[string]any `toml:"commands" schema:"Defaults for registered command flags. Precedence is global, outer parent, nearest parent, leaf, then explicit CLI flags. These schema defaults are annotations and do not perform the merge."`
+	Version     int                       `toml:"version" schema:"WTF configuration format version." schema-required:"true" schema-const:"1"`
+	Lua         string                    `toml:"lua" schema:"Explicit Lua registration module relative to .wtf, such as hooks/init.lua. Filenames never register hooks; the returned hooks/overrides table does. Project modules may be imported with require."`
+	New         HookTriggers              `toml:"new" schema:"Hooks around creation of a missing destination. Existing JJ workspace preparation does not run these phases. No registration entrypoint is needed."`
+	List        HookTriggers              `toml:"list" schema:"Hooks around the list command, including aliases. after receives the listing or selection as event.result."`
+	Remove      HookTriggers              `toml:"remove" schema:"Hooks around the remove command, including aliases. Native removal safety checks remain authoritative."`
+	Invocation  HookTriggers              `toml:"invocation" schema:"Hooks around execution commands. Inspection, help, version and setup teardown never invoke callbacks. Wraps command-specific phases."`
+	Tasks       map[string]Task           `toml:"tasks" schema:"Named project tasks. Tasks use the selected project's configuration rather than inherited command defaults."`
+	Commands    map[string]map[string]any `toml:"commands" schema:"Defaults for registered command flags. Precedence is global, outer parent, nearest parent, leaf, then explicit CLI flags. These schema defaults are annotations and do not perform the merge."`
+	local       *Config
+	parents     []parentHooks
+	packageRoot string
 }
 
 func relative(root, path string) (string, error) {
@@ -81,6 +84,70 @@ func relative(root, path string) (string, error) {
 
 // LoadConfig loads and validates the project configuration.
 func LoadConfig(root string) (Config, error) {
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return Config{}, err
+	}
+	c, err := loadLocalConfig(root)
+	if err != nil {
+		return c, err
+	}
+	local := c
+	c.local = &local
+	var parents []parentHooks
+	for dir, depth := filepath.Dir(root), 1; dir != root; depth++ {
+		parent, err := loadLocalConfig(dir)
+		if err != nil {
+			return c, fmt.Errorf("parent configuration %s: %w", dir, err)
+		}
+		if len(parent.hookModules()) > 0 {
+			parents = append(parents, parentHooks{root: dir, prefix: fmt.Sprintf("parent%d.", depth), config: parent})
+		}
+		next := filepath.Dir(dir)
+		if next == dir {
+			break
+		}
+		dir = next
+	}
+	// Each phase runs from the outermost parent through the selected workspace.
+	for i := len(parents) - 1; i >= 0; i-- {
+		c.parents = append(c.parents, parents[i])
+	}
+	c.New = inheritTriggers(c.parents, local.New, func(c Config) HookTriggers { return c.New })
+	c.List = inheritTriggers(c.parents, local.List, func(c Config) HookTriggers { return c.List })
+	c.Remove = inheritTriggers(c.parents, local.Remove, func(c Config) HookTriggers { return c.Remove })
+	c.Invocation = inheritTriggers(c.parents, local.Invocation, func(c Config) HookTriggers { return c.Invocation })
+	return c, nil
+}
+
+type parentHooks struct {
+	root, prefix string
+	config       Config
+}
+
+func inheritTriggers(parents []parentHooks, local HookTriggers, selectScope func(Config) HookTriggers) HookTriggers {
+	result := HookTriggers{}
+	appendScope := func(scope HookTriggers, prefix string) {
+		for _, pair := range []struct {
+			dst *[]string
+			src []string
+		}{
+			{&result.Hooks, scope.Hooks}, {&result.Before, scope.Before},
+			{&result.After, scope.After}, {&result.Failed, scope.Failed}, {&result.Finally, scope.Finally},
+		} {
+			for _, name := range pair.src {
+				*pair.dst = append(*pair.dst, prefix+name)
+			}
+		}
+	}
+	for _, parent := range parents {
+		appendScope(selectScope(parent.config), parent.prefix)
+	}
+	appendScope(local, "")
+	return result
+}
+
+func loadLocalConfig(root string) (Config, error) {
 	c := Config{}
 	p := filepath.Join(root, ".wtf", "config.toml")
 	b, e := os.ReadFile(p)

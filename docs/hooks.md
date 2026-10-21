@@ -1,6 +1,6 @@
 # Project hook modules
 
-This page describes WTF 1.0.0. Files, commands, and environment helpers are
+This page describes WTF 1.0.1. Files, commands, and environment helpers are
 available in the [Lua substrate](lua-substrate.md); older roadmap proposals are
 historical and do not define supported APIs.
 
@@ -121,7 +121,23 @@ stages. Preparing an existing destination never repeats creation hooks. Inspect
 and repair the retained workspace after failure; `new` on that existing path does
 not retry the creation sequence.
 
-Creation hook lists are project-local and do not inherit command defaults.
+Declarative phase lists inherit from ancestor `.wtf/config.toml` files separately
+from command defaults. For example, a hook in `Work/.wtf` applies to all selected
+repositories and workspaces under `Work`. Each phase runs outer parents first,
+then nearer parents, then workspace modules. Imports stay in the declaring hook
+package; `event.project` and filesystem roots refer to the selected repository,
+so a shared copy hook can transfer each repository's own local files.
+
+Inherited hooks are listed and manually invoked as `parent1.NAME` (nearest
+parent), `parent2.NAME`, and so on. Equal module names in different packages are
+independent. Empty workspace arrays retain parent phases. Parent Lua operation
+overrides and tasks do not inherit. A workspace Lua entrypoint can coexist with
+declarative parent hooks. Parent configuration is read live and is not copied
+into the child; moving a workspace outside that folder changes its parent hooks.
+
+Invalid parent modules block commands before mutation. Failed/finally phases
+retain their existing error and cancellation behavior. Help and diagnostics do
+not execute inherited callbacks.
 Git-ignored `.wtf/` files are not copied into new JJ workspaces; the creating
 workspace's configuration supplies this post-creation sequence.
 

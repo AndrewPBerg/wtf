@@ -39,6 +39,11 @@ func (a *App) InvokeHooks(ctx context.Context, invocation HookInvocation, operat
 	if len(surface) > 0 {
 		name = surface[0]
 	}
+	if name == "remove" && discoveryErr != nil {
+		// Parent-scoped removal invokes each selected repository's lifecycle
+		// separately, after unambiguous target resolution.
+		return operation()
+	}
 	var scope HookTriggers
 	switch name {
 	case "new":

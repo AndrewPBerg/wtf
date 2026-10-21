@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -186,11 +187,28 @@ func (m removalPicker) visible() []core.RemovalCandidate {
 	}
 	rows := []core.RemovalCandidate{}
 	for _, row := range m.rows {
-		if m.search.matches(row.WorkspaceView) {
+		_, repositoryMatch := fuzzyPositions(m.repositoryName(row.WorkspaceView), m.search.query)
+		if m.search.matches(row.WorkspaceView) || repositoryMatch {
 			rows = append(rows, row)
 		}
 	}
 	return rows
+}
+
+func (m removalPicker) repositoryName(row core.WorkspaceView) string {
+	if row.RepositoryPath == "" {
+		return ""
+	}
+	return plain(filepath.Base(row.RepositoryPath))
+}
+
+func (m removalPicker) displayName(row core.WorkspaceView) string {
+	for _, other := range m.rows {
+		if other.RepositoryID != row.RepositoryID {
+			return m.repositoryName(row) + " / " + workspaceDisplayName(row)
+		}
+	}
+	return workspaceDisplayName(row)
 }
 
 func (m removalPicker) hasMessages() bool {
@@ -399,7 +417,7 @@ func (m removalPicker) View() string {
 	now := time.Now()
 	for _, row := range rows {
 		ageWidth = max(ageWidth, len(workspaceAge(row.CreatedAt, now)))
-		nameWidth = max(nameWidth, min(32, lipgloss.Width(plain(workspaceDisplayName(row.WorkspaceView)))))
+		nameWidth = max(nameWidth, min(48, lipgloss.Width(plain(m.displayName(row.WorkspaceView)))))
 		statusWidth = max(statusWidth, min(28, lipgloss.Width(removalStatus(row))))
 		if len(row.Changes) > 0 {
 			changesWidth = max(changesWidth, lipgloss.Width(fmt.Sprintf("! %d", len(row.Changes))))
@@ -420,7 +438,7 @@ func (m removalPicker) View() string {
 	if len(rows) == 0 && m.search.query != "" {
 		lines = append(lines, m.p.Muted.Render(clip("No matching workspaces.")))
 	} else if !m.loading && len(rows) == 0 {
-		lines = append(lines, m.p.Muted.Render(clip("No active workspaces in this repository.")))
+		lines = append(lines, m.p.Muted.Render(clip("No active workspaces in this directory.")))
 	}
 	for i, row := range rows {
 		if i < page*size || i >= (page+1)*size {
@@ -453,7 +471,8 @@ func (m removalPicker) View() string {
 		if len(row.Changes) > 0 {
 			changes = fmt.Sprintf("! %d", len(row.Changes))
 		}
-		label := pointer + " " + mark + " " + cell(workspaceSearchLink(m.p, row.WorkspaceView, m.search), nameWidth) + "  " + cell(removalStatus(row), statusWidth) + "  " + cell(changes, changesWidth) + "  " + cell(workspaceAge(row.CreatedAt, now), ageWidth)
+		name := workspaceStyledLink(m.p, row.WorkspaceView, m.search.highlight(m.p, m.displayName(row.WorkspaceView)))
+		label := pointer + " " + mark + " " + cell(name, nameWidth) + "  " + cell(removalStatus(row), statusWidth) + "  " + cell(changes, changesWidth) + "  " + cell(workspaceAge(row.CreatedAt, now), ageWidth)
 		lines = append(lines, style.Render(clip(label)))
 	}
 	if m.hasMessages() {

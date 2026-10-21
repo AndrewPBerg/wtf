@@ -93,7 +93,7 @@ func inheritWorkspaceConfig(ctx context.Context, sourcePath, destinationPath str
 		_, err = rt.copyFile(source, name, dest, name, fileOptions{Replace: true, Symlinks: "preserve"})
 		return err
 	}
-	for _, name := range []string{".gitignore", "schema.json", "config.toml", "hooks", "tasks"} {
+	for _, name := range []string{".gitignore", "schema.json", "config.toml", "AGENTS.md", guideChecksumFile, "hooks", "tasks"} {
 		path := filepath.Join(".wtf", name)
 		// Structural entries must be independent files/directories, not links.
 		if info, err := source.Lstat(path); err == nil {

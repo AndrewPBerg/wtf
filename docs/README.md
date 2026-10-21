@@ -1,6 +1,6 @@
-# WTF 1.0.0 documentation
+# WTF 1.0.1 documentation
 
-This is the supported 1.0.0 documentation. The CLI registry and generated schema
+This is the supported 1.0.1 documentation. The CLI registry and generated schema
 are authoritative for commands and options. Older architecture pages remain for
 history and have a historical banner; they do not describe this release.
 
@@ -16,6 +16,7 @@ history and have a historical banner; they do not describe this release.
 
 - [Complete command reference](cli.md)
 - [Setup and teardown](setup.md)
+- [Self-contained agent guide](../internal/core/scaffold/AGENTS.md) (generated as `.wtf/AGENTS.md`)
 - [New and configuration inheritance](new.md)
 - [Workspace messages](change.md)
 - [Shell completion](completion.md)
@@ -24,7 +25,7 @@ history and have a historical banner; they do not describe this release.
 - [Tasks](tasks.md) and [port claims](ports.md)
 - [JSON contract](json.md), [state and safety](state.md), [troubleshooting](troubleshooting.md)
 - [Migration from 0.x](migration.md), [version](version.md)
-- [1.0.0 release notes](releases/1.0.0.md), [release procedure](releasing.md)
+- [1.0.1 release notes](releases/1.0.1.md), [release procedure](releasing.md)
 
 ## Working examples
 
@@ -34,5 +35,5 @@ files, commands, environment settings, and themed messages repeatedly.
 copies and explicit symlinks. All sample values are mock data. Install examples
 explicitly; a fresh setup never registers code automatically.
 
-WTF 1.0.0 supports Linux. It does not provide a daemon, process supervisor,
+WTF 1.0.1 supports Linux. It does not provide a daemon, process supervisor,
 native Docker provider, remote execution, or automatic dependency installation.

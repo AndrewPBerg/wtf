@@ -42,7 +42,9 @@ WTF stores its local identity marker in `.jj/wtf-workspace.json`, outside source
 tracking. Creating a workspace does not require a project `.gitignore` rule for
 this metadata. Existing `.wtf/workspace.json` markers remain readable for compatibility.
 
-New workspaces inherit `.wtf/config.toml`, `.wtf/schema.json`, `.wtf/hooks/`,
+New workspaces inherit the `.wtf/AGENTS.md` agent guide and `.wtf/.agents-template.sha256`
+checksum record, `.wtf/config.toml`,
+`.wtf/schema.json`, `.wtf/hooks/`,
 and `.wtf/tasks/` from the invoking workspace root, even when invoked from a
 subdirectory. This happens before initialization and creation callbacks. Files
 are independent copies; nested directories and empty hook/task directories are

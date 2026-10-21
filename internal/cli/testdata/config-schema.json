@@ -291,7 +291,7 @@
               "type": "string"
             }
           },
-          "description": "Bare names resolve beside the registered main repository, even from another workspace or subdirectory, without a repository prefix or suffix. Explicit relative paths resolve from the current directory; absolute paths also work. An existing JJ workspace root is registered and prepared; a missing path creates an owned JJ workspace at that exact location, named after its basename. --from defaults to trunk() and only applies to creation. Existing directories that are not workspace roots are rejected. Both modes run the init override; only creation runs the new override, which may block before mutation. Repeated calls preserve identity, ownership and reusable stages. JSON registration codes are initialized or already_initialized. Project arguments after -- keep their case. Examples: wtf new .; wtf new agent-a -f @ -- --compose. New workspaces copy .wtf/config.toml, schema.json, hooks/ and tasks/ from the invoking workspace before initialization and creation callbacks, with independent files and local ignore rules. Local artifacts and runtime state are excluded. Existing-workspace preparation preserves its configuration.",
+          "description": "Bare names resolve beside the registered main repository, even from another workspace or subdirectory, without a repository prefix or suffix. Explicit relative paths resolve from the current directory; absolute paths also work. An existing JJ workspace root is registered and prepared; a missing path creates an owned JJ workspace at that exact location, named after its basename. --from defaults to trunk() and only applies to creation. Existing directories that are not workspace roots are rejected. Both modes run the init override; only creation runs the new override, which may block before mutation. Repeated calls preserve identity, ownership and reusable stages. JSON registration codes are initialized or already_initialized. Project arguments after -- keep their case. Examples: wtf new .; wtf new agent-a -f @ -- --compose. New workspaces copy .wtf/config.toml, schema.json, hooks/ and tasks/ from the invoking workspace before initialization and creation callbacks, with independent files and local ignore rules. Declarative phase hooks also inherit from ancestor .wtf/config.toml files, outermost first; their imports remain in the declaring hook package. Local artifacts and runtime state are excluded. Existing-workspace preparation preserves its configuration.",
           "patternProperties": {
             "^[fF][rR][oO][mM]$": {
               "$ref": "#/properties/commands/definitions/new/definitions/from"
@@ -424,7 +424,7 @@
               "type": "boolean"
             }
           },
-          "description": "Open an inline multi-select cleanup picker. Space toggles a workspace; f toggles force mode to discard remaining source changes; a selects clean workspaces verified in main/master; Enter reviews, then confirms removal. Current and adopted workspaces are protected. Changes outside main/master block removal unless force mode is enabled in the picker. Integration uses local JJ ancestry or a fresh merged GitHub PR with an exact matching head and main/master base. Local bookmarks and remote bookmarks reflect their last fetched state. Normal JJ snapshotting captures on-disk changes during inspection.\n\nAn explicit NAME removes one workspace directly. JSON and redirected output with no NAME report cleanup candidates without removing them. Teardown hooks and identity/resource checks are revalidated for each removal. Failures retain cleanup state.\n\nExamples:\n  wtf remove\n  wtf rm agent-a --json\n  wtf remove --json",
+          "description": "Open an inline multi-select cleanup picker. Space toggles a workspace; f toggles force mode to discard remaining source changes; a selects clean workspaces verified in main/master; Enter reviews, then confirms removal. Current and adopted workspaces are protected. Changes outside main/master block removal unless force mode is enabled in the picker. Integration uses local JJ ancestry or a fresh merged GitHub PR with an exact matching head and main/master base. Local bookmarks and remote bookmarks reflect their last fetched state. Normal JJ snapshotting captures on-disk changes during inspection.\n\nAn explicit NAME removes one workspace directly. JSON and redirected output with no NAME report cleanup candidates without removing them. Teardown hooks and identity/resource checks are revalidated for each removal. Failures retain cleanup state.\n\nExamples:\n  wtf remove\n  wtf rm agent-a --json\n  wtf remove --json\n\nInside a repository, removal uses that repository. From a parent directory, it includes registered repositories beneath it, just like switch; no --global flag is required. Repeated names require a workspace ID or running inside the intended repository.",
           "patternProperties": {
             "^[jJ][sS][oO][nN]$": {
               "$ref": "#/properties/commands/definitions/remove/definitions/json"
@@ -468,7 +468,7 @@
               "type": "boolean"
             }
           },
-          "description": "Create .wtf in the current directory with config.toml, the generated editor schema, and completely empty hooks and tasks directories. Its .gitignore contains only * so all scaffold files stay local and untracked. Existing files are preserved; repeated setup fills in missing files. Does not run hooks, install dependencies or register a workspace. No repository is required. Use setup teardown to remove the local .wtf directory after a yes/no confirmation. Examples: wtf setup; wtf setup --json; wtf setup teardown.",
+          "description": "Create .wtf in the current directory with config.toml, the generated editor schema, a self-contained AGENTS.md reference, its template checksum, and completely empty hooks and tasks directories. Its .gitignore contains only * so all scaffold files stay local and untracked. Config/schema edits are preserved; repeated setup fills in missing files and refreshes guides matching the previously installed checksum. Customized or unknown guides are preserved with an update-available report. The guide and checksum are inherited by newly created workspaces. Uses the installed binary's embedded template without a network lookup. Does not run hooks, install dependencies or register a workspace. No repository is required. Use setup teardown to remove the local .wtf directory after a yes/no confirmation. Examples: wtf setup; wtf setup --json; wtf setup teardown.",
           "patternProperties": {
             "^[jJ][sS][oO][nN]$": {
               "$ref": "#/properties/commands/definitions/setup/definitions/json"
@@ -692,7 +692,7 @@
           "type": "array"
         },
         "hooks": {
-          "description": "Compatibility shorthand for after. For new, runs inside native creation; other surfaces run these before explicit after hooks. Modules return function(event), names preserve case, and lists do not inherit. Prefer explicit phase arrays.",
+          "description": "Compatibility shorthand for after. For new, runs inside native creation; other surfaces run these before explicit after hooks. Modules return function(event), names preserve case, and ancestor phase lists run before workspace lists. Prefer explicit phase arrays.",
           "items": {
             "type": "string"
           },
@@ -734,7 +734,7 @@
           "type": "array"
         },
         "hooks": {
-          "description": "Compatibility shorthand for after. For new, runs inside native creation; other surfaces run these before explicit after hooks. Modules return function(event), names preserve case, and lists do not inherit. Prefer explicit phase arrays.",
+          "description": "Compatibility shorthand for after. For new, runs inside native creation; other surfaces run these before explicit after hooks. Modules return function(event), names preserve case, and ancestor phase lists run before workspace lists. Prefer explicit phase arrays.",
           "items": {
             "type": "string"
           },
@@ -780,7 +780,7 @@
           "type": "array"
         },
         "hooks": {
-          "description": "Compatibility shorthand for after. For new, runs inside native creation; other surfaces run these before explicit after hooks. Modules return function(event), names preserve case, and lists do not inherit. Prefer explicit phase arrays.",
+          "description": "Compatibility shorthand for after. For new, runs inside native creation; other surfaces run these before explicit after hooks. Modules return function(event), names preserve case, and ancestor phase lists run before workspace lists. Prefer explicit phase arrays.",
           "items": {
             "type": "string"
           },
@@ -822,7 +822,7 @@
           "type": "array"
         },
         "hooks": {
-          "description": "Compatibility shorthand for after. For new, runs inside native creation; other surfaces run these before explicit after hooks. Modules return function(event), names preserve case, and lists do not inherit. Prefer explicit phase arrays.",
+          "description": "Compatibility shorthand for after. For new, runs inside native creation; other surfaces run these before explicit after hooks. Modules return function(event), names preserve case, and ancestor phase lists run before workspace lists. Prefer explicit phase arrays.",
           "items": {
             "type": "string"
           },

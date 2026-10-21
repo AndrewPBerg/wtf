@@ -2,23 +2,29 @@ package core
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"os"
 	"path/filepath"
 )
 
+//go:embed scaffold/AGENTS.md
+var workspaceGuide []byte
+
 // SetupResult reports scaffold files relative to the current directory.
 type SetupResult struct {
-	Path     string   `json:"path"`
-	Created  []string `json:"created"`
-	Existing []string `json:"existing"`
+	Path            string   `json:"path"`
+	Created         []string `json:"created"`
+	Existing        []string `json:"existing"`
+	Updated         []string `json:"updated"`
+	UpdateAvailable []string `json:"update_available"`
 }
 
 // Setup creates a local, ignored configuration scaffold without running hooks
-// or registering a workspace. Existing files are never replaced.
+// or registering a workspace. Only unchanged generated guides are refreshed.
 func (a *App) Setup(ctx context.Context, schema []byte) (SetupResult, error) {
 	root, err := filepath.Abs(a.Cwd)
-	result := SetupResult{Path: filepath.Join(root, ".wtf"), Created: []string{}, Existing: []string{}}
+	result := SetupResult{Path: filepath.Join(root, ".wtf"), Created: []string{}, Existing: []string{}, Updated: []string{}, UpdateAvailable: []string{}}
 	if err != nil {
 		return result, err
 	}
@@ -81,7 +87,8 @@ func (a *App) Setup(ctx context.Context, schema []byte) (SetupResult, error) {
 		}
 		result.Created = append(result.Created, ".wtf/"+file.name)
 	}
-	return result, nil
+	err = refreshWorkspaceGuide(ctx, result.Path, workspaceGuide, &result)
+	return result, err
 }
 
 // SetupTeardownResult reports removal of local configuration only.

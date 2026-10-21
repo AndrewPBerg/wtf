@@ -118,8 +118,23 @@ func TestRemovalPickerCancelWarningsAndSmallTerminals(t *testing.T) {
 func TestRemovalJSONWithoutNameNeverPromptsOrDeletes(t *testing.T) {
 	a := core.New(t.TempDir(), t.TempDir(), nil)
 	result, code, _ := invoke(t, a, "remove", "--json")
-	if code == 0 || result.Error == nil || result.Error.Code != "not_a_jj_repository" {
+	if code != 0 || result.Error != nil {
 		t.Fatalf("unexpected no-name JSON result: %+v", result)
+	}
+}
+
+func TestRemovalParentPickerShowsAndSearchesRepositories(t *testing.T) {
+	rows := []core.RemovalCandidate{
+		{WorkspaceView: core.WorkspaceView{Workspace: core.Workspace{ID: "one", Name: "default", Path: "/work/core"}, RepositoryID: "core", RepositoryPath: "/work/core"}},
+		{WorkspaceView: core.WorkspaceView{Workspace: core.Workspace{ID: "two", Name: "default", Path: "/work/ui"}, RepositoryID: "ui", RepositoryPath: "/work/ui"}},
+	}
+	m := newRemovalPicker(rows, "/work", humanPresentation(&bytes.Buffer{}))
+	if view := m.View(); !strings.Contains(view, "core / default") || !strings.Contains(view, "ui / default") {
+		t.Fatalf("repository labels missing: %s", view)
+	}
+	m.search.query = "core"
+	if visible := m.visible(); len(visible) != 1 || visible[0].ID != "one" {
+		t.Fatalf("repository search: %+v", visible)
 	}
 }
 

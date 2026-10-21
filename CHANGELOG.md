@@ -4,6 +4,14 @@ All notable changes to WorkTreeForge (wtf) will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-10-21
+
+- Inherit declarative lifecycle hooks from ancestor configuration with isolated imports.
+- Support parent-directory removal with switch's default scope, repository labels,
+  ambiguous-name rejection, and existing removal safeguards.
+- Include fuzzy picker search, generated agent-guide refresh and inheritance,
+  and expanded port-claim validation and documentation.
+
 ## [1.0.0] — 2026-10-13
 
 WorkTreeForge 1.0.0 manages Jujutsu workspaces through explicit Lua project policy,
